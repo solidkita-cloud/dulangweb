@@ -82,10 +82,9 @@ export const DEFAULT_STORE_CONFIG: StoreConfig = {
     'Tarik': 20000,
     'Jabon': 18000,
   },
-  bankBCA: '8290-888-291 a/n Tim Dulang Indonesia',
-  bankMandiri: '141-00-1928374-1 a/n Tim Dulang Indonesia',
-  bankBRI: '0089-01-082910-50-3 a/n Tim Dulang Indonesia',
-  qrisTeks: 'Mendukung QRIS BCA, Mandiri, BRI, GoPay, OVO, ShopeePay, Dana, dll',
+  qrisTeks: 'DULANG INDONESIA (Mendukung QRIS semua Bank & E-Wallet)',
+  qrisNmid: 'ID1020057244342',
+  qrisImage: '/qris-dulang.png',
 };
 
 export const DEFAULT_SIDOARJO_DELIVERY_RATES: Record<string, number> = {

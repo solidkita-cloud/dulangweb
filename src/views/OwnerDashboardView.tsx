@@ -114,6 +114,7 @@ export const OwnerDashboardView: React.FC<OwnerDashboardViewProps> = ({
   const [isMobileDrawerOpen, setIsMobileDrawerOpen] = useState<boolean>(false);
   const [isSubuhModalOpen, setIsSubuhModalOpen] = useState<boolean>(false);
   const [isClosingModalOpen, setIsClosingModalOpen] = useState<boolean>(false);
+  const [isQrisModalOpen, setIsQrisModalOpen] = useState<boolean>(false);
 
   // --- TESTIMONIALS CURATION STATE ---
   const [testimonials, setTestimonials] = useState<CustomerTestimonial[]>(() => storageService.getTestimonials());
@@ -1064,10 +1065,10 @@ Catatan Kurir: Pastikan posisi dus ditaruh datar agar mayo tidak tumpah ya kak.`
     const cleanWa = ord.customer_wa ? ord.customer_wa.replace(/\D/g, '') : '';
     const phone = cleanWa ? (cleanWa.startsWith('0') ? '62' + cleanWa.slice(1) : cleanWa) : '';
 
-    const bca = storeConfig.bankBCA || '8290-888-291 a/n Tim Dulang Indonesia';
-    const mandiri = storeConfig.bankMandiri || '141-00-1928374-1 a/n Tim Dulang Indonesia';
-    const bri = storeConfig.bankBRI || '0089-01-082910-50-3 a/n Tim Dulang Indonesia';
-    const qrisInfo = storeConfig.qrisTeks || 'Mendukung QRIS semua bank & e-wallet (BCA, Mandiri, GoPay, OVO, ShopeePay, dll)';
+    const nmid = storeConfig.qrisNmid || 'ID1020057244342';
+    const qrisUrl = typeof window !== 'undefined'
+      ? `${window.location.origin}/qris-dulang.png`
+      : 'https://dulangweb.vercel.app/qris-dulang.png';
 
     const itemsText = ord.items
       .map((it) => {
@@ -1088,16 +1089,15 @@ Catatan Kurir: Pastikan posisi dus ditaruh datar agar mayo tidak tumpah ya kak.`
     msg += `*✨ TOTAL TAGIHAN: Rp ${ord.total_price.toLocaleString('id-ID')}*\n`;
     msg += `Status: *${ord.status === 'lunas' ? 'LUNAS (Terima Kasih! ✓)' : 'MENUNGGU PEMBAYARAN'}*\n\n`;
 
-    msg += `💳 *INFORMASI PEMBAYARAN:*\n`;
-    msg += `• *BCA:* ${bca}\n`;
-    msg += `• *Mandiri:* ${mandiri}\n`;
-    if (storeConfig.bankBRI) {
-      msg += `• *BRI:* ${bri}\n`;
-    }
-    msg += `• *QRIS:* ${qrisInfo}\n\n`;
+    msg += `📱 *PEMBAYARAN VIA QRIS (GPN):*\n`;
+    msg += `• *Nama Merchant:* DULANG INDONESIA\n`;
+    msg += `• *NMID:* ${nmid} (Dicetak oleh: OVO)\n`;
+    msg += `• *Dukungan:* Bebas transfer dari semua Bank (BCA, Mandiri, BRI, BSI, dll) & E-Wallet (GoPay, OVO, ShopeePay, DANA, AstraPay)\n`;
+    msg += `• *Link Barcode QRIS:* ${qrisUrl}\n`;
+    msg += `• *Cara Bayar:* Silakan scan barcode QRIS yang kami lampirkan di chat ini atau klik link di atas ya Kak 😊\n\n`;
 
-    msg += `Jika sudah transfer, mohon kirimkan bukti transfer ke sini ya kak agar pesanan langsung kami siapkan/goreng hangat dari wajan 🔥\n\n`;
-    msg += `Salam hangat dari Tim Dapur Dulang! 🙏`;
+    msg += `Jika sudah scan & bayar, mohon kirimkan bukti tangkapan layar (screenshot) ke sini ya kak agar pesanan langsung kami proses hangat-hangat 🔥\n\n`;
+    msg += `Salam hangat dari Tim Dapur Dulang! 🙏💛`;
 
     if (phone) {
       const url = `https://wa.me/${phone}?text=${encodeURIComponent(msg)}`;
@@ -2520,8 +2520,8 @@ Catatan Kurir: Pastikan posisi dus ditaruh datar agar mayo tidak tumpah ya kak.`
                     <label className="block font-sans text-[11px] font-bold uppercase text-[#5C3D2E]/80 mb-1">
                       Metode Pembayaran
                     </label>
-                    <div className="grid grid-cols-3 gap-2">
-                      {(['tunai', 'qris', 'transfer'] as PaymentMethod[]).map((m) => (
+                    <div className="grid grid-cols-2 gap-2">
+                      {(['tunai', 'qris'] as PaymentMethod[]).map((m) => (
                         <button
                           key={m}
                           type="button"
@@ -2532,9 +2532,8 @@ Catatan Kurir: Pastikan posisi dus ditaruh datar agar mayo tidak tumpah ya kak.`
                               : 'bg-white text-[#111111] border-[#111111]/20 hover:border-[#111111]'
                           }`}
                         >
-                          {m === 'tunai' && '💵 Tunai'}
-                          {m === 'qris' && '📱 QRIS'}
-                          {m === 'transfer' && '🏦 Transfer'}
+                          {m === 'tunai' && '💵 Uang Tunai'}
+                          {m === 'qris' && '📱 QRIS (Semua Bank/E-Wallet)'}
                         </button>
                       ))}
                     </div>
@@ -2622,6 +2621,47 @@ Catatan Kurir: Pastikan posisi dus ditaruh datar agar mayo tidak tumpah ya kak.`
                             </button>
                           ))}
                         </div>
+                      </div>
+                    </div>
+                  );
+                })()}
+
+                {/* QRIS Official Barcode Box */}
+                {walkInPaymentMethod === 'qris' && (() => {
+                  const currentTotal = walkInCart.reduce((sum, item) => sum + item.harga * item.qty, 0);
+                  return (
+                    <div className="bg-[#FFFDF4] rounded-[18px] p-4 border-2 border-[#111111] shadow-[3px_3px_0_#111111] space-y-3">
+                      <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-3">
+                        <div className="flex items-center gap-3">
+                          <div className="w-12 h-12 bg-white rounded-xl border-2 border-[#111111] p-1 flex items-center justify-center shrink-0 shadow-2xs">
+                            <img src="/qris-dulang.png" alt="QRIS" className="w-full h-full object-contain" />
+                          </div>
+                          <div>
+                            <span className="inline-flex items-center gap-1 bg-[#111111] text-[#FFD700] px-2 py-0.5 rounded-full text-[10px] font-bold">
+                              <span>📱</span> QRIS RESMI
+                            </span>
+                            <h4 className="font-hand font-bold text-lg text-[#111111] leading-tight mt-0.5">
+                              DULANG INDONESIA
+                            </h4>
+                            <p className="font-mono text-[11px] text-[#5C3D2E] font-bold">
+                              NMID: ID1020057244342 (OVO / GPN)
+                            </p>
+                          </div>
+                        </div>
+
+                        <button
+                          type="button"
+                          onClick={() => setIsQrisModalOpen(true)}
+                          className="cursor-pointer bg-[#FFD700] hover:bg-[#111111] text-[#111111] hover:text-[#FFD700] transition px-4 py-2 rounded-full font-sans font-bold text-xs border-2 border-[#111111] shadow-[2px_2px_0_#111111] flex items-center justify-center gap-1.5 self-stretch sm:self-auto"
+                        >
+                          <span>🔍</span>
+                          <span>Buka QRIS Layar Penuh</span>
+                        </button>
+                      </div>
+
+                      <div className="bg-amber-50 rounded-xl p-2.5 border border-amber-200 text-xs font-sans text-[#5C3D2E] flex flex-col sm:flex-row sm:items-center justify-between gap-1">
+                        <span>Arahkan pembeli scan QRIS senilai: <strong>Rp {currentTotal.toLocaleString('id-ID')}</strong></span>
+                        <span className="text-[11px] text-emerald-700 font-bold bg-emerald-100 px-2 py-0.5 rounded-full self-start sm:self-auto">✓ Bebas Biaya Admin</span>
                       </div>
                     </div>
                   );
@@ -6076,6 +6116,62 @@ Catatan Kurir: Pastikan posisi dus ditaruh datar agar mayo tidak tumpah ya kak.`
         storeConfig={storeConfig}
         onShowToast={onShowToast}
       />
+
+      {/* QRIS FULLSCREEN MODAL FOR CASHIER & CUSTOMERS */}
+      {isQrisModalOpen && (
+        <div className="fixed inset-0 z-50 flex items-center justify-center p-3 sm:p-4 bg-black/75 backdrop-blur-xs">
+          <div className="bg-white rounded-[28px] border-3 border-[#111111] shadow-[8px_8px_0_#111111] max-w-sm w-full p-5 sm:p-6 text-center relative animate-in fade-in zoom-in-95 duration-200">
+            <button
+              type="button"
+              onClick={() => setIsQrisModalOpen(false)}
+              className="cursor-pointer absolute top-3.5 right-3.5 w-8 h-8 rounded-full bg-gray-100 hover:bg-[#FFD700] text-[#111111] border-2 border-[#111111] font-bold text-sm flex items-center justify-center transition"
+            >
+              ✕
+            </button>
+            <div className="inline-flex items-center gap-1.5 bg-[#111111] text-[#FFD700] px-3 py-0.5 rounded-full text-[11px] font-bold mb-2">
+              <span>📱</span>
+              <span>QRIS STANDAR NASIONAL (GPN)</span>
+            </div>
+            <h3 className="font-hand font-bold text-2xl text-[#111111]">
+              DULANG INDONESIA
+            </h3>
+            <p className="font-mono text-xs text-[#5C3D2E] font-bold mt-0.5">
+              NMID: ID1020057244342
+            </p>
+
+            <div className="my-3 p-2 bg-[#FFFDF4] rounded-[20px] border-2 border-[#111111] shadow-inner inline-block">
+              <img
+                src="/qris-dulang.png"
+                alt="QRIS DULANG INDONESIA"
+                className="w-64 max-h-[380px] h-auto mx-auto rounded-xl object-contain"
+              />
+            </div>
+
+            <p className="font-sans text-[11px] text-[#5C3D2E]/85">
+              Mendukung semua M-Banking & E-Wallet<br />
+              <span className="text-[10px] text-gray-500 font-medium">Dicetak oleh: OVO • Bebas Biaya Admin</span>
+            </p>
+
+            <div className="mt-4 flex gap-2">
+              <a
+                href="/qris-dulang.png"
+                download="QRIS-Dulang-Indonesia.png"
+                className="flex-1 py-2.5 rounded-full bg-[#111111] text-[#FFD700] hover:bg-[#FFD700] hover:text-[#111111] font-sans font-bold text-xs border-2 border-[#111111] transition flex items-center justify-center gap-1.5 shadow-[2px_2px_0_#111111]"
+              >
+                <span>📥</span>
+                <span>Unduh Gambar</span>
+              </a>
+              <button
+                type="button"
+                onClick={() => setIsQrisModalOpen(false)}
+                className="cursor-pointer px-4 py-2.5 rounded-full bg-gray-100 hover:bg-gray-200 text-[#111111] font-sans font-bold text-xs border border-[#111111]/30 transition"
+              >
+                Tutup
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
 
       {/* MENU DAPUR LAINNYA (SLIDE-UP DRAWER FOR PROGRESSIVE DISCLOSURE) */}
       {isMobileDrawerOpen && (

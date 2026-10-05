@@ -87,8 +87,9 @@ export interface StoreConfig {
   deliveryRates?: Record<string, number>;
   bankBCA?: string;
   bankMandiri?: string;
-  bankBRI?: string;
   qrisTeks?: string;
+  qrisNmid?: string;
+  qrisImage?: string;
 }
 
 export interface ChildVoucherPerk {
