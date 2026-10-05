@@ -11,6 +11,7 @@ import { SmartScanView } from './views/SmartScanView';
 import { OwnerDashboardView } from './views/OwnerDashboardView';
 import { getSupabaseClient } from './lib/supabase';
 import { LOCKED_COPY } from './lib/constants';
+import { playNewCustomerChime } from './lib/audioNotifier';
 
 export function App() {
   const [currentMode, setCurrentMode] = useState<NavMode>('pembeli');
@@ -99,8 +100,26 @@ export function App() {
 
         orderChannel = client
           .channel('public:orders_realtime')
-          .on('postgres_changes', { event: '*', schema: 'public', table: 'orders' }, () => {
-            storageService.syncOrdersFromSupabase();
+          .on('postgres_changes', { event: '*', schema: 'public', table: 'orders' }, (payload: any) => {
+            storageService.syncOrdersFromSupabase().then(() => {
+              if (payload?.eventType === 'INSERT') {
+                playNewCustomerChime();
+                const custName = payload?.new?.customer_name || 'Pelanggan Baru';
+                const total = Number(payload?.new?.total_price || 0).toLocaleString('id-ID');
+                showToast(`🔔 Pesanan Baru Masuk! Kak ${custName} (Rp ${total}) 🥟✨`);
+
+                if (typeof window !== 'undefined' && 'Notification' in window && Notification.permission === 'granted') {
+                  try {
+                    new Notification('🥟 Pesanan Baru Masuk!', {
+                      body: `Kak ${custName} - Rp ${total}`,
+                      icon: '/favicon.ico',
+                    });
+                  } catch (e) {
+                    console.warn('Native notification error:', e);
+                  }
+                }
+              }
+            });
           })
           .subscribe();
       } catch (err) {

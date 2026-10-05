@@ -339,6 +339,9 @@ export const OwnerDashboardView: React.FC<OwnerDashboardViewProps> = ({
     if (next) {
       playNewCustomerChime();
       onShowToast('Suara notifikasi bell diaktifkan 🔔');
+      if (typeof window !== 'undefined' && 'Notification' in window && Notification.permission === 'default') {
+        Notification.requestPermission();
+      }
     } else {
       onShowToast('Suara notifikasi bell dimatikan 🔕');
     }
@@ -347,6 +350,9 @@ export const OwnerDashboardView: React.FC<OwnerDashboardViewProps> = ({
   const handleTestSound = () => {
     playNewCustomerChime();
     onShowToast('Ting-dong! 🔔 Suara bell notifikasi aktif');
+    if (typeof window !== 'undefined' && 'Notification' in window && Notification.permission === 'default') {
+      Notification.requestPermission();
+    }
   };
 
   // Helper when an incoming customer arrives via WebSocket or Auto-Polling
