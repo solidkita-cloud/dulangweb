@@ -324,19 +324,21 @@ export function App() {
           }}
         />
 
-        {/* Floating Button for WhatsApp Simulator */}
-        <div className="fixed bottom-6 right-4 sm:right-6 z-50">
-          <button
-            type="button"
-            onClick={() => setIsWaSimulatorOpen(true)}
-            className="group flex items-center space-x-2 bg-[#25D366] hover:bg-[#128C7E] text-white px-4 sm:px-5 py-3 rounded-full shadow-2xl hover:shadow-emerald-500/50 transition-all duration-200 active:scale-95 border-2 border-white/90 cursor-pointer"
-            title="Uji Coba Chat WhatsApp Pembeli (Live Sync ke Layar Kasir)"
-          >
-            <span className="text-xl sm:text-2xl">💬</span>
-            <span className="font-bold text-xs sm:text-sm tracking-wide">Tes Chat WA</span>
-            <span className="w-2.5 h-2.5 bg-white rounded-full animate-ping" />
-          </button>
-        </div>
+        {/* Floating Button for WhatsApp Simulator (Hanya muncul jika URL ada parameter ?bot=1 untuk internal testing) */}
+        {typeof window !== 'undefined' && new URLSearchParams(window.location.search).has('bot') && (
+          <div className="fixed bottom-6 right-4 sm:right-6 z-50">
+            <button
+              type="button"
+              onClick={() => setIsWaSimulatorOpen(true)}
+              className="group flex items-center space-x-2 bg-[#25D366] hover:bg-[#128C7E] text-white px-4 sm:px-5 py-3 rounded-full shadow-2xl hover:shadow-emerald-500/50 transition-all duration-200 active:scale-95 border-2 border-white/90 cursor-pointer"
+              title="Uji Coba Chat WhatsApp Pembeli (Live Sync ke Layar Kasir)"
+            >
+              <span className="text-xl sm:text-2xl">💬</span>
+              <span className="font-bold text-xs sm:text-sm tracking-wide">Tes Chat WA</span>
+              <span className="w-2.5 h-2.5 bg-white rounded-full animate-ping" />
+            </button>
+          </div>
+        )}
       </div>
     </div>
   );
