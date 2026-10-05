@@ -48,7 +48,7 @@ export const OwnerDashboardView: React.FC<OwnerDashboardViewProps> = ({
 }) => {
   const [customers, setCustomers] = useState<Customer[]>(() => storageService.getCustomers());
   const [activeTab, setActiveTab] = useState<'menu' | 'orders' | 'expenses' | 'customers' | 'testimonials' | 'vouchers' | 'stickers' | 'stats' | 'settings'>(
-    initialTab || 'menu'
+    initialTab || 'orders'
   );
 
   useEffect(() => {
@@ -56,6 +56,13 @@ export const OwnerDashboardView: React.FC<OwnerDashboardViewProps> = ({
       setActiveTab(initialTab);
     }
   }, [initialTab]);
+
+  useEffect(() => {
+    storageService.syncOrdersFromSupabase().then(() => {
+      setOrders(storageService.getOrders());
+    });
+  }, []);
+
   const [isSyncingCloud, setIsSyncingCloud] = useState(false);
 
   // --- MANUAL CUSTOMER REGISTRATION STATE ---
@@ -2254,13 +2261,31 @@ Catatan Kurir: Pastikan posisi dus ditaruh datar agar mayo tidak tumpah ya kak.`
                 </p>
               </div>
 
-              <button
-                type="button"
-                onClick={() => setIsAddingWalkInOrder(!isAddingWalkInOrder)}
-                className="cursor-pointer bg-[#111111] text-[#FFD700] hover:brightness-110 px-5 py-2.5 rounded-full font-sans font-bold text-xs sm:text-sm border-2 border-[#111111] shadow-[3px_3px_0_#FFD700] flex items-center justify-center gap-2 shrink-0 transition"
-              >
-                <span>{isAddingWalkInOrder ? 'Tutup Form Kasir ✕' : '+ Catat Penjualan Dapur / Walk-In 💰'}</span>
-              </button>
+              <div className="flex items-center gap-2 flex-wrap">
+                <button
+                  type="button"
+                  onClick={async () => {
+                    setIsSyncingCloud(true);
+                    await storageService.syncOrdersFromSupabase();
+                    setOrders(storageService.getOrders());
+                    setIsSyncingCloud(false);
+                    onShowToast('Antrean pesanan berhasil disinkronkan dengan database cloud! 🥟✨');
+                  }}
+                  className="cursor-pointer bg-white hover:bg-gray-100 text-[#111111] px-4 py-2.5 rounded-full font-sans font-bold text-xs border-2 border-[#111111] shadow-[2px_2px_0_#111111] flex items-center justify-center gap-1.5 transition active:scale-95"
+                  title="Tarik pesanan terbaru dari Supabase Cloud"
+                >
+                  <span>🔄</span>
+                  <span>{isSyncingCloud ? 'Sinkron...' : 'Refresh Antrean'}</span>
+                </button>
+
+                <button
+                  type="button"
+                  onClick={() => setIsAddingWalkInOrder(!isAddingWalkInOrder)}
+                  className="cursor-pointer bg-[#111111] text-[#FFD700] hover:brightness-110 px-5 py-2.5 rounded-full font-sans font-bold text-xs sm:text-sm border-2 border-[#111111] shadow-[3px_3px_0_#FFD700] flex items-center justify-center gap-2 shrink-0 transition"
+                >
+                  <span>{isAddingWalkInOrder ? 'Tutup Form Kasir ✕' : '+ Catat Penjualan Dapur / Walk-In 💰'}</span>
+                </button>
+              </div>
             </div>
 
             {/* WHATSAPP NATURAL QUICK ORDER BAR (UNTUK TANGAN BERMINYAK / KASIR CEPAT) */}

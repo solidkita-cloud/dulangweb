@@ -31,6 +31,7 @@ export function App() {
     storageService.syncMenusFromSupabase().then((synced) => {
       if (synced && synced.length > 0) setMenus(synced);
     });
+    storageService.syncOrdersFromSupabase().catch(() => {});
     setStoreConfig(storageService.getStoreConfig());
     setIsOwnerLoggedIn(storageService.isOwnerAuthenticated());
 
@@ -83,15 +84,23 @@ export function App() {
 
     // Supabase Realtime Sync antar-perangkat
     const client = getSupabaseClient();
-    let channel: any = null;
+    let menuChannel: any = null;
+    let orderChannel: any = null;
     if (client) {
       try {
-        channel = client
+        menuChannel = client
           .channel('public:menus_realtime')
           .on('postgres_changes', { event: '*', schema: 'public', table: 'menus' }, () => {
             storageService.syncMenusFromSupabase().then((synced) => {
               if (synced && synced.length > 0) setMenus(synced);
             });
+          })
+          .subscribe();
+
+        orderChannel = client
+          .channel('public:orders_realtime')
+          .on('postgres_changes', { event: '*', schema: 'public', table: 'orders' }, () => {
+            storageService.syncOrdersFromSupabase();
           })
           .subscribe();
       } catch (err) {
@@ -102,8 +111,9 @@ export function App() {
     return () => {
       window.removeEventListener('dulang_store_config_updated', handleConfigUpdate);
       window.removeEventListener('dulang_menus_updated', handleMenusUpdate);
-      if (client && channel) {
-        client.removeChannel(channel);
+      if (client) {
+        if (menuChannel) client.removeChannel(menuChannel);
+        if (orderChannel) client.removeChannel(orderChannel);
       }
     };
   }, []);

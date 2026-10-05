@@ -1060,6 +1060,60 @@ ${lines.join('\n')}
     return DEFAULT_ORDERS;
   },
 
+  async syncOrdersFromSupabase(): Promise<OrderRecord[]> {
+    try {
+      const client = getSupabaseClient();
+      if (!client) return this.getOrders();
+
+      const { data, error } = await client
+        .from('orders')
+        .select('*')
+        .order('created_at', { ascending: false });
+
+      if (error || !data) return this.getOrders();
+
+      const localOrders = this.getOrders();
+      const map = new Map<string, OrderRecord>();
+
+      // Keep local orders
+      localOrders.forEach((o) => map.set(o.id, o));
+
+      // Merge remote orders from Supabase
+      data.forEach((r: any) => {
+        map.set(r.id, {
+          id: r.id,
+          customer_name: r.customer_name || 'Pelanggan Web',
+          customer_wa: r.customer_wa || undefined,
+          customer_qr_id: r.customer_qr_id || undefined,
+          items: Array.isArray(r.items) ? r.items : [],
+          total_price: Number(r.total_price || 0),
+          payment_method: (r.payment_method as PaymentMethod) || 'tunai',
+          status: (r.status as OrderStatus) || 'menunggu',
+          delivery_method: r.delivery_method === 'delivery' ? 'delivery' : 'pickup',
+          shipping_cost: Number(r.shipping_cost || 0),
+          shipping_district: r.shipping_district || undefined,
+          channel: r.channel || 'web_wa',
+          notes: r.notes || undefined,
+          created_at: r.created_at || new Date().toISOString(),
+          completed_at: r.completed_at || undefined,
+        });
+      });
+
+      const merged = Array.from(map.values()).sort(
+        (a, b) => new Date(b.created_at).getTime() - new Date(a.created_at).getTime()
+      );
+
+      localStorage.setItem(STORAGE_KEYS.ORDERS, JSON.stringify(merged));
+      if (typeof window !== 'undefined') {
+        window.dispatchEvent(new Event('dulang_orders_updated'));
+      }
+      return merged;
+    } catch (err) {
+      console.warn('Failed to sync orders from Supabase:', err);
+      return this.getOrders();
+    }
+  },
+
   saveOrders(orders: OrderRecord[]): void {
     try {
       localStorage.setItem(STORAGE_KEYS.ORDERS, JSON.stringify(orders));
@@ -1084,6 +1138,36 @@ ${lines.join('\n')}
     // Kurangi kuota stok porsi otomatis jika item menu memiliki kuota
     if (newOrder.items && newOrder.items.length > 0) {
       this.deductStockForOrder(newOrder.items);
+    }
+
+    // Auto-sync order baru ke Supabase Cloud (jika tabel orders aktif di Supabase)
+    try {
+      const client = getSupabaseClient();
+      if (client) {
+        client.from('orders').insert({
+          id: newOrder.id,
+          customer_name: newOrder.customer_name,
+          customer_wa: newOrder.customer_wa || null,
+          customer_qr_id: newOrder.customer_qr_id || null,
+          items: newOrder.items,
+          total_price: newOrder.total_price,
+          payment_method: newOrder.payment_method || 'tunai',
+          status: newOrder.status || 'menunggu',
+          delivery_method: newOrder.delivery_method || 'pickup',
+          shipping_cost: newOrder.shipping_cost || 0,
+          shipping_district: newOrder.shipping_district || null,
+          channel: newOrder.channel || 'web_wa',
+          notes: newOrder.notes || null,
+          created_at: newOrder.created_at,
+          completed_at: newOrder.completed_at || null,
+        }).then(({ error }: any) => {
+          if (error) {
+            console.warn('Supabase order upload note:', error.message);
+          }
+        });
+      }
+    } catch (err) {
+      console.warn('Supabase order sync error:', err);
     }
 
     return newOrder;
@@ -1356,6 +1440,24 @@ ${lines.join('\n')}
     const updatedList = [...list];
     updatedList[idx] = updatedOrder;
     this.saveOrders(updatedList);
+
+    // Sync status perubahan ke Supabase Cloud
+    try {
+      const client = getSupabaseClient();
+      if (client) {
+        client
+          .from('orders')
+          .update({
+            status: updatedOrder.status,
+            payment_method: updatedOrder.payment_method,
+            completed_at: updatedOrder.completed_at || null,
+          })
+          .eq('id', orderId)
+          .then();
+      }
+    } catch (e) {
+      console.warn('Update order to Supabase error:', e);
+    }
 
     // Jika berstatus lunas, otomatis mutakhirkan profil preferensi pelanggan (si A sukanya apa)
     if (status === 'lunas' && updatedOrder.customer_name) {
