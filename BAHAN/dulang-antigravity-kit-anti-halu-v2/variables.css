@@ -1,0 +1,31 @@
+:root {
+  --dulang-black: #111111;
+  --dulang-yellow: #FFD700;
+  --dulang-cream: #FFF8E7;
+  --dulang-brown: #5C3D2E;
+  --dulang-white: #FFFFFF;
+  --dulang-gray: #9CA3AF;
+  --font-handwritten: 'Caveat', cursive;
+  --font-ui: 'Plus Jakarta Sans', sans-serif;
+  --h1-hero-desktop: 48px;
+  --h1-hero-mobile: 36px;
+  --h2-section-desktop: 32px;
+  --h2-section-mobile: 24px;
+  --body-desktop: 16px;
+  --body-mobile: 14px;
+  --card-radius: 24px;
+  --card-shadow: 8px 8px 0px var(--dulang-yellow);
+  --card-shadow-secondary: 4px 4px 0px var(--dulang-black);
+}
+body {
+  background-color: var(--dulang-cream);
+  background-image: radial-gradient(var(--dulang-black) 1px, transparent 1px);
+  background-size: 20px 20px;
+}
+.hero-paragraph {
+  max-width: 340px;
+  padding-bottom: 2.5rem;
+}
+@media (min-width: 1024px) {
+  .hero-paragraph { padding-bottom: 7rem; }
+}

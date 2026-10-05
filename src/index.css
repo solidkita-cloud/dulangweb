@@ -1,0 +1,55 @@
+@tailwind base;
+@tailwind components;
+@tailwind utilities;
+
+@layer base {
+  body {
+    background-color: #FFF8E7;
+    color: #111111;
+    font-family: 'Plus Jakarta Sans', sans-serif;
+  }
+}
+
+/* Subtle dot background - Brand Book Locked: radial gradient 1.2px at 22px */
+.dot-bg {
+  background-image: radial-gradient(rgba(92, 61, 46, 0.12) 1.2px, transparent 1.2px);
+  background-size: 22px 22px;
+}
+
+/* Yellow tape sticker - Brand Book Locked */
+.tape {
+  background-color: #FFD700;
+  box-shadow: 0 1px 2px rgba(0, 0, 0, 0.15);
+}
+
+/* Polaroid realistic soft paper shadow */
+.polaroid-shadow {
+  box-shadow: 3px 6px 18px rgba(0, 0, 0, 0.12), 0 1px 2px rgba(0, 0, 0, 0.08);
+}
+
+/* Shake animation for incorrect password in Owner Mode */
+@keyframes dulang-shake {
+  0%, 100% { transform: translateX(0); }
+  15% { transform: translateX(-6px); }
+  30% { transform: translateX(6px); }
+  45% { transform: translateX(-4px); }
+  60% { transform: translateX(4px); }
+  75% { transform: translateX(-2px); }
+}
+
+.shake {
+  animation: dulang-shake 0.42s ease;
+}
+
+/* Custom scrollbar */
+::-webkit-scrollbar {
+  width: 6px;
+  height: 6px;
+}
+::-webkit-scrollbar-track {
+  background: #FFF8E7;
+}
+::-webkit-scrollbar-thumb {
+  background: #111111;
+  border-radius: 9999px;
+}

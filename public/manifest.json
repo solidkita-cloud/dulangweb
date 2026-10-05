@@ -1,0 +1,40 @@
+{
+  "name": "Dulang Indonesia — Dapur Risoles",
+  "short_name": "Dulang",
+  "description": "Dulang Indonesia — dibuat dengan wajan panas & tulisan tangan sejak 2020",
+  "start_url": "/",
+  "display": "standalone",
+  "background_color": "#FFF8E7",
+  "theme_color": "#111111",
+  "orientation": "portrait-primary",
+  "icons": [
+    {
+      "src": "/dulang-logo.png",
+      "sizes": "192x192",
+      "type": "image/png",
+      "purpose": "any"
+    },
+    {
+      "src": "/dulang-logo.png",
+      "sizes": "512x512",
+      "type": "image/png",
+      "purpose": "any maskable"
+    }
+  ],
+  "shortcuts": [
+    {
+      "name": "Dapur & Kasir",
+      "short_name": "Dapur",
+      "description": "Buka Kasir dan Manajemen Dapur Dulang",
+      "url": "/?dapur=1",
+      "icons": [{ "src": "/dulang-logo.png", "sizes": "192x192" }]
+    },
+    {
+      "name": "Katalog Menu",
+      "short_name": "Menu",
+      "description": "Buka Menu Risoles & Gorengan",
+      "url": "/",
+      "icons": [{ "src": "/dulang-logo.png", "sizes": "192x192" }]
+    }
+  ]
+}

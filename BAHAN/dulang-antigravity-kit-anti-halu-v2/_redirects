@@ -1,0 +1,4 @@
+/qr/* /qr/index.html 200
+/scan /scan.html 200
+/api/* /.netlify/functions/:splat 200
+/* /index.html 200
