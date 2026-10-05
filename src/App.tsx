@@ -9,6 +9,7 @@ import { StoreClosedModal } from './components/common/StoreClosedModal';
 import { LandingView } from './views/LandingView';
 import { SmartScanView } from './views/SmartScanView';
 import { OwnerDashboardView } from './views/OwnerDashboardView';
+import { getSupabaseClient } from './lib/supabase';
 import { LOCKED_COPY } from './lib/constants';
 
 export function App() {
@@ -27,6 +28,9 @@ export function App() {
   useEffect(() => {
     storageService.purgeDemoDataOnce();
     setMenus(storageService.getMenus());
+    storageService.syncMenusFromSupabase().then((synced) => {
+      if (synced && synced.length > 0) setMenus(synced);
+    });
     setStoreConfig(storageService.getStoreConfig());
     setIsOwnerLoggedIn(storageService.isOwnerAuthenticated());
 
@@ -77,9 +81,30 @@ export function App() {
     window.addEventListener('dulang_store_config_updated', handleConfigUpdate);
     window.addEventListener('dulang_menus_updated', handleMenusUpdate);
 
+    // Supabase Realtime Sync antar-perangkat
+    const client = getSupabaseClient();
+    let channel: any = null;
+    if (client) {
+      try {
+        channel = client
+          .channel('public:menus_realtime')
+          .on('postgres_changes', { event: '*', schema: 'public', table: 'menus' }, () => {
+            storageService.syncMenusFromSupabase().then((synced) => {
+              if (synced && synced.length > 0) setMenus(synced);
+            });
+          })
+          .subscribe();
+      } catch (err) {
+        console.warn('Supabase realtime listener error:', err);
+      }
+    }
+
     return () => {
       window.removeEventListener('dulang_store_config_updated', handleConfigUpdate);
       window.removeEventListener('dulang_menus_updated', handleMenusUpdate);
+      if (client && channel) {
+        client.removeChannel(channel);
+      }
     };
   }, []);
 

@@ -85,10 +85,51 @@ export const storageService = {
       }
       const client = getSupabaseClient();
       if (client) {
-        await client.from('menus').upsert(menus);
+        const dbMenus = menus.map((m) => ({
+          id: m.id,
+          nama: m.nama,
+          harga: m.harga,
+          deskripsi: m.deskripsi || '',
+          foto: m.foto || '',
+          tersedia: m.tersedia !== false,
+        }));
+        await client.from('menus').upsert(dbMenus);
       }
     } catch (e) {
       console.error('Failed to save menus:', e);
+    }
+  },
+
+  async syncMenusFromSupabase(): Promise<MenuItem[]> {
+    try {
+      const client = getSupabaseClient();
+      if (!client) return this.getMenus();
+
+      const { data, error } = await client.from('menus').select('id, nama, harga, deskripsi, foto, tersedia');
+      if (error || !data || data.length === 0) return this.getMenus();
+
+      const currentMenus = this.getMenus();
+      const merged = currentMenus.map((local) => {
+        const remote = data.find((r: any) => r.id === local.id);
+        if (!remote) return local;
+        return {
+          ...local,
+          nama: remote.nama ?? local.nama,
+          harga: Number(remote.harga ?? local.harga),
+          deskripsi: remote.deskripsi ?? local.deskripsi,
+          foto: remote.foto || local.foto,
+          tersedia: remote.tersedia ?? local.tersedia,
+        };
+      });
+
+      localStorage.setItem(STORAGE_KEYS.MENUS, JSON.stringify(merged));
+      if (typeof window !== 'undefined') {
+        window.dispatchEvent(new Event('dulang_menus_updated'));
+      }
+      return merged;
+    } catch (err) {
+      console.warn('Failed to sync menus from Supabase:', err);
+      return this.getMenus();
     }
   },
 

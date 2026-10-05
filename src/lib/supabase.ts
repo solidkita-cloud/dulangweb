@@ -7,8 +7,11 @@ export function getSupabaseCredentials(): { url: string; key: string; isConfigur
   const localUrl = typeof window !== 'undefined' ? localStorage.getItem('dulang_supabase_url') || '' : '';
   const localKey = typeof window !== 'undefined' ? localStorage.getItem('dulang_supabase_key') || '' : '';
 
-  const url = (localUrl || envUrl).trim();
-  const key = (localKey || envKey).trim();
+  const defaultUrl = 'https://bfuqvjsvsnydyxqzwmbd.supabase.co';
+  const defaultKey = 'sb_publishable_J46OsoGiMKfXFv9POphm-A_OY877-V3';
+
+  const url = (localUrl || envUrl || defaultUrl).trim();
+  const key = (localKey || envKey || defaultKey).trim();
 
   const isConfigured = Boolean(
     url &&
