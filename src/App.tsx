@@ -174,12 +174,12 @@ export function App() {
   };
 
   return (
-    <div className="min-h-screen bg-[#FFF8E7] text-[#111111] relative selection:bg-[#FFD700] selection:text-[#111111]">
+    <div className="min-h-screen bg-[#FFF8E7] text-[#111111] relative selection:bg-[#FFD700] selection:text-[#111111] overflow-x-hidden w-full max-w-full">
       {/* Background Dot Texture - Brand Book Locked */}
       <div className="fixed inset-0 dot-bg pointer-events-none z-0" />
 
       {/* Main Content Area */}
-      <div className="relative z-10">
+      <div className="relative z-10 w-full max-w-full overflow-x-hidden">
         <Header
           currentMode={currentMode}
           onSelectMode={setCurrentMode}

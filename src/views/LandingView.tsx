@@ -46,6 +46,7 @@ export const LandingView: React.FC<LandingViewProps> = ({
   }, []);
 
   // --- PAKET SNACK BOX / HAJATAN / ARISAN BUILDER STATE ---
+  const [isSnackBoxOpen, setIsSnackBoxOpen] = useState(false);
   const [sbType, setSbType] = useState<SnackBoxType>('standar_3');
   const [sbSelectedItems, setSbSelectedItems] = useState<string[]>([
     'Risoles Mayo Lumer',
@@ -53,7 +54,7 @@ export const LandingView: React.FC<LandingViewProps> = ({
     'Sosis Solo Ayam Gurih',
   ]);
   const [sbDrink, setSbDrink] = useState<SnackBoxDrink>('mineral');
-  const [sbQty, setSbQty] = useState<number>(30);
+  const [sbQty, setSbQty] = useState<number>(0);
   const [sbEventDate, setSbEventDate] = useState<string>(() => {
     const d = new Date();
     d.setDate(d.getDate() + 2);
@@ -92,7 +93,7 @@ export const LandingView: React.FC<LandingViewProps> = ({
 
   const sbDiscountNominal = Math.round((sbGrossTotal * sbDiscountPercent) / 100);
   const sbFinalPrice = sbGrossTotal - sbDiscountNominal;
-  const sbTotalBoxesReceived = sbQty + sbBonusBoxes;
+  const sbTotalBoxesReceived = sbQty > 0 ? sbQty + sbBonusBoxes : 0;
 
   const toggleSbItem = (itemName: string) => {
     if (sbSelectedItems.includes(itemName)) {
@@ -122,6 +123,11 @@ export const LandingView: React.FC<LandingViewProps> = ({
   };
 
   const handleOrderSnackBoxWA = () => {
+    if (sbQty <= 0) {
+      alert('Silakan tentukan jumlah pesanan box terlebih dahulu (misal: 20 atau 30 box).');
+      return;
+    }
+
     const boxLabel =
       sbType === 'mini_2' ? 'Mini (2 Pcs)' : sbType === 'standar_3' ? 'Standar (3 Pcs)' : 'Lengkap (4 Pcs)';
     const drinkLabel =
@@ -624,30 +630,49 @@ export const LandingView: React.FC<LandingViewProps> = ({
         </div>
       </section>
 
-      {/* PAKET SNACK BOX / HAJATAN / ARISAN BUILDER SECTION */}
-      <section id="snack-box-builder" className="mt-16 lg:mt-24">
-        <div className="bg-[#FFFDF4] rounded-[28px] p-6 sm:p-9 lg:p-11 border-2 sm:border-3 border-[#111111] polaroid-shadow rotate-[-0.3deg] relative overflow-hidden">
+      {/* PAKET SNACK BOX / HAJATAN / ARISAN BUILDER SECTION (Opsi A - Accordion Collapsible) */}
+      <section id="snack-box-builder" className="mt-14 lg:mt-20">
+        <div className="bg-[#FFFDF4] rounded-[28px] border-2 sm:border-3 border-[#111111] polaroid-shadow relative overflow-hidden transition-all duration-300">
           {/* Decorative masking tape top-right */}
-          <div className="tape absolute -top-3.5 right-12 w-32 h-5 bg-[#FFD700] rotate-[3deg] border border-[#111111]/20 shadow-xs" />
+          <div className="tape absolute -top-3.5 right-12 w-32 h-5 bg-[#FFD700] rotate-[3deg] border border-[#111111]/20 shadow-xs pointer-events-none" />
 
-          {/* Section Header */}
-          <div className="max-w-2xl">
-            <div className="inline-flex items-center gap-2 bg-[#FFD700] text-[#111111] px-3.5 py-1 rounded-full text-xs font-sans font-bold uppercase tracking-wider border border-[#111111] mb-2.5">
-              <span>📦</span>
-              <span>Spesial Hajatan, Tahlilan & Arisan Sidoarjo</span>
+          {/* Accordion Toggle Header Banner */}
+          <button
+            type="button"
+            onClick={() => setIsSnackBoxOpen(!isSnackBoxOpen)}
+            className="w-full text-left p-5 sm:p-7 lg:p-8 flex flex-col md:flex-row md:items-center justify-between gap-4 cursor-pointer hover:bg-[#FFF8E7]/60 transition-colors"
+            aria-expanded={isSnackBoxOpen}
+          >
+            <div className="max-w-2xl">
+              <div className="inline-flex items-center gap-2 bg-[#FFD700] text-[#111111] px-3.5 py-1 rounded-full text-xs font-sans font-bold uppercase tracking-wider border border-[#111111] mb-2.5">
+                <span>📦</span>
+                <span>Spesial Hajatan, Tahlilan & Arisan Sidoarjo</span>
+              </div>
+              <h2 className="font-hand font-bold text-[30px] sm:text-[42px] leading-[1.05] text-[#111111]">
+                Rancang Paket Snack Box Sendiri
+              </h2>
+              <p className="font-sans text-xs sm:text-sm text-[#5C3D2E]/85 mt-2 leading-relaxed">
+                Bebas pilih isian kue favorit, kemasan dus higienis & rapi, gratis stiker nama acara, digoreng mendadak subuh pas hari H. Klik untuk buka kalkulator paket dus.
+              </p>
             </div>
-            <h2 className="font-hand font-bold text-[34px] sm:text-[46px] leading-[1.05] text-[#111111]">
-              Rancang Paket Snack Box Sendiri
-            </h2>
-            <p className="font-sans text-xs sm:text-sm text-[#5C3D2E]/85 mt-2 leading-relaxed">
-              Bebas pilih isian kue favorit, kemasan dus higienis & rapi, gratis stiker nama acara, digoreng mendadak subuh pas hari H. Diskon makin besar untuk pesanan arisan & hajatan!
-            </p>
-          </div>
 
-          {/* Builder Interactive Area */}
-          <div className="mt-8 grid lg:grid-cols-[1.2fr_0.8fr] gap-8 lg:gap-10 items-start">
-            {/* Left Column: Form & Configuration */}
-            <div className="space-y-6">
+            <div className="flex items-center gap-2 shrink-0 self-start md:self-center">
+              <span className={`font-sans font-bold text-xs sm:text-sm px-4 sm:px-5 py-2.5 rounded-full border-2 border-[#111111] shadow-[2px_2px_0_#111111] transition-all flex items-center gap-1.5 ${
+                isSnackBoxOpen
+                  ? 'bg-[#111111] text-[#FFD700]'
+                  : 'bg-[#FFD700] text-[#111111] hover:brightness-105'
+              }`}>
+                <span>{isSnackBoxOpen ? 'Tutup Kalkulator Box ▲' : 'Buka Kalkulator Box ▼'}</span>
+              </span>
+            </div>
+          </button>
+
+          {/* Builder Interactive Area (Hanya muncul saat dibuka) */}
+          {isSnackBoxOpen && (
+            <div className="px-5 pb-7 sm:px-8 sm:pb-9 lg:px-10 lg:pb-10 pt-2 border-t-2 border-[#111111]/15 animate-in fade-in duration-200">
+              <div className="mt-4 grid lg:grid-cols-[1.2fr_0.8fr] gap-8 lg:gap-10 items-start">
+                {/* Left Column: Form & Configuration */}
+                <div className="space-y-6">
               {/* Step 1: Pilih Tipe Box */}
               <div>
                 <label className="font-sans font-bold text-xs uppercase tracking-wider text-[#5C3D2E] block mb-2">
@@ -799,7 +824,7 @@ export const LandingView: React.FC<LandingViewProps> = ({
 
                 {/* Quick Pick Buttons */}
                 <div className="flex flex-wrap gap-2 mb-3">
-                  {[20, 30, 50, 75, 100, 150].map((num) => (
+                  {[0, 20, 30, 50, 75, 100, 150].map((num) => (
                     <button
                       key={num}
                       type="button"
@@ -810,7 +835,7 @@ export const LandingView: React.FC<LandingViewProps> = ({
                           : 'bg-white text-[#5C3D2E] border-[#111111]/20 hover:border-[#111111]'
                       }`}
                     >
-                      {num} Box
+                      {num === 0 ? 'Reset (0 Box)' : `${num} Box`}
                     </button>
                   ))}
                 </div>
@@ -818,7 +843,7 @@ export const LandingView: React.FC<LandingViewProps> = ({
                 {/* Slider */}
                 <input
                   type="range"
-                  min="10"
+                  min="0"
                   max="300"
                   step="5"
                   value={sbQty}
@@ -1015,9 +1040,15 @@ export const LandingView: React.FC<LandingViewProps> = ({
                     Rp {sbFinalPrice.toLocaleString('id-ID')}
                   </div>
                   <div className="font-sans text-[11px] text-white/60">
-                    Rata-rata: Rp {Math.round(sbFinalPrice / sbTotalBoxesReceived).toLocaleString('id-ID')} / box
+                    Rata-rata: {sbTotalBoxesReceived > 0 ? `Rp ${Math.round(sbFinalPrice / sbTotalBoxesReceived).toLocaleString('id-ID')} / box` : 'Rp 0 / box'}
                   </div>
                 </div>
+
+                {sbQty === 0 && (
+                  <div className="p-3 bg-white/10 border border-[#FFD700]/40 rounded-[14px] text-[#FFD700] text-xs font-sans text-center">
+                    💡 Pilih jumlah box di atas untuk mulai menghitung biaya & bonus!
+                  </div>
+                )}
 
                 {/* Action Buttons */}
                 <div className="pt-2 space-y-2.5">
@@ -1033,6 +1064,10 @@ export const LandingView: React.FC<LandingViewProps> = ({
                   <button
                     type="button"
                     onClick={() => {
+                      if (sbQty <= 0) {
+                        alert('Silakan pilih jumlah pesanan box terlebih dahulu (misal: 20 atau 30 box).');
+                        return;
+                      }
                       const boxTitle =
                         sbType === 'mini_2' ? 'Mini (2 Pcs)' : sbType === 'standar_3' ? 'Standar (3 Pcs)' : 'Lengkap (4 Pcs)';
                       onAddToCart(
@@ -1061,6 +1096,8 @@ export const LandingView: React.FC<LandingViewProps> = ({
               </div>
             </div>
           </div>
+            </div>
+          )}
         </div>
       </section>
 

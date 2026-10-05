@@ -74,7 +74,7 @@ export const Header: React.FC<HeaderProps> = ({
       )}
 
       {/* Main Branding Bar — Selalu Bersih & Profesional */}
-      <div className="max-w-[1180px] mx-auto px-5 lg:px-8 py-3 flex items-center justify-between">
+      <div className="max-w-[1180px] mx-auto px-3.5 sm:px-6 lg:px-8 py-2.5 sm:py-3 flex items-center justify-between gap-2">
         <div
           onClick={() => onSelectMode('pembeli')}
           className="flex items-center gap-3 cursor-pointer group"

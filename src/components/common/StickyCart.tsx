@@ -288,84 +288,88 @@ export const StickyCart: React.FC<StickyCartProps> = ({
         <div className="fixed inset-0 z-50 flex items-end sm:items-center justify-center p-0 sm:p-4 bg-black/70 backdrop-blur-xs animate-in fade-in duration-200">
           <div className="fixed inset-0" onClick={() => setIsDetailOpen(false)} />
 
-          <div className="relative w-full max-w-lg bg-[#FFF8E7] text-[#111111] border-t-4 sm:border-4 border-[#111111] rounded-t-[32px] sm:rounded-[32px] p-6 shadow-[8px_8px_0_#111111] z-10 space-y-4 max-h-[90vh] overflow-y-auto animate-in slide-in-from-bottom duration-200">
-            {/* Header */}
-            <div className="flex items-center justify-between pb-3 border-b-2 border-[#111111]/15">
+          <div className="relative w-full max-w-lg bg-[#FFF8E7] text-[#111111] border-t-4 sm:border-4 border-[#111111] rounded-t-[32px] sm:rounded-[32px] shadow-[8px_8px_0_#111111] z-10 flex flex-col max-h-[92vh] sm:max-h-[90vh] overflow-hidden animate-in slide-in-from-bottom duration-200">
+            {/* Pinned Header (Never scrolls away) */}
+            <div className="flex items-center justify-between px-4 sm:px-6 pt-4 sm:pt-5 pb-3 border-b-2 border-[#111111]/15 bg-[#FFF8E7] shrink-0">
               <div>
                 <div className="inline-flex items-center gap-1.5 bg-[#FFD700] text-[#111111] px-2.5 py-0.5 rounded-full text-[10px] font-sans font-bold uppercase tracking-wider">
                   🥟 Dapur Dulang Indonesia
                 </div>
-                <h3 className="font-hand font-bold text-3xl text-[#111111] leading-none mt-1">
+                <h3 className="font-hand font-bold text-2xl sm:text-3xl text-[#111111] leading-none mt-1">
                   Keranjang Pesanan Kamu
                 </h3>
               </div>
               <button
                 type="button"
                 onClick={() => setIsDetailOpen(false)}
-                className="w-9 h-9 rounded-full bg-white text-[#111111] border-2 border-[#111111] shadow-[2px_2px_0_#111111] font-bold text-sm flex items-center justify-center cursor-pointer hover:bg-[#FFD700]"
+                className="w-8 h-8 sm:w-9 sm:h-9 rounded-full bg-white text-[#111111] border-2 border-[#111111] shadow-[2px_2px_0_#111111] font-bold text-sm flex items-center justify-center cursor-pointer hover:bg-[#FFD700] active:scale-95 transition"
                 title="Tutup Keranjang"
               >
                 ✕
               </button>
             </div>
 
-            {/* List of Cart Items */}
-            <div className="space-y-2.5 max-h-[200px] overflow-y-auto pr-1">
-              {cart.map((c, i) => (
-                <div
-                  key={`${c.item.id}-${c.pilihanOpsi || ''}-${c.variantType || 'matang'}-${i}`}
-                  className="bg-white rounded-[16px] p-3 border-2 border-[#111111] shadow-[2px_2px_0_#111111] flex items-center justify-between gap-3"
-                >
-                  <div className="min-w-0">
-                    <div className="flex items-center gap-1.5 flex-wrap">
-                      <h4 className="font-hand font-bold text-lg text-[#111111] truncate">
-                        {c.item.nama}
-                      </h4>
-                      <span
-                        className={`text-[10px] font-sans font-bold px-2 py-0.5 rounded-full border ${
-                          c.variantType === 'frozen'
-                            ? 'bg-sky-100 text-sky-800 border-sky-300'
-                            : 'bg-amber-100 text-amber-900 border-amber-300'
-                        }`}
-                      >
-                        {c.variantType === 'frozen' ? '❄️ Frozen Beku' : '🍳 Goreng Matang'}
+            {/* Scrollable Modal Content (Single smooth scroll, no nested clipping) */}
+            <div className="overflow-y-auto px-4 sm:px-6 py-4 space-y-4 flex-1 overscroll-contain">
+              {/* List of Cart Items */}
+              <div className="space-y-2.5">
+                {cart.map((c, i) => (
+                  <div
+                    key={`${c.item.id}-${c.pilihanOpsi || ''}-${c.variantType || 'matang'}-${i}`}
+                    className="bg-white rounded-[16px] p-3 sm:p-3.5 border-2 border-[#111111] shadow-[2px_2px_0_#111111] flex flex-col sm:flex-row sm:items-center justify-between gap-2.5"
+                  >
+                    <div className="min-w-0 w-full sm:w-auto">
+                      <div className="flex items-center gap-1.5 flex-wrap">
+                        <h4 className="font-hand font-bold text-base sm:text-lg text-[#111111] truncate">
+                          {c.item.nama}
+                        </h4>
+                        <span
+                          className={`text-[10px] font-sans font-bold px-2 py-0.5 rounded-full border ${
+                            c.variantType === 'frozen'
+                              ? 'bg-sky-100 text-sky-800 border-sky-300'
+                              : 'bg-amber-100 text-amber-900 border-amber-300'
+                          }`}
+                        >
+                          {c.variantType === 'frozen' ? '❄️ Frozen Beku' : '🍳 Goreng Matang'}
+                        </span>
+                      </div>
+                      {c.pilihanOpsi && (
+                        <span className="inline-block text-[10px] sm:text-[11px] font-sans font-bold bg-[#FFD700] text-[#111111] px-2 py-0.5 rounded-full border border-[#111111] my-0.5">
+                          Opsi: {c.pilihanOpsi}
+                        </span>
+                      )}
+                      <p className="font-sans text-[11px] sm:text-xs text-[#5C3D2E] font-medium">
+                        Rp {c.item.harga.toLocaleString('id-ID')} / porsi
+                      </p>
+                    </div>
+
+                    <div className="flex items-center justify-between sm:justify-end gap-2.5 w-full sm:w-auto pt-2 sm:pt-0 border-t border-[#111111]/10 sm:border-0 shrink-0">
+                      <div className="flex items-center gap-1.5">
+                        <button
+                          type="button"
+                          onClick={() => onUpdateQty(c.item.id, -1, c.pilihanOpsi, c.variantType)}
+                          className="w-7 h-7 rounded-full bg-[#FFF8E7] text-[#111111] border-2 border-[#111111] font-bold text-sm flex items-center justify-center cursor-pointer hover:bg-[#FFD700] active:scale-95 transition"
+                        >
+                          −
+                        </button>
+                        <span className="font-sans font-bold text-xs sm:text-sm w-6 text-center">
+                          {c.qty}
+                        </span>
+                        <button
+                          type="button"
+                          onClick={() => onUpdateQty(c.item.id, 1, c.pilihanOpsi, c.variantType)}
+                          className="w-7 h-7 rounded-full bg-[#111111] text-[#FFD700] border-2 border-[#111111] font-bold text-sm flex items-center justify-center cursor-pointer hover:brightness-110 active:scale-95 transition"
+                        >
+                          +
+                        </button>
+                      </div>
+                      <span className="font-sans font-bold text-xs sm:text-sm text-[#111111] text-right">
+                        Rp {(c.qty * c.item.harga).toLocaleString('id-ID')}
                       </span>
                     </div>
-                    {c.pilihanOpsi && (
-                      <span className="inline-block text-[11px] font-sans font-bold bg-[#FFD700] text-[#111111] px-2 py-0.5 rounded-full border border-[#111111] my-0.5">
-                        Opsi: {c.pilihanOpsi}
-                      </span>
-                    )}
-                    <p className="font-sans text-xs text-[#5C3D2E] font-medium">
-                      Rp {c.item.harga.toLocaleString('id-ID')} / porsi
-                    </p>
                   </div>
-
-                  <div className="flex items-center gap-2 shrink-0">
-                    <button
-                      type="button"
-                      onClick={() => onUpdateQty(c.item.id, -1, c.pilihanOpsi, c.variantType)}
-                      className="w-7 h-7 rounded-full bg-[#FFF8E7] text-[#111111] border-2 border-[#111111] font-bold text-sm flex items-center justify-center cursor-pointer hover:bg-[#FFD700]"
-                    >
-                      −
-                    </button>
-                    <span className="font-sans font-bold text-sm w-5 text-center">
-                      {c.qty}
-                    </span>
-                    <button
-                      type="button"
-                      onClick={() => onUpdateQty(c.item.id, 1, c.pilihanOpsi, c.variantType)}
-                      className="w-7 h-7 rounded-full bg-[#111111] text-[#FFD700] border-2 border-[#111111] font-bold text-sm flex items-center justify-center cursor-pointer hover:brightness-110"
-                    >
-                      +
-                    </button>
-                    <span className="font-sans font-bold text-xs text-[#111111] ml-2 w-16 text-right">
-                      Rp {(c.qty * c.item.harga).toLocaleString('id-ID')}
-                    </span>
-                  </div>
-                </div>
-              ))}
-            </div>
+                ))}
+              </div>
 
             {/* Super Smart Barcode: Data Pemesan & Alamat Antar */}
             <div className="bg-white rounded-[20px] p-4 border-2 border-[#111111] shadow-[2px_2px_0_#111111] space-y-3">
@@ -789,30 +793,32 @@ export const StickyCart: React.FC<StickyCartProps> = ({
               </div>
             </div>
 
-            {/* Total Price & Checkout Action */}
-            <div className="pt-2 border-t-2 border-[#111111]/15 space-y-3">
+            </div>
+
+            {/* Total Price & Checkout Action (Pinned at bottom of modal) */}
+            <div className="px-4 sm:px-6 py-3 sm:py-3.5 border-t-2 border-[#111111]/15 bg-[#FFF8E7] shrink-0 space-y-2.5">
               <div className="flex items-center justify-between">
                 <div>
                   <span className="font-sans text-[11px] text-[#5C3D2E] font-medium block">
                     Total {totalItems} Porsi ({cart.length} Jenis Menu)
                   </span>
-                  <div className="flex items-baseline gap-2">
-                    <span className="font-sans font-bold text-2xl text-[#111111]">
+                  <div className="flex items-baseline gap-2 flex-wrap">
+                    <span className="font-sans font-bold text-xl sm:text-2xl text-[#111111]">
                       Rp {finalPrice.toLocaleString('id-ID')}
                     </span>
                     {(discountAmount > 0 || shippingCost > 0) && (
-                      <span className="font-sans text-xs text-[#5C3D2E]/60">
+                      <span className="font-sans text-[11px] text-[#5C3D2E]/60">
                         (Menu: Rp {totalPrice.toLocaleString('id-ID')})
                       </span>
                     )}
                   </div>
                   {shippingCost > 0 && (
-                    <span className="font-sans text-[11px] font-semibold text-blue-700 block">
+                    <span className="font-sans text-[10px] sm:text-[11px] font-semibold text-blue-700 block">
                       + Ongkir Kurir Dapur ({selectedDistrict}): Rp {shippingCost.toLocaleString('id-ID')}
                     </span>
                   )}
                   {discountAmount > 0 && (
-                    <span className="font-sans text-[11px] font-bold text-emerald-700 block">
+                    <span className="font-sans text-[10px] sm:text-[11px] font-bold text-emerald-700 block">
                       Hemat Rp {discountAmount.toLocaleString('id-ID')} ({appliedVoucher?.code})
                     </span>
                   )}
@@ -821,7 +827,7 @@ export const StickyCart: React.FC<StickyCartProps> = ({
                 <button
                   type="button"
                   onClick={onClearCart}
-                  className="cursor-pointer text-xs font-sans text-red-600 hover:underline"
+                  className="cursor-pointer text-xs font-sans text-red-600 hover:underline shrink-0"
                 >
                   Kosongkan Dulang
                 </button>
@@ -830,10 +836,10 @@ export const StickyCart: React.FC<StickyCartProps> = ({
               <button
                 type="button"
                 onClick={handleCheckoutWA}
-                className="w-full cursor-pointer bg-[#111111] text-[#FFD700] hover:brightness-110 active:scale-[0.99] rounded-full py-3.5 px-6 font-sans font-bold text-sm tracking-wide border-2 border-[#111111] shadow-[4px_4px_0_#FFD700] transition flex items-center justify-center gap-2"
+                className="w-full cursor-pointer bg-[#111111] text-[#FFD700] hover:brightness-110 active:scale-[0.99] rounded-full py-3 sm:py-3.5 px-4 font-sans font-bold text-xs sm:text-sm tracking-wide border-2 border-[#111111] shadow-[3px_3px_0_#FFD700] transition flex items-center justify-center gap-2"
               >
                 <span>Kirim Pesanan ke WhatsApp Tim Dulang</span>
-                <span className="text-lg">→</span>
+                <span className="text-base sm:text-lg">→</span>
               </button>
             </div>
           </div>
@@ -881,22 +887,22 @@ export const StickyCart: React.FC<StickyCartProps> = ({
       )}
 
       {/* Floating Bottom Bar (Sticky Bar) */}
-      <div className="fixed bottom-0 inset-x-0 z-40 px-4 pb-[max(12px,env(safe-area-inset-bottom))] pt-2 bg-gradient-to-t from-[#FFF8E7] via-[#FFF8E7]/95 to-transparent">
+      <div className="fixed bottom-0 inset-x-0 z-40 px-3 sm:px-4 pb-[max(10px,env(safe-area-inset-bottom))] pt-2 bg-gradient-to-t from-[#FFF8E7] via-[#FFF8E7]/95 to-transparent">
         <div
           onClick={() => setIsDetailOpen(true)}
-          className="cursor-pointer max-w-[620px] mx-auto bg-[#111111] text-[#FFF8E7] rounded-[24px] p-3.5 sm:p-4 flex items-center justify-between shadow-[0_12px_36px_rgba(0,0,0,0.3)] border-2 border-[#111111] hover:brightness-105 transition-all"
+          className="cursor-pointer max-w-[620px] mx-auto bg-[#111111] text-[#FFF8E7] rounded-[24px] p-3 sm:p-4 flex items-center justify-between shadow-[0_12px_36px_rgba(0,0,0,0.3)] border-2 border-[#111111] hover:brightness-105 transition-all gap-2"
         >
           {/* Cart Total Info */}
-          <div className="pl-2">
-            <div className="font-sans text-[11px] uppercase tracking-wider text-[#FFD700] font-bold flex items-center gap-1.5">
+          <div className="pl-1 sm:pl-2 min-w-0">
+            <div className="font-sans text-[10px] sm:text-[11px] uppercase tracking-wider text-[#FFD700] font-bold flex items-center gap-1.5 truncate">
               <span>🥟</span>
               <span>{cart.length} jenis • {totalItems} porsi</span>
-              <span className="hidden sm:inline text-white/50">• Klik untuk lihat opsi cabe/mayo/voucher</span>
+              <span className="hidden sm:inline text-white/50">• Klik untuk lihat opsi</span>
             </div>
-            <div className="font-sans font-bold text-[18px] leading-tight text-white flex items-center gap-2">
+            <div className="font-sans font-bold text-[16px] sm:text-[18px] leading-tight text-white flex items-center gap-2">
               <span>Rp {finalPrice.toLocaleString('id-ID')}</span>
               {discountAmount > 0 && (
-                <span className="text-xs text-white/50 line-through font-normal">
+                <span className="text-[11px] sm:text-xs text-white/50 line-through font-normal">
                   Rp {totalPrice.toLocaleString('id-ID')}
                 </span>
               )}
@@ -904,7 +910,7 @@ export const StickyCart: React.FC<StickyCartProps> = ({
           </div>
 
           {/* Action Controls */}
-          <div className="flex items-center gap-2" onClick={(e) => e.stopPropagation()}>
+          <div className="flex items-center gap-2 shrink-0" onClick={(e) => e.stopPropagation()}>
             {/* Quick Item List Pills */}
             <div className="hidden sm:flex gap-1.5 pr-2">
               {cart.slice(0, 2).map((c) => (
@@ -940,10 +946,10 @@ export const StickyCart: React.FC<StickyCartProps> = ({
             <button
               type="button"
               onClick={() => setIsDetailOpen(true)}
-              className="cursor-pointer bg-[#FFD700] text-[#111111] rounded-full px-5 py-2.5 font-sans font-bold text-[13px] tracking-wide border-2 border-[#111111] shadow-[2px_2px_0_#FFFFFF] hover:brightness-105 active:translate-y-0.5 transition-all flex items-center gap-1.5"
+              className="cursor-pointer bg-[#FFD700] text-[#111111] rounded-full px-4 sm:px-5 py-2 sm:py-2.5 font-sans font-bold text-xs sm:text-[13px] tracking-wide border-2 border-[#111111] shadow-[2px_2px_0_#FFFFFF] hover:brightness-105 active:translate-y-0.5 transition-all flex items-center gap-1"
             >
               <span>Lihat & Pesan</span>
-              <span className="text-[16px]">→</span>
+              <span className="text-[14px] sm:text-[16px]">→</span>
             </button>
           </div>
         </div>
