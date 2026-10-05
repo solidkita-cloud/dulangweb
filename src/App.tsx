@@ -9,8 +9,6 @@ import { StoreClosedModal } from './components/common/StoreClosedModal';
 import { LandingView } from './views/LandingView';
 import { SmartScanView } from './views/SmartScanView';
 import { OwnerDashboardView } from './views/OwnerDashboardView';
-import { WaChatSimulatorDrawer } from './components/WaChatSimulatorDrawer';
-import { playNewCustomerChime } from './lib/audioNotifier';
 import { LOCKED_COPY } from './lib/constants';
 
 export function App() {
@@ -24,10 +22,10 @@ export function App() {
   const [isOwnerLoginOpen, setIsOwnerLoginOpen] = useState<boolean>(false);
   const [pendingMode, setPendingMode] = useState<NavMode | null>(null);
   const [isClosedModalOpen, setIsClosedModalOpen] = useState<boolean>(() => !!storageService.getStoreConfig().isStoreClosed);
-  const [isWaSimulatorOpen, setIsWaSimulatorOpen] = useState<boolean>(false);
 
   // Initialize data and check URL params for ?scan=...
   useEffect(() => {
+    storageService.purgeDemoDataOnce();
     setMenus(storageService.getMenus());
     setStoreConfig(storageService.getStoreConfig());
     setIsOwnerLoggedIn(storageService.isOwnerAuthenticated());
@@ -76,15 +74,12 @@ export function App() {
       setMenus(fresh);
     };
 
-    const handleOpenSimulator = () => setIsWaSimulatorOpen(true);
     window.addEventListener('dulang_store_config_updated', handleConfigUpdate);
     window.addEventListener('dulang_menus_updated', handleMenusUpdate);
-    window.addEventListener('dulang_open_wa_simulator', handleOpenSimulator);
 
     return () => {
       window.removeEventListener('dulang_store_config_updated', handleConfigUpdate);
       window.removeEventListener('dulang_menus_updated', handleMenusUpdate);
-      window.removeEventListener('dulang_open_wa_simulator', handleOpenSimulator);
     };
   }, []);
 
@@ -312,33 +307,7 @@ export function App() {
           onClose={() => setIsClosedModalOpen(false)}
         />
 
-        {/* WhatsApp Simulator Drawer (Accessible anywhere in app!) */}
-        <WaChatSimulatorDrawer
-          isOpen={isWaSimulatorOpen}
-          onClose={() => setIsWaSimulatorOpen(false)}
-          onOrderCreated={(orderId) => {
-            const fresh = storageService.getMenus();
-            setMenus(fresh);
-            playNewCustomerChime();
-            showToast(`🔔 Pesanan WA #${orderId} langsung masuk antrean Dapur & memotong stok! 🥟✨`);
-          }}
-        />
 
-        {/* Floating Button for WhatsApp Simulator (Hanya muncul jika URL ada parameter ?bot=1 untuk internal testing) */}
-        {typeof window !== 'undefined' && new URLSearchParams(window.location.search).has('bot') && (
-          <div className="fixed bottom-6 right-4 sm:right-6 z-50">
-            <button
-              type="button"
-              onClick={() => setIsWaSimulatorOpen(true)}
-              className="group flex items-center space-x-2 bg-[#25D366] hover:bg-[#128C7E] text-white px-4 sm:px-5 py-3 rounded-full shadow-2xl hover:shadow-emerald-500/50 transition-all duration-200 active:scale-95 border-2 border-white/90 cursor-pointer"
-              title="Uji Coba Chat WhatsApp Pembeli (Live Sync ke Layar Kasir)"
-            >
-              <span className="text-xl sm:text-2xl">💬</span>
-              <span className="font-bold text-xs sm:text-sm tracking-wide">Tes Chat WA</span>
-              <span className="w-2.5 h-2.5 bg-white rounded-full animate-ping" />
-            </button>
-          </div>
-        )}
       </div>
     </div>
   );

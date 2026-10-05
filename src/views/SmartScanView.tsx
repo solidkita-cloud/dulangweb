@@ -235,13 +235,13 @@ export const SmartScanView: React.FC<SmartScanViewProps> = ({
       {/* Top Title & QR Selector */}
       <div className="text-center mb-8">
         <div className="inline-flex items-center gap-1.5 px-3 py-1 rounded-full bg-[#111111] text-[#FFD700] text-[11px] font-sans font-bold tracking-widest uppercase mb-2">
-          <span>📱</span> Smart QR Scanner Simulation
+          <span>📱</span> Smart QR Kemasan Dulang
         </div>
         <h1 className="font-hand font-bold text-[36px] lg:text-[46px] leading-none text-[#111111]">
-          Simulasi Scan Stiker Dus
+          Scan Stiker QR Dus Kemasan
         </h1>
         <p className="font-sans text-[13px] text-[#5C3D2E]/80 mt-1 max-w-[50ch] mx-auto">
-          Coba scan QR stiker unik yang ditempel di dus risoles atau gantungan kunci akrilik.
+          Pindai kode QR unik yang tertera pada stiker dus risoles atau souvenir Dulang.
         </p>
 
         {/* QR ID Input / Switcher */}

@@ -1065,84 +1065,86 @@ export const LandingView: React.FC<LandingViewProps> = ({
       </section>
 
       {/* PENDAPAT & CERITA SOBAT DULANG (COLLAPSIBLE / ACCORDION) */}
-      <section className="mt-12 lg:mt-16">
-        <div className="bg-white rounded-[24px] p-5 sm:p-7 border-2 border-[#111111] polaroid-shadow rotate-[0.3deg]">
-          <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-4">
-            <div className="flex items-center gap-3.5">
-              <div className="w-12 h-12 rounded-full bg-[#FFD700] text-[#111111] grid place-items-center text-2xl border-2 border-[#111111] shadow-[2px_2px_0_#111111] shrink-0">
-                💬
-              </div>
-              <div>
-                <div className="inline-flex items-center gap-1.5 bg-[#111111] text-[#FFD700] px-2.5 py-0.5 rounded-full text-[10px] font-bold uppercase tracking-wider mb-1 font-sans">
-                  <span>⭐️ Ulasan Sobat Dulang</span>
+      {testimonials.length > 0 && (
+        <section className="mt-12 lg:mt-16">
+          <div className="bg-white rounded-[24px] p-5 sm:p-7 border-2 border-[#111111] polaroid-shadow rotate-[0.3deg]">
+            <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-4">
+              <div className="flex items-center gap-3.5">
+                <div className="w-12 h-12 rounded-full bg-[#FFD700] text-[#111111] grid place-items-center text-2xl border-2 border-[#111111] shadow-[2px_2px_0_#111111] shrink-0">
+                  💬
                 </div>
-                <h3 className="font-hand font-bold text-[24px] sm:text-[30px] leading-tight text-[#111111]">
-                  Apa Kata Sobat Dapur Dulang?
-                </h3>
-                <p className="font-sans text-xs text-[#5C3D2E]/80">
-                  Cerita hangat dari tetangga Sidoarjo & Surabaya yang sering jajan di sini.
-                </p>
-              </div>
-            </div>
-
-            {/* Toggle Button (Hide by default, click to show) */}
-            <button
-              type="button"
-              onClick={() => setIsTestimonialsOpen(!isTestimonialsOpen)}
-              className="cursor-pointer bg-[#FFD700] text-[#111111] hover:bg-[#FFE033] border-2 border-[#111111] px-5 py-2.5 rounded-full font-sans font-bold text-xs sm:text-sm transition-all shadow-[3px_3px_0_#111111] active:translate-x-0.5 active:translate-y-0.5 shrink-0 flex items-center justify-center gap-2 self-start sm:self-center"
-            >
-              <span>{isTestimonialsOpen ? 'Sembunyikan Cerita ▴' : `Buka ${testimonials.length} Cerita Sobat ▾`}</span>
-            </button>
-          </div>
-
-          {/* Expandable Content Area */}
-          {isTestimonialsOpen && (
-            <div className="mt-6 pt-6 border-t-2 border-[#111111]/10 grid sm:grid-cols-2 lg:grid-cols-4 gap-4 animate-in fade-in duration-300">
-              {testimonials.map((t, idx) => {
-                const rot = ['-1deg', '1deg', '-0.5deg', '0.8deg'][idx % 4];
-                return (
-                  <div
-                    key={t.id}
-                    className="bg-[#FFFDF4] rounded-[18px] p-4 border-2 border-[#111111] shadow-[2px_2px_0_#111111] relative flex flex-col justify-between"
-                    style={{ transform: `rotate(${rot})` }}
-                  >
-                    {/* Masking tape on top */}
-                    <div className="tape absolute -top-2.5 left-1/2 -translate-x-1/2 w-16 h-3 bg-[#FFD700]/80 rounded-[1px] border border-[#111111]/20" />
-
-                    <div>
-                      <div className="flex items-center justify-between gap-1 mb-2">
-                        <div className="flex text-amber-500 text-xs">
-                          {Array.from({ length: t.rating || 5 }).map((_, i) => (
-                            <span key={i}>★</span>
-                          ))}
-                        </div>
-                        {t.favorite_menu && (
-                          <span className="bg-white border border-[#111111]/20 text-[10px] font-bold px-2 py-0.5 rounded-full text-[#5C3D2E]">
-                            🥟 {t.favorite_menu}
-                          </span>
-                        )}
-                      </div>
-                      <p className="font-hand text-[17px] leading-snug text-[#111111]">
-                        "{t.comment}"
-                      </p>
-                    </div>
-
-                    <div className="mt-4 pt-3 border-t border-[#111111]/10 flex items-center justify-between font-sans text-[11px]">
-                      <div>
-                        <span className="font-bold text-[#111111] block">{t.customer_name}</span>
-                        <span className="text-[#5C3D2E]/70">{t.area}</span>
-                      </div>
-                      <span className="text-[10px] text-[#5C3D2E]/50">
-                        {new Date(t.created_at).toLocaleDateString('id-ID', { month: 'short', year: 'numeric' })}
-                      </span>
-                    </div>
+                <div>
+                  <div className="inline-flex items-center gap-1.5 bg-[#111111] text-[#FFD700] px-2.5 py-0.5 rounded-full text-[10px] font-bold uppercase tracking-wider mb-1 font-sans">
+                    <span>⭐️ Ulasan Sobat Dulang</span>
                   </div>
-                );
-              })}
+                  <h3 className="font-hand font-bold text-[24px] sm:text-[30px] leading-tight text-[#111111]">
+                    Apa Kata Sobat Dapur Dulang?
+                  </h3>
+                  <p className="font-sans text-xs text-[#5C3D2E]/80">
+                    Cerita hangat dari tetangga Sidoarjo & Surabaya yang sering jajan di sini.
+                  </p>
+                </div>
+              </div>
+
+              {/* Toggle Button (Hide by default, click to show) */}
+              <button
+                type="button"
+                onClick={() => setIsTestimonialsOpen(!isTestimonialsOpen)}
+                className="cursor-pointer bg-[#FFD700] text-[#111111] hover:bg-[#FFE033] border-2 border-[#111111] px-5 py-2.5 rounded-full font-sans font-bold text-xs sm:text-sm transition-all shadow-[3px_3px_0_#111111] active:translate-x-0.5 active:translate-y-0.5 shrink-0 flex items-center justify-center gap-2 self-start sm:self-center"
+              >
+                <span>{isTestimonialsOpen ? 'Sembunyikan Cerita ▴' : `Buka ${testimonials.length} Cerita Sobat ▾`}</span>
+              </button>
             </div>
-          )}
-        </div>
-      </section>
+
+            {/* Expandable Content Area */}
+            {isTestimonialsOpen && (
+              <div className="mt-6 pt-6 border-t-2 border-[#111111]/10 grid sm:grid-cols-2 lg:grid-cols-4 gap-4 animate-in fade-in duration-300">
+                {testimonials.map((t, idx) => {
+                  const rot = ['-1deg', '1deg', '-0.5deg', '0.8deg'][idx % 4];
+                  return (
+                    <div
+                      key={t.id}
+                      className="bg-[#FFFDF4] rounded-[18px] p-4 border-2 border-[#111111] shadow-[2px_2px_0_#111111] relative flex flex-col justify-between"
+                      style={{ transform: `rotate(${rot})` }}
+                    >
+                      {/* Masking tape on top */}
+                      <div className="tape absolute -top-2.5 left-1/2 -translate-x-1/2 w-16 h-3 bg-[#FFD700]/80 rounded-[1px] border border-[#111111]/20" />
+
+                      <div>
+                        <div className="flex items-center justify-between gap-1 mb-2">
+                          <div className="flex text-amber-500 text-xs">
+                            {Array.from({ length: t.rating || 5 }).map((_, i) => (
+                              <span key={i}>★</span>
+                            ))}
+                          </div>
+                          {t.favorite_menu && (
+                            <span className="bg-white border border-[#111111]/20 text-[10px] font-bold px-2 py-0.5 rounded-full text-[#5C3D2E]">
+                              🥟 {t.favorite_menu}
+                            </span>
+                          )}
+                        </div>
+                        <p className="font-hand text-[17px] leading-snug text-[#111111]">
+                          "{t.comment}"
+                        </p>
+                      </div>
+
+                      <div className="mt-4 pt-3 border-t border-[#111111]/10 flex items-center justify-between font-sans text-[11px]">
+                        <div>
+                          <span className="font-bold text-[#111111] block">{t.customer_name}</span>
+                          <span className="text-[#5C3D2E]/70">{t.area}</span>
+                        </div>
+                        <span className="text-[10px] text-[#5C3D2E]/50">
+                          {new Date(t.created_at).toLocaleDateString('id-ID', { month: 'short', year: 'numeric' })}
+                        </span>
+                      </div>
+                    </div>
+                  );
+                })}
+              </div>
+            )}
+          </div>
+        </section>
+      )}
 
       {/* SMART QR DUS & REPEAT ORDER INFO */}
       <section className="mt-20 lg:mt-28 grid lg:grid-cols-[1.1fr_0.9fr] gap-8 items-start">

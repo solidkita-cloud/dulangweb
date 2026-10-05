@@ -47,44 +47,7 @@ const STORAGE_KEYS = {
   KITCHEN_RECAPS: 'dulang_kitchen_recaps_v1',
 };
 
-export const DEFAULT_EXPENSES: ExpenseRecord[] = [
-  {
-    id: 'EXP-01',
-    tanggal: new Date().toISOString().split('T')[0],
-    kategori: 'bahan_baku',
-    nama_item: 'Minyak Goreng Bimoli 2L (2 Pcs)',
-    nominal: 76000,
-    catatan: 'Goreng kloter pagi & siang',
-    created_at: new Date(Date.now() - 3600000 * 5).toISOString(),
-  },
-  {
-    id: 'EXP-02',
-    tanggal: new Date().toISOString().split('T')[0],
-    kategori: 'bahan_baku',
-    nama_item: 'Telur Ayam Broiler 1 Kg & Smoke Beef',
-    nominal: 62000,
-    catatan: 'Bahan isian Risol Mayo & Rogout',
-    created_at: new Date(Date.now() - 3600000 * 4).toISOString(),
-  },
-  {
-    id: 'EXP-03',
-    tanggal: new Date().toISOString().split('T')[0],
-    kategori: 'operasional',
-    nama_item: 'Isi Ulang Gas Elpiji 3 Kg',
-    nominal: 22000,
-    catatan: 'Wajan dapur utama',
-    created_at: new Date(Date.now() - 3600000 * 3).toISOString(),
-  },
-  {
-    id: 'EXP-04',
-    tanggal: new Date().toISOString().split('T')[0],
-    kategori: 'kemasan',
-    nama_item: 'Dus Snack Box Kraft & Plastik Mika (50 pcs)',
-    nominal: 35000,
-    catatan: 'Kemasan takeaway & pesanan hajatan',
-    created_at: new Date(Date.now() - 3600000 * 2).toISOString(),
-  },
-];
+export const DEFAULT_EXPENSES: ExpenseRecord[] = [];
 
 export const storageService = {
   // --- MENU MANAGEMENT ---
@@ -766,6 +729,46 @@ ${lines.join('\n')}
     this.clearCustomers();
     this.clearOrders();
     this.clearExpenses();
+    this.clearTestimonials();
+    this.clearVouchers();
+  },
+
+  purgeDemoDataOnce(): void {
+    try {
+      const flagKey = 'dulang_demo_purged_v3';
+      if (typeof window !== 'undefined' && localStorage.getItem(flagKey)) return;
+
+      const orders = this.getOrders().filter(
+        (o) => !o.id.startsWith('ORD-10') && !o.id.startsWith('ORD-DEMO')
+      );
+      this.saveOrders(orders);
+
+      const customers = this.getCustomers().filter(
+        (c) => !c.id.startsWith('cust-') && !c.id.startsWith('DEMO-')
+      );
+      this.saveCustomers(customers);
+
+      const expenses = this.getExpenses().filter(
+        (e) => !e.id.startsWith('EXP-0') && !e.id.startsWith('EXP-DEMO')
+      );
+      this.saveExpenses(expenses);
+
+      const testimonials = this.getTestimonials().filter(
+        (t) => !t.id.startsWith('testi-')
+      );
+      this.saveTestimonials(testimonials);
+
+      const vouchers = this.getVouchers().filter(
+        (v) => !v.code.startsWith('DULANG') && !v.code.startsWith('SEGERA') && !v.code.startsWith('SERBU')
+      );
+      this.saveVouchers(vouchers);
+
+      if (typeof window !== 'undefined') {
+        localStorage.setItem(flagKey, 'true');
+      }
+    } catch (e) {
+      console.warn('Failed to purge demo data:', e);
+    }
   },
 
   resetAllDemoData(): void {

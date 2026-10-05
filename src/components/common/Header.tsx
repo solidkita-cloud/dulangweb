@@ -59,18 +59,6 @@ export const Header: React.FC<HeaderProps> = ({
               🖨️ Cetak Stiker
             </button>
 
-            <button
-              type="button"
-              onClick={() => onSelectMode('scan')}
-              className={`px-3 py-1.5 rounded-full transition-all cursor-pointer ${
-                currentMode === 'scan'
-                  ? 'bg-[#FFD700] text-[#111111] shadow'
-                  : 'text-[#FFF8E7]/70 hover:text-[#FFF8E7]'
-              }`}
-            >
-              📱 Simulasi Scan
-            </button>
-
             {onLogout && (
               <button
                 type="button"

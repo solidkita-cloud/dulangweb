@@ -645,7 +645,7 @@ export const StickerGeneratorView: React.FC<StickerGeneratorViewProps> = ({
                     <div
                       onClick={() => onNavigateToScan(item.id)}
                       className="cursor-pointer w-full aspect-[400/480] rounded-[14px] overflow-hidden flex items-center justify-center bg-gray-100"
-                      title="Klik untuk coba simulasi scan stiker ini"
+                      title="Klik untuk tes scan stiker ini"
                     >
                       {imgDataUrl ? (
                         <img
@@ -667,7 +667,7 @@ export const StickerGeneratorView: React.FC<StickerGeneratorViewProps> = ({
                         type="button"
                         onClick={() => onNavigateToScan(item.id)}
                         className="cursor-pointer text-[10px] font-sans font-bold text-[#111111] hover:text-[#5C3D2E] hover:underline"
-                        title="Simulasi scan stiker ini"
+                        title="Tes scan stiker ini"
                       >
                         🔍 Tes Scan
                       </button>

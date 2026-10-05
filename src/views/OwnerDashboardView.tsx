@@ -696,14 +696,6 @@ Catatan Kurir: Pastikan posisi dus ditaruh datar agar mayo tidak tumpah ya kak.`
     }
   };
 
-  const handleResetDemoExpenses = () => {
-    if (confirm('Kembalikan data pengeluaran ke contoh demo dapur Dulang?')) {
-      storageService.resetDemoExpenses();
-      setExpenses(storageService.getExpenses());
-      onShowToast('Data pengeluaran direset ke contoh dapur Dulang! 🍳');
-    }
-  };
-
   const handleSaveSupabaseConfig = async (e: React.FormEvent) => {
     e.preventDefault();
     if (!inputDbUrl.trim() || !inputDbKey.trim()) {
@@ -2309,14 +2301,6 @@ Catatan Kurir: Pastikan posisi dus ditaruh datar agar mayo tidak tumpah ya kak.`
                 >
                   <span>Proses ⚡</span>
                 </button>
-                <button
-                  type="button"
-                  onClick={() => window.dispatchEvent(new Event('dulang_open_wa_simulator'))}
-                  className="cursor-pointer bg-[#075E54] text-white hover:bg-[#128C7E] px-4 py-2.5 rounded-full font-sans font-bold text-xs border-2 border-[#111111] shadow-[2px_2px_0_#111111] shrink-0 transition flex items-center gap-1.5 active:translate-x-0.5 active:translate-y-0.5"
-                  title="Buka Chat WhatsApp Pembeli (Simulasi Interaktif)"
-                >
-                  <span>💬 Simulasi WA</span>
-                </button>
               </div>
             </form>
 
@@ -3171,14 +3155,6 @@ Catatan Kurir: Pastikan posisi dus ditaruh datar agar mayo tidak tumpah ya kak.`
                 >
                   <span>{isAddingExpense ? 'Tutup Form ✕' : '+ Catat Pengeluaran Baru'}</span>
                 </button>
-                <button
-                  type="button"
-                  onClick={handleResetDemoExpenses}
-                  className="cursor-pointer bg-white text-[#5C3D2E] hover:text-[#111111] font-sans font-bold px-3 py-2.5 rounded-full text-xs border border-[#111111]/20 transition"
-                  title="Kembalikan contoh belanja pasar dapur"
-                >
-                  🔄 Reset Contoh
-                </button>
               </div>
             </div>
 
@@ -3466,7 +3442,7 @@ Catatan Kurir: Pastikan posisi dus ditaruh datar agar mayo tidak tumpah ya kak.`
                   <p className="font-sans text-xs text-[#5C3D2E]/70 max-w-sm mx-auto">
                     {expenseSearch
                       ? 'Tidak ada pengeluaran yang cocok dengan kata kunci pencarian.'
-                      : 'Klik "+ Catat Pengeluaran Baru" atau gunakan "Reset Contoh" untuk simulasi belanja dapur.'}
+                      : 'Klik "+ Catat Pengeluaran Baru" untuk mulai mencatat belanja bahan dapur.'}
                   </p>
                 </div>
               ) : (
@@ -4509,38 +4485,20 @@ Catatan Kurir: Pastikan posisi dus ditaruh datar agar mayo tidak tumpah ya kak.`
                 type="button"
                 onClick={() => {
                   const confirmClean = window.confirm(
-                    '⚠️ KONFIRMASI PEMBERSIHAN DATA:\n\nApakah Anda yakin ingin membersihkan data simulasi/demo?\n\n• Data pelanggan demo & riwayat pesanan demo akan dikosongkan.\n• Menu risoles, harga, foto, dan jam buka toko Anda TETAP AMAN 100%.\n\nKlik OK untuk membersihkan data dapur.'
+                    '⚠️ KONFIRMASI PEMBERSIHAN DATA:\n\nApakah Anda yakin ingin membersihkan seluruh data riwayat transaksi, pelanggan percobaan, dan catatan pengeluaran?\n\n• Seluruh MENU, HARGA, & FOTO tetap AMAN 100%.\n\nKlik OK untuk membersihkan.'
                   );
                   if (confirmClean) {
                     storageService.clearAllDemoData();
                     setCustomers([]);
                     setOrders([]);
-                    setTestimonials(storageService.getTestimonials());
-                    onShowToast('🧹 Data demo berhasil dibersihkan! Dapur siap melayani transaksi riil.');
+                    setExpenses([]);
+                    setTestimonials([]);
+                    onShowToast('🧹 Riwayat transaksi & percobaan berhasil dibersihkan! Dapur siap melayani transaksi riil.');
                   }
                 }}
                 className="bg-red-600 hover:bg-red-700 text-white rounded-full px-5 py-2.5 font-sans font-bold text-xs border-2 border-red-800 shadow-[2px_2px_0_#991b1b] cursor-pointer flex items-center gap-2 transition"
               >
-                <span>🧹</span> Bersihkan Data Percobaan (Mulai Dapur Riil Kosong)
-              </button>
-
-              <button
-                type="button"
-                onClick={() => {
-                  const confirmReset = window.confirm(
-                    '🔄 MUAT ULANG DATA SIMULASI:\n\nApakah Anda ingin memuat kembali data simulasi (contoh pelanggan, transaksi penjualan, ulasan) untuk simulasi tim dapur?'
-                  );
-                  if (confirmReset) {
-                    storageService.resetAllDemoData();
-                    setCustomers(storageService.getCustomers());
-                    setOrders(storageService.getOrders());
-                    setTestimonials(storageService.getTestimonials());
-                    onShowToast('📱 Data simulasi lengkap (pelanggan, transaksi, & ulasan) berhasil dimuat!');
-                  }
-                }}
-                className="bg-white hover:bg-gray-100 text-[#5C3D2E] rounded-full px-5 py-2.5 font-sans font-bold text-xs border-2 border-[#111111]/20 cursor-pointer flex items-center gap-2 transition"
-              >
-                <span>🔄</span> Muat Ulang Data Simulasi Lengkap
+                <span>🧹</span> Bersihkan Riwayat Transaksi & Pelanggan Percobaan
               </button>
             </div>
 
