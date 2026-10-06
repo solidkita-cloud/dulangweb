@@ -117,11 +117,12 @@ export const OwnerDashboardView: React.FC<OwnerDashboardViewProps> = ({
   const [quickWaOrderText, setQuickWaOrderText] = useState('');
 
   // --- DULANG-2 KITCHEN COCKPIT & PROGRESSIVE DISCLOSURE STATE ---
-  const [isCockpitMode, setIsCockpitMode] = useState<boolean>(true);
   const [isMobileDrawerOpen, setIsMobileDrawerOpen] = useState<boolean>(false);
   const [isSubuhModalOpen, setIsSubuhModalOpen] = useState<boolean>(false);
   const [isClosingModalOpen, setIsClosingModalOpen] = useState<boolean>(false);
   const [isQrisModalOpen, setIsQrisModalOpen] = useState<boolean>(false);
+  const [isChartsExpanded, setIsChartsExpanded] = useState<boolean>(false);
+  const [isQuickWaOpen, setIsQuickWaOpen] = useState<boolean>(false);
 
   // --- TESTIMONIALS CURATION STATE ---
   const [testimonials, setTestimonials] = useState<CustomerTestimonial[]>(() => storageService.getTestimonials());
@@ -1308,23 +1309,37 @@ Catatan Kurir: Pastikan posisi dus ditaruh datar agar mayo tidak tumpah ya kak.`
   });
 
   return (
-    <div className="max-w-[1140px] mx-auto px-4 py-8 space-y-8 pb-28 sm:pb-32">
-      {/* Top Banner */}
-      <div className="bg-[#111111] text-[#FFF8E7] rounded-[24px] p-6 lg:p-8 flex flex-col md:flex-row md:items-center justify-between gap-4 border-2 border-[#111111] shadow-[6px_6px_0_#FFD700]">
-        <div>
-          <div className="inline-flex items-center gap-2 bg-[#FFD700] text-[#111111] px-3 py-1 rounded-full font-sans text-[11px] font-bold uppercase tracking-wider mb-2">
-            <span>🍳</span> Panel Dapur & Pemilik
+    <div className="max-w-[1140px] mx-auto px-3 sm:px-4 py-3 sm:py-8 space-y-4 sm:space-y-8 pb-28 sm:pb-32">
+      {/* Top Banner: Ringkas di HP, Lengkap di Desktop */}
+      <div className="bg-[#111111] text-[#FFF8E7] rounded-[20px] sm:rounded-[24px] p-3.5 sm:p-6 lg:p-8 flex flex-col md:flex-row md:items-center justify-between gap-3 sm:gap-4 border-2 border-[#111111] shadow-[4px_4px_0_#FFD700] sm:shadow-[6px_6px_0_#FFD700]">
+        <div className="flex items-center justify-between md:block">
+          <div>
+            <div className="inline-flex items-center gap-1.5 bg-[#FFD700] text-[#111111] px-2.5 py-0.5 rounded-full font-sans text-[10px] sm:text-[11px] font-bold uppercase tracking-wider mb-1 sm:mb-2">
+              <span>🍳</span> Dapur & Pemilik
+            </div>
+            <h1 className="font-hand font-bold text-[24px] sm:text-[34px] lg:text-[44px] leading-tight text-white">
+              Dapur Dulang
+            </h1>
+            <p className="font-sans text-[12px] sm:text-[13px] text-[#FFF8E7]/70 mt-0.5 hidden sm:block">
+              Kelola menu, atur foto utama, ganti jam buka, ganti password, dan pantau pelanggan setia.
+            </p>
           </div>
-          <h1 className="font-hand font-bold text-[34px] lg:text-[44px] leading-tight text-white">
-            Halo Pemilik sejak 2020
-          </h1>
-          <p className="font-sans text-[13px] text-[#FFF8E7]/70 mt-0.5">
-            Kelola menu, atur foto utama, ganti jam buka, ganti password, dan pantau pelanggan setia.
-          </p>
+
+          {/* Status Live Mini Badge di HP */}
+          <div className="md:hidden flex items-center gap-1.5 bg-white/10 px-2.5 py-1 rounded-full border border-white/20 text-[11px] font-sans font-bold">
+            <span
+              className={`w-2 h-2 rounded-full ${
+                supabaseCreds.isConfigured ? 'bg-emerald-400' : 'bg-amber-400'
+              } animate-pulse`}
+            />
+            <span className={supabaseCreds.isConfigured ? 'text-emerald-300' : 'text-amber-300'}>
+              {isSyncingCloud ? 'Sync...' : 'Live'}
+            </span>
+          </div>
         </div>
 
-        <div className="flex flex-wrap items-center gap-2.5">
-          <div className="text-right hidden sm:block mr-1">
+        <div className="flex flex-wrap items-center justify-between sm:justify-end gap-2 pt-2 border-t border-white/10 sm:border-0 sm:pt-0">
+          <div className="text-right hidden md:block mr-1">
             <div className="font-sans text-[11px] uppercase tracking-wider text-white/60">
               Database Cloud
             </div>
@@ -1344,71 +1359,59 @@ Catatan Kurir: Pastikan posisi dus ditaruh datar agar mayo tidak tumpah ya kak.`
             </div>
           </div>
 
-          {/* Quick Buttons for Subuh & Closing & Cockpit */}
-          <div className="flex items-center gap-1.5 flex-wrap">
+          {/* Quick Buttons for Subuh & Closing */}
+          <div className="flex items-center gap-1.5">
             <button
               type="button"
               onClick={() => setIsSubuhModalOpen(true)}
-              className="cursor-pointer bg-[#FFD700] hover:bg-[#FFE033] text-[#111111] px-3.5 py-1.5 rounded-full font-sans font-bold text-xs shadow-xs border border-[#111111] transition flex items-center gap-1.5"
+              className="cursor-pointer bg-[#FFD700] hover:bg-[#FFE033] text-[#111111] px-2.5 sm:px-3.5 py-1.5 rounded-full font-sans font-bold text-xs shadow-xs border border-[#111111] transition flex items-center gap-1"
               title="Kalkulator Kebutuhan Bahan Subuh"
             >
               <span>🌅</span>
-              <span className="hidden sm:inline">Kalkulator Subuh</span>
+              <span className="hidden xs:inline">Subuh</span>
             </button>
             <button
               type="button"
               onClick={() => setIsClosingModalOpen(true)}
-              className="cursor-pointer bg-white/15 hover:bg-white/25 text-white px-3.5 py-1.5 rounded-full font-sans font-bold text-xs border border-white/25 transition flex items-center gap-1.5"
+              className="cursor-pointer bg-white/15 hover:bg-white/25 text-white px-2.5 sm:px-3.5 py-1.5 rounded-full font-sans font-bold text-xs border border-white/25 transition flex items-center gap-1"
               title="Rekap Tutup Dapur Malam"
             >
               <span>🌙</span>
-              <span className="hidden sm:inline">Tutup Dapur</span>
-            </button>
-            <button
-              type="button"
-              onClick={() => setIsCockpitMode(!isCockpitMode)}
-              className={`cursor-pointer px-3 py-1.5 rounded-full font-sans font-bold text-xs border transition flex items-center gap-1 ${
-                isCockpitMode
-                  ? 'bg-amber-400 text-[#111111] border-amber-500 shadow-xs'
-                  : 'bg-white/10 text-white/80 border-white/20 hover:text-white'
-              }`}
-              title="Beralih antara Mode Cockpit Dapur (Fokus HP) dan Mode Lengkap"
-            >
-              <span>{isCockpitMode ? '📱 Cockpit: ON' : '🖥️ Mode: Lengkap'}</span>
+              <span className="hidden xs:inline">Tutup</span>
             </button>
           </div>
 
           {/* Sound Notification Control */}
-          <div className="flex items-center bg-white/10 p-1 rounded-full border border-white/20">
+          <div className="flex items-center bg-white/10 p-0.5 sm:p-1 rounded-full border border-white/20">
             <button
               type="button"
               onClick={toggleSound}
-              className={`cursor-pointer px-3 py-1.5 rounded-full font-sans font-bold text-xs transition flex items-center gap-1.5 ${
+              className={`cursor-pointer px-2.5 sm:px-3 py-1 sm:py-1.5 rounded-full font-sans font-bold text-xs transition flex items-center gap-1 ${
                 soundEnabled
                   ? 'bg-[#FFD700] text-[#111111] shadow-sm'
                   : 'bg-transparent text-white/70 hover:text-white'
               }`}
-              title={soundEnabled ? 'Notifikasi suara aktif (klik untuk matikan)' : 'Notifikasi suara mati (klik untuk aktifkan)'}
+              title={soundEnabled ? 'Notifikasi suara aktif' : 'Notifikasi suara mati'}
             >
               <span>{soundEnabled ? '🔔' : '🔕'}</span>
-              <span>{soundEnabled ? 'Bell: ON' : 'Bell: OFF'}</span>
+              <span className="text-[11px] sm:text-xs">{soundEnabled ? 'ON' : 'OFF'}</span>
             </button>
             <button
               type="button"
               onClick={handleTestSound}
-              className="cursor-pointer px-2.5 py-1 text-white/70 hover:text-white rounded-full font-sans text-xs transition"
+              className="cursor-pointer px-2 sm:px-2.5 py-1 text-white/70 hover:text-white rounded-full font-sans text-[11px] sm:text-xs transition"
               title="Tes bunyi bel notifikasi"
             >
-              🔊 Tes
+              Tes
             </button>
           </div>
 
           <button
             type="button"
             onClick={onLogout}
-            className="cursor-pointer bg-white/10 hover:bg-white/20 text-white rounded-full px-4 py-2 font-sans font-bold text-[12px] border border-white/20 transition"
+            className="cursor-pointer bg-white/10 hover:bg-white/20 text-white rounded-full px-3 sm:px-4 py-1.5 sm:py-2 font-sans font-bold text-[11px] sm:text-[12px] border border-white/20 transition ml-auto sm:ml-0"
           >
-            Keluar Dapur ✕
+            Keluar ✕
           </button>
         </div>
       </div>
@@ -1459,210 +1462,96 @@ Catatan Kurir: Pastikan posisi dus ditaruh datar agar mayo tidak tumpah ya kak.`
         </div>
       )}
 
-      {/* Navigation Pills (Progressive Disclosure Cockpit Mode) */}
-      <div className="flex flex-wrap items-center gap-2 border-b-2 border-[#111111]/10 pb-3">
-        {isCockpitMode ? (
-          <>
-            {/* 3 Core Operational Tabs for Mobile Kitchen Cockpit */}
+      {/* Navigation Pills (Horizontal Scroll on Mobile, Clean on Desktop) */}
+      <div className="flex items-center gap-2 overflow-x-auto no-scrollbar pb-2 pt-1 border-b-2 border-[#111111]/10">
+        <button
+          type="button"
+          onClick={() => setActiveTab('orders')}
+          className={`shrink-0 px-4 sm:px-5 py-2 sm:py-2.5 rounded-full font-sans font-bold text-xs sm:text-[13px] border-2 cursor-pointer transition flex items-center gap-1.5 ${
+            activeTab === 'orders'
+              ? 'bg-[#111111] text-[#FFD700] border-[#111111] shadow-[2px_2px_0_#FFD700]'
+              : 'bg-white text-[#5C3D2E]/80 border-[#111111]/15 hover:border-[#111111]'
+          }`}
+        >
+          <span>🛒 Antrean & Kasir</span>
+          {orders.filter((o) => o.status === 'menunggu').length > 0 && (
+            <span className="bg-red-500 text-white text-[10px] font-bold px-2 py-0.5 rounded-full animate-pulse">
+              {orders.filter((o) => o.status === 'menunggu').length} Baru
+            </span>
+          )}
+        </button>
+
+        <button
+          type="button"
+          onClick={() => setActiveTab('menu')}
+          className={`shrink-0 px-4 sm:px-5 py-2 sm:py-2.5 rounded-full font-sans font-bold text-xs sm:text-[13px] border-2 cursor-pointer transition flex items-center gap-1.5 ${
+            activeTab === 'menu'
+              ? 'bg-[#111111] text-[#FFD700] border-[#111111] shadow-[2px_2px_0_#FFD700]'
+              : 'bg-white text-[#5C3D2E]/80 border-[#111111]/15 hover:border-[#111111]'
+          }`}
+        >
+          <span>🍲 Stok & Menu</span>
+          <span className="text-[10px] text-[#5C3D2E]/70 font-bold">({menus.length})</span>
+        </button>
+
+        <button
+          type="button"
+          onClick={() => setActiveTab('expenses')}
+          className={`shrink-0 px-4 sm:px-5 py-2 sm:py-2.5 rounded-full font-sans font-bold text-xs sm:text-[13px] border-2 cursor-pointer transition flex items-center gap-1.5 ${
+            activeTab === 'expenses'
+              ? 'bg-[#111111] text-[#FFD700] border-[#111111] shadow-[2px_2px_0_#FFD700]'
+              : 'bg-white text-[#5C3D2E]/80 border-[#111111]/15 hover:border-[#111111]'
+          }`}
+        >
+          <span>💰 Kas Harian</span>
+          <span className="bg-[#FFD700] text-[#111111] text-[10px] font-bold px-1.5 py-0.2 rounded-full">
+            {expenses.length}
+          </span>
+        </button>
+
+        <button
+          type="button"
+          onClick={() => setActiveTab('customers')}
+          className={`shrink-0 px-4 sm:px-5 py-2 sm:py-2.5 rounded-full font-sans font-bold text-xs sm:text-[13px] border-2 cursor-pointer transition flex items-center gap-1.5 ${
+            activeTab === 'customers'
+              ? 'bg-[#111111] text-[#FFD700] border-[#111111] shadow-[2px_2px_0_#FFD700]'
+              : 'bg-white text-[#5C3D2E]/80 border-[#111111]/15 hover:border-[#111111]'
+          }`}
+        >
+          <span>👥 Pelanggan</span>
+          <span className="text-[10px] text-[#5C3D2E]/70 font-bold">({customers.length})</span>
+        </button>
+
+        {/* If user selected a secondary tab (e.g. from drawer), show it as active pill */}
+        {activeTab !== 'orders' && activeTab !== 'menu' && activeTab !== 'expenses' && activeTab !== 'customers' && (
+          <div className="shrink-0 inline-flex items-center gap-1.5 bg-[#FFD700] text-[#111111] border-2 border-[#111111] px-3.5 py-2 rounded-full font-sans font-bold text-xs shadow-[2px_2px_0_#111111]">
+            <span>
+              {activeTab === 'stickers' && '🏷️ Cetak Stiker QR'}
+              {activeTab === 'vouchers' && '🎟️ Voucher'}
+              {activeTab === 'testimonials' && '💬 Ulasan'}
+              {activeTab === 'stats' && '📊 Statistik'}
+              {activeTab === 'settings' && '⚙️ Pengaturan & PIN'}
+            </span>
             <button
               type="button"
               onClick={() => setActiveTab('orders')}
-              className={`px-5 py-2.5 rounded-full font-sans font-bold text-[13px] border-2 cursor-pointer transition flex items-center gap-2 ${
-                activeTab === 'orders'
-                  ? 'bg-[#111111] text-[#FFD700] border-[#111111] shadow-[2px_2px_0_#FFD700]'
-                  : 'bg-white text-[#5C3D2E]/80 border-[#111111]/15 hover:border-[#111111]'
-              }`}
+              className="cursor-pointer text-xs ml-1 font-bold text-[#111111] hover:text-red-700 bg-white/40 rounded-full px-1.5"
+              title="Kembali ke Kasir Utama"
             >
-              <span>🛒 Kasir & Antrean</span>
-              {orders.filter((o) => o.status === 'menunggu').length > 0 && (
-                <span className="bg-red-500 text-white text-[10px] font-bold px-2 py-0.5 rounded-full animate-pulse">
-                  {orders.filter((o) => o.status === 'menunggu').length} Baru
-                </span>
-              )}
+              ✕
             </button>
-
-            <button
-              type="button"
-              onClick={() => setActiveTab('expenses')}
-              className={`px-5 py-2.5 rounded-full font-sans font-bold text-[13px] border-2 cursor-pointer transition flex items-center gap-2 ${
-                activeTab === 'expenses'
-                  ? 'bg-[#111111] text-[#FFD700] border-[#111111] shadow-[2px_2px_0_#FFD700]'
-                  : 'bg-white text-[#5C3D2E]/80 border-[#111111]/15 hover:border-[#111111]'
-              }`}
-            >
-              <span>💰 Kas Harian & Profit</span>
-              <span className="bg-[#FFD700] text-[#111111] text-[10px] font-bold px-2 py-0.5 rounded-full">
-                {expenses.length}
-              </span>
-            </button>
-
-            <button
-              type="button"
-              onClick={() => setActiveTab('customers')}
-              className={`px-5 py-2.5 rounded-full font-sans font-bold text-[13px] border-2 cursor-pointer transition flex items-center gap-2 ${
-                activeTab === 'customers'
-                  ? 'bg-[#111111] text-[#FFD700] border-[#111111] shadow-[2px_2px_0_#FFD700]'
-                  : 'bg-white text-[#5C3D2E]/80 border-[#111111]/15 hover:border-[#111111]'
-              }`}
-            >
-              <span>👥 Pelanggan & Ultah</span>
-              <span className="text-[10px] text-[#5C3D2E]/70 font-bold">
-                ({customers.length})
-              </span>
-            </button>
-
-            {/* If user selected a secondary tab (e.g. from drawer), show it as active pill */}
-            {activeTab !== 'orders' && activeTab !== 'expenses' && activeTab !== 'customers' && (
-              <div className="inline-flex items-center gap-1.5 bg-[#FFD700] text-[#111111] border-2 border-[#111111] px-4 py-2 rounded-full font-sans font-bold text-xs shadow-[2px_2px_0_#111111]">
-                <span>
-                  {activeTab === 'menu' && '🍲 Kelola Menu'}
-                  {activeTab === 'stickers' && '🏷️ Cetak Stiker QR'}
-                  {activeTab === 'vouchers' && '🎟️ Voucher'}
-                  {activeTab === 'testimonials' && '💬 Ulasan'}
-                  {activeTab === 'stats' && '📊 Statistik'}
-                  {activeTab === 'settings' && '⚙️ Pengaturan & PIN'}
-                </span>
-                <button
-                  type="button"
-                  onClick={() => setActiveTab('orders')}
-                  className="cursor-pointer text-xs ml-1 font-bold text-[#111111] hover:text-red-700 bg-white/40 rounded-full px-1.5"
-                  title="Kembali ke Kasir Utama"
-                >
-                  ✕
-                </button>
-              </div>
-            )}
-
-            {/* Quick Open Drawer Button */}
-            <button
-              type="button"
-              onClick={() => setIsMobileDrawerOpen(true)}
-              className="cursor-pointer ml-auto bg-amber-100 hover:bg-amber-200 text-amber-950 border-2 border-amber-300 px-4 py-2 rounded-full font-sans font-bold text-xs flex items-center gap-1.5 transition"
-            >
-              <span>⚡</span>
-              <span>Menu Dapur Lainnya...</span>
-            </button>
-          </>
-        ) : (
-          <>
-            {/* Full Desktop Tabs (When Cockpit is switched off) */}
-            <button
-              type="button"
-              onClick={() => setActiveTab('menu')}
-              className={`px-5 py-2 rounded-full font-sans font-bold text-[13px] border-2 cursor-pointer transition ${
-                activeTab === 'menu'
-                  ? 'bg-[#111111] text-[#FFD700] border-[#111111] shadow-[2px_2px_0_#FFD700]'
-                  : 'bg-white text-[#5C3D2E]/70 border-[#111111]/10 hover:border-[#111111]'
-              }`}
-            >
-              🍲 Kelola Menu ({menus.length})
-            </button>
-
-            <button
-              type="button"
-              onClick={() => setActiveTab('orders')}
-              className={`px-5 py-2 rounded-full font-sans font-bold text-[13px] border-2 cursor-pointer transition flex items-center gap-1.5 ${
-                activeTab === 'orders'
-                  ? 'bg-[#111111] text-[#FFD700] border-[#111111] shadow-[2px_2px_0_#FFD700]'
-                  : 'bg-white text-[#5C3D2E]/70 border-[#111111]/10 hover:border-[#111111]'
-              }`}
-            >
-              <span>📊 Kasir & Grafik Penjualan</span>
-              {orders.filter((o) => o.status === 'menunggu').length > 0 && (
-                <span className="bg-red-500 text-white text-[10px] font-bold px-2 py-0.5 rounded-full animate-pulse">
-                  {orders.filter((o) => o.status === 'menunggu').length} Baru
-                </span>
-              )}
-            </button>
-
-            <button
-              type="button"
-              onClick={() => setActiveTab('expenses')}
-              className={`px-5 py-2 rounded-full font-sans font-bold text-[13px] border-2 cursor-pointer transition flex items-center gap-1.5 ${
-                activeTab === 'expenses'
-                  ? 'bg-[#111111] text-[#FFD700] border-[#111111] shadow-[2px_2px_0_#FFD700]'
-                  : 'bg-white text-[#5C3D2E]/70 border-[#111111]/10 hover:border-[#111111]'
-              }`}
-            >
-              <span>📉 Buku Kas & Profit</span>
-              <span className="bg-[#FFD700] text-[#111111] text-[10px] font-bold px-2 py-0.5 rounded-full">
-                {expenses.length}
-              </span>
-            </button>
-
-            <button
-              type="button"
-              onClick={() => setActiveTab('customers')}
-              className={`px-5 py-2 rounded-full font-sans font-bold text-[13px] border-2 cursor-pointer transition flex items-center gap-1.5 ${
-                activeTab === 'customers'
-                  ? 'bg-[#111111] text-[#FFD700] border-[#111111] shadow-[2px_2px_0_#FFD700]'
-                  : 'bg-white text-[#5C3D2E]/70 border-[#111111]/10 hover:border-[#111111]'
-              }`}
-            >
-              <span>👥 Pelanggan Setia ({customers.length})</span>
-            </button>
-
-            <button
-              type="button"
-              onClick={() => setActiveTab('testimonials')}
-              className={`px-5 py-2 rounded-full font-sans font-bold text-[13px] border-2 cursor-pointer transition flex items-center gap-1.5 ${
-                activeTab === 'testimonials'
-                  ? 'bg-[#111111] text-[#FFD700] border-[#111111] shadow-[2px_2px_0_#FFD700]'
-                  : 'bg-white text-[#5C3D2E]/70 border-[#111111]/10 hover:border-[#111111]'
-              }`}
-            >
-              <span>💬 Ulasan ({testimonials.length})</span>
-            </button>
-
-            <button
-              type="button"
-              onClick={() => setActiveTab('vouchers')}
-              className={`px-5 py-2 rounded-full font-sans font-bold text-[13px] border-2 cursor-pointer transition flex items-center gap-1.5 ${
-                activeTab === 'vouchers'
-                  ? 'bg-[#111111] text-[#FFD700] border-[#111111] shadow-[2px_2px_0_#FFD700]'
-                  : 'bg-white text-[#5C3D2E]/70 border-[#111111]/10 hover:border-[#111111]'
-              }`}
-            >
-              <span>🎟️ Kupon & Voucher</span>
-            </button>
-
-            <button
-              type="button"
-              onClick={() => setActiveTab('stickers')}
-              className={`px-5 py-2 rounded-full font-sans font-bold text-[13px] border-2 cursor-pointer transition flex items-center gap-1.5 ${
-                activeTab === 'stickers'
-                  ? 'bg-[#111111] text-[#FFD700] border-[#111111] shadow-[2px_2px_0_#FFD700]'
-                  : 'bg-white text-[#5C3D2E]/70 border-[#111111]/10 hover:border-[#111111]'
-              }`}
-            >
-              <span>🖨️ Cetak Stiker Dus</span>
-            </button>
-
-            <button
-              type="button"
-              onClick={() => setActiveTab('stats')}
-              className={`px-5 py-2 rounded-full font-sans font-bold text-[13px] border-2 cursor-pointer transition ${
-                activeTab === 'stats'
-                  ? 'bg-[#111111] text-[#FFD700] border-[#111111] shadow-[2px_2px_0_#FFD700]'
-                  : 'bg-white text-[#5C3D2E]/70 border-[#111111]/10 hover:border-[#111111]'
-              }`}
-            >
-              📍 Klaster Wilayah
-            </button>
-
-            <button
-              type="button"
-              onClick={() => setActiveTab('settings')}
-              className={`px-5 py-2 rounded-full font-sans font-bold text-[13px] border-2 cursor-pointer transition ${
-                activeTab === 'settings'
-                  ? 'bg-[#111111] text-[#FFD700] border-[#111111] shadow-[2px_2px_0_#FFD700]'
-                  : 'bg-white text-[#5C3D2E]/70 border-[#111111]/10 hover:border-[#111111]'
-              }`}
-            >
-              ⚙️ Pengaturan Toko & Keamanan
-            </button>
-          </>
+          </div>
         )}
+
+        {/* Quick Open Drawer Button */}
+        <button
+          type="button"
+          onClick={() => setIsMobileDrawerOpen(true)}
+          className="shrink-0 ml-auto bg-amber-100 hover:bg-amber-200 text-amber-950 border-2 border-amber-300 px-3.5 py-2 rounded-full font-sans font-bold text-xs flex items-center gap-1 transition"
+        >
+          <span>⚡</span>
+          <span>Menu Lain...</span>
+        </button>
       </div>
 
       {/* TAB 1: KELOLA MENU */}
@@ -2252,18 +2141,15 @@ Catatan Kurir: Pastikan posisi dus ditaruh datar agar mayo tidak tumpah ya kak.`
         });
 
         return (
-          <div className="space-y-8 animate-in fade-in duration-200">
-            {/* Header & Walk-In Button */}
-            <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-4">
+          <div className="space-y-4 sm:space-y-6 animate-in fade-in duration-200">
+            {/* Header Ringkas & Tombol Aksi Kasir */}
+            <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-3">
               <div>
-                <div className="inline-flex items-center gap-2 bg-[#FFD700] text-[#111111] px-3 py-0.5 rounded-full font-sans text-[11px] font-bold uppercase tracking-wider mb-2 border border-[#111111]/20">
-                  <span>📊 Kasir & Penjualan Dapur</span>
-                </div>
-                <h2 className="font-hand font-bold text-[32px] sm:text-[36px] text-[#111111] leading-none">
-                  Grafik Penjualan & Kasir Dapur
+                <h2 className="font-hand font-bold text-[26px] sm:text-[34px] text-[#111111] leading-none">
+                  Antrean & Kasir Dapur
                 </h2>
                 <p className="font-sans text-xs text-[#5C3D2E]/70 mt-1">
-                  Catat transaksi WhatsApp & walk-in langsung dengan 1-klik (Tunai, QRIS, Transfer, Batal). Selera pelanggan otomatis tercatat!
+                  Pantau pesanan masuk secara live & konfirmasi pembayaran 1-klik.
                 </p>
               </div>
 
@@ -2275,65 +2161,113 @@ Catatan Kurir: Pastikan posisi dus ditaruh datar agar mayo tidak tumpah ya kak.`
                     await storageService.syncOrdersFromSupabase();
                     setOrders(storageService.getOrders());
                     setIsSyncingCloud(false);
-                    onShowToast('Antrean pesanan berhasil disinkronkan dengan database cloud! 🥟✨');
+                    onShowToast('Antrean pesanan disinkronkan! 🥟✨');
                   }}
-                  className="cursor-pointer bg-white hover:bg-gray-100 text-[#111111] px-4 py-2.5 rounded-full font-sans font-bold text-xs border-2 border-[#111111] shadow-[2px_2px_0_#111111] flex items-center justify-center gap-1.5 transition active:scale-95"
+                  className="cursor-pointer bg-white hover:bg-gray-100 text-[#111111] px-3.5 py-2 rounded-full font-sans font-bold text-xs border-2 border-[#111111] shadow-[2px_2px_0_#111111] flex items-center justify-center gap-1.5 transition active:scale-95"
                   title="Tarik pesanan terbaru dari Supabase Cloud"
                 >
                   <span>🔄</span>
-                  <span>{isSyncingCloud ? 'Sinkron...' : 'Refresh Antrean'}</span>
+                  <span>{isSyncingCloud ? 'Sync...' : 'Refresh'}</span>
+                </button>
+
+                <button
+                  type="button"
+                  onClick={() => setIsQuickWaOpen(!isQuickWaOpen)}
+                  className={`cursor-pointer px-3.5 py-2 rounded-full font-sans font-bold text-xs border-2 transition flex items-center gap-1 ${
+                    isQuickWaOpen
+                      ? 'bg-[#25D366] text-white border-[#111111] shadow-[2px_2px_0_#111111]'
+                      : 'bg-white text-emerald-800 border-[#25D366] hover:bg-emerald-50'
+                  }`}
+                  title="Buka input ketik cepat ala WhatsApp"
+                >
+                  <span>💬</span>
+                  <span>Ketik WA</span>
                 </button>
 
                 <button
                   type="button"
                   onClick={() => setIsAddingWalkInOrder(!isAddingWalkInOrder)}
-                  className="cursor-pointer bg-[#111111] text-[#FFD700] hover:brightness-110 px-5 py-2.5 rounded-full font-sans font-bold text-xs sm:text-sm border-2 border-[#111111] shadow-[3px_3px_0_#FFD700] flex items-center justify-center gap-2 shrink-0 transition"
+                  className="cursor-pointer bg-[#111111] text-[#FFD700] hover:brightness-110 px-4 sm:px-5 py-2 sm:py-2.5 rounded-full font-sans font-bold text-xs sm:text-sm border-2 border-[#111111] shadow-[2px_2px_0_#FFD700] flex items-center justify-center gap-1.5 shrink-0 transition active:scale-95"
                 >
-                  <span>{isAddingWalkInOrder ? 'Tutup Form Kasir ✕' : '+ Catat Penjualan Dapur / Walk-In 💰'}</span>
+                  <span>{isAddingWalkInOrder ? 'Tutup Kasir ✕' : '+ Kasir Walk-In 💰'}</span>
                 </button>
               </div>
             </div>
 
-            {/* WHATSAPP NATURAL QUICK ORDER BAR (UNTUK TANGAN BERMINYAK / KASIR CEPAT) */}
-            <form
-              onSubmit={handleQuickWaOrder}
-              className="bg-gradient-to-r from-[#DCF8C6]/80 via-[#FFFDF4] to-[#E7F8E8] border-2 border-[#25D366] rounded-[24px] p-4 sm:p-5 shadow-[4px_4px_0_#25D366] flex flex-col md:flex-row items-stretch md:items-center justify-between gap-3 animate-in fade-in duration-300"
-            >
-              <div className="flex items-center gap-3">
-                <div className="w-10 h-10 rounded-full bg-[#25D366] text-white flex items-center justify-center font-bold text-xl shadow-sm shrink-0">
-                  💬
-                </div>
-                <div>
-                  <div className="flex items-center gap-2">
-                    <h3 className="font-hand font-bold text-xl text-[#111111]">
-                      Ketik Cepat ala WhatsApp (Natural Order)
-                    </h3>
-                    <span className="bg-[#25D366] text-white text-[10px] font-bold px-2 py-0.5 rounded-full uppercase tracking-wider">
-                      Auto-NLU ⚡
-                    </span>
-                  </div>
-                  <p className="font-sans text-[11px] text-[#5C3D2E]/80">
-                    Tangan berminyak? Cukup ketik 1 baris (contoh: <code className="bg-white/80 px-1.5 py-0.5 rounded border border-[#25D366]/40 text-[#111111] font-bold">mayo 2, rogut 3, piscok 2 tunai</code>) lalu tekan Enter!
-                  </p>
-                </div>
+            {/* RINGKASAN OMSET KASIR: 1 BARIS COMPACT STRIP (HEMAT TEMPAT DI HP) */}
+            <div className="grid grid-cols-3 gap-2 bg-white rounded-[18px] p-2.5 sm:p-4 border-2 border-[#111111] shadow-[3px_3px_0_#111111]">
+              <div className="text-center sm:text-left border-r border-[#111111]/10 pr-1 sm:pr-3">
+                <span className="text-[10px] sm:text-xs font-sans text-[#5C3D2E]/70 block font-bold uppercase tracking-tight">
+                  Omset Lunas
+                </span>
+                <span className="font-hand font-bold text-base sm:text-2xl text-[#111111] block leading-tight">
+                  Rp {totalOmsetLunas.toLocaleString('id-ID')}
+                </span>
+                <span className="text-[10px] text-emerald-700 font-bold hidden sm:inline">
+                  ✓ {lunasOrders.length} transaksi
+                </span>
               </div>
+              <div className="text-center sm:text-left border-r border-[#111111]/10 px-1 sm:px-3">
+                <span className="text-[10px] sm:text-xs font-sans text-[#5C3D2E]/70 block font-bold uppercase tracking-tight">
+                  Antrean Baru
+                </span>
+                <span className="font-hand font-bold text-base sm:text-2xl text-amber-700 block leading-tight">
+                  {pendingOrders.length} Order
+                </span>
+                <span className="text-[10px] text-amber-800 font-medium hidden sm:inline">
+                  Rp {totalOmsetPending.toLocaleString('id-ID')}
+                </span>
+              </div>
+              <div className="text-center sm:text-left pl-1 sm:pl-3">
+                <span className="text-[10px] sm:text-xs font-sans text-[#5C3D2E]/70 block font-bold uppercase tracking-tight">
+                  Porsi Terjual
+                </span>
+                <span className="font-hand font-bold text-base sm:text-2xl text-[#111111] block leading-tight">
+                  {totalPorsiTerjual} Porsi
+                </span>
+                <span className="text-[10px] text-[#5C3D2E]/70 font-medium hidden sm:inline">
+                  Fresh wajan
+                </span>
+              </div>
+            </div>
 
-              <div className="flex items-center gap-2 grow max-w-md">
-                <input
-                  type="text"
-                  value={quickWaOrderText}
-                  onChange={(e) => setQuickWaOrderText(e.target.value)}
-                  placeholder="Ketik pesanan... contoh: mayo 2, rogut 3, piscok 2"
-                  className="w-full rounded-full border-2 border-[#111111] px-4 py-2.5 font-sans text-xs focus:outline-none focus:border-[#25D366] bg-white shadow-inner font-medium"
-                />
-                <button
-                  type="submit"
-                  className="cursor-pointer bg-[#25D366] text-white hover:brightness-110 px-4 py-2.5 rounded-full font-sans font-bold text-xs border-2 border-[#111111] shadow-[2px_2px_0_#111111] shrink-0 transition flex items-center gap-1.5 active:translate-x-0.5 active:translate-y-0.5"
-                >
-                  <span>Proses ⚡</span>
-                </button>
-              </div>
-            </form>
+            {/* WHATSAPP NATURAL QUICK ORDER BAR (HANYA MUNCUL KETIKA DIBUKA) */}
+            {isQuickWaOpen && (
+              <form
+                onSubmit={handleQuickWaOrder}
+                className="bg-gradient-to-r from-[#DCF8C6]/90 via-[#FFFDF4] to-[#E7F8E8] border-2 border-[#25D366] rounded-[20px] p-3.5 sm:p-4 shadow-[3px_3px_0_#25D366] flex flex-col md:flex-row items-stretch md:items-center justify-between gap-2.5 animate-in slide-in-from-top-2 duration-200"
+              >
+                <div className="flex items-center gap-2.5">
+                  <div className="w-8 h-8 rounded-full bg-[#25D366] text-white flex items-center justify-center font-bold text-base shadow-xs shrink-0">
+                    💬
+                  </div>
+                  <div>
+                    <h3 className="font-hand font-bold text-lg text-[#111111] leading-tight">
+                      Ketik Cepat Pesanan ala WhatsApp
+                    </h3>
+                    <p className="font-sans text-[11px] text-[#5C3D2E]/80">
+                      Contoh: <code className="bg-white px-1 py-0.5 rounded border border-[#25D366]/40 font-bold">mayo 2, rogut 3 tunai</code>
+                    </p>
+                  </div>
+                </div>
+
+                <div className="flex items-center gap-2 grow max-w-md">
+                  <input
+                    type="text"
+                    value={quickWaOrderText}
+                    onChange={(e) => setQuickWaOrderText(e.target.value)}
+                    placeholder="Contoh: mayo 2, rogut 3, piscok 2"
+                    className="w-full rounded-full border-2 border-[#111111] px-3.5 py-2 font-sans text-xs focus:outline-none focus:border-[#25D366] bg-white shadow-inner font-medium"
+                  />
+                  <button
+                    type="submit"
+                    className="cursor-pointer bg-[#25D366] text-white hover:brightness-110 px-4 py-2 rounded-full font-sans font-bold text-xs border-2 border-[#111111] shadow-[2px_2px_0_#111111] shrink-0 transition"
+                  >
+                    Proses ⚡
+                  </button>
+                </div>
+              </form>
+            )}
 
             {/* FORM KASIR PENJUALAN WALK-IN (IN-PLACE MODAL/CARD) */}
             {isAddingWalkInOrder && (
@@ -2732,228 +2666,36 @@ Catatan Kurir: Pastikan posisi dus ditaruh datar agar mayo tidak tumpah ya kak.`
               </form>
             )}
 
-            {/* METRICS CARDS */}
-            <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-4">
-              {/* Omset Lunas */}
-              <div className="bg-white rounded-[20px] p-5 border-2 border-[#111111] shadow-[3px_3px_0_#111111]">
-                <div className="flex items-center justify-between">
-                  <span className="text-xs font-sans font-bold uppercase text-[#5C3D2E]/70">
-                    Omset Terbayar (Lunas)
-                  </span>
-                  <span className="text-xl">💰</span>
-                </div>
-                <div className="font-hand font-bold text-3xl text-[#111111] mt-2">
-                  Rp {totalOmsetLunas.toLocaleString('id-ID')}
-                </div>
-                <div className="text-[11px] font-sans text-emerald-700 font-bold mt-1 flex items-center gap-1">
-                  <span>✓</span> {lunasOrders.length} transaksi selesai
-                </div>
-              </div>
-
-              {/* Total Porsi Terjual */}
-              <div className="bg-white rounded-[20px] p-5 border-2 border-[#111111] shadow-[3px_3px_0_#111111]">
-                <div className="flex items-center justify-between">
-                  <span className="text-xs font-sans font-bold uppercase text-[#5C3D2E]/70">
-                    Porsi Risoles Terjual
-                  </span>
-                  <span className="text-xl">🥟</span>
-                </div>
-                <div className="font-hand font-bold text-3xl text-[#111111] mt-2">
-                  {totalPorsiTerjual} Porsi
-                </div>
-                <div className="text-[11px] font-sans text-[#5C3D2E]/80 mt-1">
-                  Digoreng fresh di wajan panas
-                </div>
-              </div>
-
-              {/* Menunggu Pembayaran */}
-              <div className="bg-white rounded-[20px] p-5 border-2 border-[#111111] shadow-[3px_3px_0_#111111]">
-                <div className="flex items-center justify-between">
-                  <span className="text-xs font-sans font-bold uppercase text-[#5C3D2E]/70">
-                    Menunggu Pembayaran
-                  </span>
-                  <span className="text-xl">⏳</span>
-                </div>
-                <div className="font-hand font-bold text-3xl text-[#111111] mt-2">
-                  {pendingOrders.length} Order
-                </div>
-                <div className="text-[11px] font-sans text-amber-700 font-bold mt-1">
-                  Rp {totalOmsetPending.toLocaleString('id-ID')} butuh konfirmasi
-                </div>
-              </div>
-
-              {/* Metode Bayar Summary */}
-              <div className="bg-[#FFFDF4] rounded-[20px] p-5 border-2 border-[#111111] shadow-[3px_3px_0_#111111] space-y-1.5">
-                <div className="text-xs font-sans font-bold uppercase text-[#5C3D2E]/70 mb-1">
-                  Breakdown Pembayaran
-                </div>
-                <div className="flex justify-between text-xs font-sans">
-                  <span>📱 QRIS:</span>
-                  <strong>Rp {qrisTotal.toLocaleString('id-ID')} ({qrisOrders.length}x)</strong>
-                </div>
-                <div className="flex justify-between text-xs font-sans">
-                  <span>💵 Tunai:</span>
-                  <strong>Rp {tunaiTotal.toLocaleString('id-ID')} ({tunaiOrders.length}x)</strong>
-                </div>
-                <div className="flex justify-between text-xs font-sans">
-                  <span>🏦 Transfer:</span>
-                  <strong>Rp {transferTotal.toLocaleString('id-ID')} ({transferOrders.length}x)</strong>
-                </div>
-              </div>
-            </div>
-
-            {/* VISUAL GRAFIK PENJUALAN & LEADERBOARD BEST SELLER */}
-            <div className="grid lg:grid-cols-[1.2fr_0.8fr] gap-6">
-              {/* Leaderboard Menu Terlaris Bar Chart */}
-              <div className="bg-white rounded-[24px] p-6 border-2 border-[#111111] shadow-[4px_4px_0_#111111] space-y-4">
-                <div className="flex items-center justify-between">
-                  <div>
-                    <h3 className="font-hand font-bold text-2xl text-[#111111] leading-none">
-                      🏆 Grafik Menu Paling Laris (Best Seller)
-                    </h3>
-                    <p className="font-sans text-xs text-[#5C3D2E]/70 mt-1">
-                      Peringkat menu berdasarkan total porsi terbayar lunas.
-                    </p>
-                  </div>
-                  <span className="font-sans text-xs font-bold bg-[#FFD700] px-3 py-1 rounded-full border border-[#111111]">
-                    {bestSellerList.length} Menu Terjual
-                  </span>
-                </div>
-
-                {bestSellerList.length === 0 ? (
-                  <div className="text-center py-8 font-sans text-xs text-[#5C3D2E]/60 italic">
-                    Belum ada data penjualan lunas. Begitu pesanan ditandai lunas, grafik akan langsung muncul di sini!
-                  </div>
-                ) : (
-                  <div className="space-y-3 pt-2">
-                    {bestSellerList.map((item, idx) => {
-                      const pct = Math.round((item.qty / maxSoldQty) * 100);
-                      const rankBadge = idx === 0 ? '🥇' : idx === 1 ? '🥈' : idx === 2 ? '🥉' : `#${idx + 1}`;
-                      return (
-                        <div key={item.nama} className="space-y-1">
-                          <div className="flex items-center justify-between text-xs font-sans">
-                            <span className="font-bold text-[#111111] flex items-center gap-1.5">
-                              <span className="w-5 text-center">{rankBadge}</span>
-                              <span>{item.nama}</span>
-                            </span>
-                            <span className="text-[#5C3D2E]">
-                              <strong>{item.qty} porsi</strong> • Rp {item.totalRp.toLocaleString('id-ID')}
-                            </span>
-                          </div>
-                          {/* Horizontal Bar Chart */}
-                          <div className="w-full bg-[#FFF8E7] rounded-full h-4 overflow-hidden border border-[#111111]/20 p-0.5">
-                            <div
-                              className="bg-gradient-to-r from-[#FFD700] via-amber-400 to-[#FFD700] h-full rounded-full transition-all duration-700"
-                              style={{ width: `${Math.max(pct, 6)}%` }}
-                            />
-                          </div>
-                        </div>
-                      );
-                    })}
-                  </div>
-                )}
-              </div>
-
-              {/* Perbandingan Metode Pembayaran */}
-              <div className="bg-white rounded-[24px] p-6 border-2 border-[#111111] shadow-[4px_4px_0_#111111] flex flex-col justify-between space-y-4">
+            {/* DAFTAR ANTREAN TRANSAKSI & STATUS BAYAR (LANGSUNG TAMPIL DULUAN) */}
+            <div className="space-y-3 sm:space-y-4">
+              <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-2.5">
                 <div>
-                  <h3 className="font-hand font-bold text-2xl text-[#111111] leading-none">
-                    💳 Sebaran Metode Bayar
+                  <h3 className="font-hand font-bold text-xl sm:text-2xl text-[#111111] leading-none">
+                    Daftar Antrean Pesanan
                   </h3>
-                  <p className="font-sans text-xs text-[#5C3D2E]/70 mt-1">
-                    Pelanggan paling suka bayar pakai apa?
-                  </p>
-
-                  <div className="mt-6 space-y-4 font-sans text-xs">
-                    {/* QRIS */}
-                    <div>
-                      <div className="flex justify-between font-bold mb-1">
-                        <span className="flex items-center gap-1.5">
-                          <span className="w-3 h-3 rounded-full bg-emerald-500 inline-block" />
-                          📱 QRIS
-                        </span>
-                        <span>{totalOmsetLunas > 0 ? Math.round((qrisTotal / totalOmsetLunas) * 100) : 0}%</span>
-                      </div>
-                      <div className="w-full bg-gray-100 rounded-full h-3 overflow-hidden border border-[#111111]/20">
-                        <div
-                          className="bg-emerald-500 h-full rounded-full transition-all duration-700"
-                          style={{ width: `${totalOmsetLunas > 0 ? (qrisTotal / totalOmsetLunas) * 100 : 0}%` }}
-                        />
-                      </div>
-                    </div>
-
-                    {/* Tunai */}
-                    <div>
-                      <div className="flex justify-between font-bold mb-1">
-                        <span className="flex items-center gap-1.5">
-                          <span className="w-3 h-3 rounded-full bg-amber-400 inline-block" />
-                          💵 Tunai
-                        </span>
-                        <span>{totalOmsetLunas > 0 ? Math.round((tunaiTotal / totalOmsetLunas) * 100) : 0}%</span>
-                      </div>
-                      <div className="w-full bg-gray-100 rounded-full h-3 overflow-hidden border border-[#111111]/20">
-                        <div
-                          className="bg-amber-400 h-full rounded-full transition-all duration-700"
-                          style={{ width: `${totalOmsetLunas > 0 ? (tunaiTotal / totalOmsetLunas) * 100 : 0}%` }}
-                        />
-                      </div>
-                    </div>
-
-                    {/* Transfer */}
-                    <div>
-                      <div className="flex justify-between font-bold mb-1">
-                        <span className="flex items-center gap-1.5">
-                          <span className="w-3 h-3 rounded-full bg-blue-500 inline-block" />
-                          🏦 Transfer Bank
-                        </span>
-                        <span>{totalOmsetLunas > 0 ? Math.round((transferTotal / totalOmsetLunas) * 100) : 0}%</span>
-                      </div>
-                      <div className="w-full bg-gray-100 rounded-full h-3 overflow-hidden border border-[#111111]/20">
-                        <div
-                          className="bg-blue-500 h-full rounded-full transition-all duration-700"
-                          style={{ width: `${totalOmsetLunas > 0 ? (transferTotal / totalOmsetLunas) * 100 : 0}%` }}
-                        />
-                      </div>
-                    </div>
-                  </div>
-                </div>
-
-                <div className="p-3.5 bg-[#FFF8E7] rounded-[16px] border border-[#FFD700] text-xs font-sans text-[#5C3D2E]">
-                  💡 <strong>Tips Dapur:</strong> Setiap kali pesanan ditandai lunas, sistem otomatis menganalisa selera pembeli (menu & saos terfavorit) untuk tab Pelanggan Setia!
-                </div>
-              </div>
-            </div>
-
-            {/* DAFTAR TRANSAKSI & 1-CLICK STATUS PAYMENT ACTIONS */}
-            <div className="space-y-4">
-              <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-3">
-                <div>
-                  <h3 className="font-hand font-bold text-2xl text-[#111111] leading-none">
-                    Daftar Pesanan & Status Bayar (WhatsApp & Walk-In)
-                  </h3>
-                  <p className="font-sans text-xs text-[#5C3D2E]/70 mt-1">
-                    Klik 1-tombol untuk ubah status: Tunai, QRIS, Transfer, atau Batal Beli.
+                  <p className="font-sans text-[11px] sm:text-xs text-[#5C3D2E]/70 mt-0.5">
+                    Konfirmasi pembayaran langsung atau cetak struk kasir.
                   </p>
                 </div>
 
-                {/* Filters */}
+                {/* Filters & Search */}
                 <div className="flex flex-wrap items-center gap-2">
-                  <div className="inline-flex p-1 bg-white border-2 border-[#111111] rounded-full shadow-xs gap-1">
+                  <div className="inline-flex p-0.5 sm:p-1 bg-white border-2 border-[#111111] rounded-full shadow-2xs gap-0.5 overflow-x-auto max-w-full">
                     {(['all', 'menunggu', 'lunas', 'batal'] as const).map((st) => (
                       <button
                         key={st}
                         type="button"
                         onClick={() => setOrderFilter(st)}
-                        className={`cursor-pointer px-3 py-1 rounded-full font-sans font-bold text-xs transition ${
+                        className={`cursor-pointer px-2.5 sm:px-3 py-1 rounded-full font-sans font-bold text-[11px] sm:text-xs transition shrink-0 ${
                           orderFilter === st
                             ? 'bg-[#111111] text-[#FFD700]'
                             : 'text-[#5C3D2E]/70 hover:text-[#111111]'
                         }`}
                       >
                         {st === 'all' && `Semua (${orders.length})`}
-                        {st === 'menunggu' && `Menunggu (${pendingOrders.length})`}
-                        {st === 'lunas' && `Lunas (${lunasOrders.length})`}
-                        {st === 'batal' && `Batal (${batalOrders.length})`}
+                        {st === 'menunggu' && `⏳ Menunggu (${pendingOrders.length})`}
+                        {st === 'lunas' && `✓ Lunas (${lunasOrders.length})`}
+                        {st === 'batal' && `✕ Batal (${batalOrders.length})`}
                       </button>
                     ))}
                   </div>
@@ -2962,15 +2704,15 @@ Catatan Kurir: Pastikan posisi dus ditaruh datar agar mayo tidak tumpah ya kak.`
                     type="text"
                     value={orderSearch}
                     onChange={(e) => setOrderSearch(e.target.value)}
-                    placeholder="Cari nama / ID / menu..."
-                    className="rounded-full border-2 border-[#111111] px-4 py-1.5 font-sans text-xs bg-white focus:outline-none focus:border-[#FFD700]"
+                    placeholder="Cari nama / ID..."
+                    className="rounded-full border-2 border-[#111111] px-3.5 py-1 font-sans text-xs bg-white focus:outline-none focus:border-[#FFD700] grow sm:grow-0"
                   />
                 </div>
               </div>
 
               {/* Order Cards List */}
               {filteredOrders.length === 0 ? (
-                <div className="bg-white rounded-[20px] p-8 text-center border-2 border-[#111111] shadow-[3px_3px_0_#111111]">
+                <div className="bg-white rounded-[20px] p-6 sm:p-8 text-center border-2 border-[#111111] shadow-[3px_3px_0_#111111]">
                   <p className="font-sans text-sm text-[#5C3D2E]/70">
                     Tidak ada transaksi pada filter ini.
                   </p>
@@ -2980,26 +2722,29 @@ Catatan Kurir: Pastikan posisi dus ditaruh datar agar mayo tidak tumpah ya kak.`
                   {filteredOrders.map((ord) => (
                     <div
                       key={ord.id}
-                      className={`bg-white rounded-[20px] p-4 sm:p-5 border-2 border-[#111111] shadow-[3px_3px_0_#111111] flex flex-col lg:flex-row lg:items-center justify-between gap-4 transition-all ${
-                        ord.status === 'menunggu' ? 'bg-amber-50/40 border-amber-500/60' : ''
+                      className={`bg-white rounded-[18px] sm:rounded-[20px] p-3.5 sm:p-5 border-2 border-[#111111] shadow-[3px_3px_0_#111111] transition-all ${
+                        ord.status === 'menunggu' ? 'bg-amber-50/50 border-amber-500' : ''
                       }`}
                     >
-                      <div className="space-y-2 flex-1">
-                        <div className="flex flex-wrap items-center gap-2">
-                          <span className="font-mono font-bold text-xs bg-[#111111] text-[#FFD700] px-2.5 py-0.5 rounded-full">
-                            #{ord.id}
-                          </span>
-                          <span className="font-sans text-xs text-[#5C3D2E]/70">
-                            {new Date(ord.created_at).toLocaleDateString('id-ID', {
-                              day: 'numeric',
-                              month: 'short',
-                              hour: '2-digit',
-                              minute: '2-digit',
-                            })}
-                          </span>
-                          <span className="font-sans text-[11px] font-bold px-2 py-0.5 rounded-full border border-[#111111]/20 bg-gray-50">
-                            {ord.channel === 'web_wa' ? '📱 WhatsApp Web' : '🍳 Walk-In Dapur'}
-                          </span>
+                      <div className="space-y-2">
+                        {/* Top Meta Bar */}
+                        <div className="flex flex-wrap items-center justify-between gap-1.5 border-b border-[#111111]/10 pb-2">
+                          <div className="flex items-center gap-1.5 flex-wrap">
+                            <span className="font-mono font-bold text-xs bg-[#111111] text-[#FFD700] px-2.5 py-0.5 rounded-full">
+                              #{ord.id}
+                            </span>
+                            <span className="font-sans text-[11px] text-[#5C3D2E]/70">
+                              {new Date(ord.created_at).toLocaleDateString('id-ID', {
+                                day: 'numeric',
+                                month: 'short',
+                                hour: '2-digit',
+                                minute: '2-digit',
+                              })}
+                            </span>
+                            <span className="font-sans text-[10px] font-bold px-2 py-0.5 rounded-full border border-[#111111]/15 bg-white">
+                              {ord.channel === 'web_wa' ? '📱 WhatsApp' : '🍳 Walk-In'}
+                            </span>
+                          </div>
 
                           {/* Status Pill */}
                           <span
@@ -3020,23 +2765,31 @@ Catatan Kurir: Pastikan posisi dus ditaruh datar agar mayo tidak tumpah ya kak.`
                         </div>
 
                         {/* Customer Info */}
-                        <div className="font-sans text-sm">
-                          <strong className="text-[#111111]">{ord.customer_name}</strong>
-                          {ord.customer_wa && (
-                            <a
-                              href={`https://wa.me/${ord.customer_wa.replace(/[^0-9]/g, '')}`}
-                              target="_blank"
-                              rel="noopener noreferrer"
-                              className="text-emerald-700 underline font-semibold ml-2 hover:text-emerald-900 text-xs"
-                            >
-                              WA: +{ord.customer_wa}
-                            </a>
-                          )}
-                          {ord.customer_qr_id && (
-                            <span className="ml-2 font-mono text-[11px] bg-[#FFD700] text-[#111111] px-2 py-0.5 rounded-full font-bold">
-                              {ord.customer_qr_id}
+                        <div className="flex items-center justify-between gap-2">
+                          <div className="font-sans text-sm">
+                            <strong className="text-[#111111] text-base">{ord.customer_name}</strong>
+                            {ord.customer_wa && (
+                              <a
+                                href={`https://wa.me/${ord.customer_wa.replace(/[^0-9]/g, '')}`}
+                                target="_blank"
+                                rel="noopener noreferrer"
+                                className="text-emerald-700 underline font-semibold ml-2 hover:text-emerald-900 text-xs"
+                              >
+                                WA: {ord.customer_wa} ↗
+                              </a>
+                            )}
+                            {ord.customer_qr_id && (
+                              <span className="ml-1.5 font-mono text-[10px] bg-[#FFD700] text-[#111111] px-2 py-0.5 rounded-full font-bold">
+                                {ord.customer_qr_id}
+                              </span>
+                            )}
+                          </div>
+
+                          <div className="text-right">
+                            <span className="font-hand font-bold text-xl sm:text-2xl text-[#111111]">
+                              Rp {ord.total_price.toLocaleString('id-ID')}
                             </span>
-                          )}
+                          </div>
                         </div>
 
                         {/* Order Items Breakdown */}
@@ -3044,20 +2797,20 @@ Catatan Kurir: Pastikan posisi dus ditaruh datar agar mayo tidak tumpah ya kak.`
                           {ord.items.map((it, idx) => (
                             <span
                               key={idx}
-                              className="bg-[#FFF8E7] border border-[#111111]/15 px-2.5 py-1 rounded-lg flex items-center gap-1.5"
+                              className="bg-[#FFF8E7] border border-[#111111]/15 px-2 py-0.5 rounded-lg flex items-center gap-1"
                             >
                               <strong>{it.qty}x</strong> {it.nama}
                               <span
-                                className={`text-[10px] font-bold px-1.5 py-0.2 rounded-full border ${
+                                className={`text-[9px] font-bold px-1 rounded-sm ${
                                   it.variantType === 'frozen'
-                                    ? 'bg-sky-100 text-sky-800 border-sky-300'
-                                    : 'bg-amber-100 text-amber-900 border-amber-300'
+                                    ? 'bg-sky-100 text-sky-800'
+                                    : 'bg-amber-100 text-amber-900'
                                 }`}
                               >
-                                {it.variantType === 'frozen' ? '❄️ Frozen' : '🍳 Matang'}
+                                {it.variantType === 'frozen' ? '❄️' : '🍳'}
                               </span>
                               {it.pilihanOpsi && (
-                                <span className="text-[#5C3D2E] font-bold ml-1">
+                                <span className="text-[#5C3D2E] font-medium ml-0.5">
                                   ({it.pilihanOpsi})
                                 </span>
                               )}
@@ -3066,105 +2819,301 @@ Catatan Kurir: Pastikan posisi dus ditaruh datar agar mayo tidak tumpah ya kak.`
                         </div>
 
                         {ord.notes && (
-                          <div className="font-sans text-xs text-[#5C3D2E]/80 italic">
-                            💬 "{ord.notes}"
+                          <div className="font-sans text-xs bg-amber-100/60 text-[#5C3D2E] px-2.5 py-1 rounded-lg border border-amber-200/80">
+                            💬 <strong>Catatan Dapur:</strong> "{ord.notes}"
                           </div>
                         )}
-                      </div>
 
-                      {/* Right: Total Price & 1-Click Action Buttons */}
-                      <div className="flex flex-col sm:flex-row lg:flex-col items-start sm:items-center lg:items-end justify-between gap-3 shrink-0 pt-2 lg:pt-0 border-t lg:border-t-0 border-[#111111]/10">
-                        <div className="text-right">
-                          <span className="text-[11px] font-sans text-[#5C3D2E]/70 block">Total Transaksi</span>
-                          <span className="font-hand font-bold text-2xl text-[#111111]">
-                            Rp {ord.total_price.toLocaleString('id-ID')}
-                          </span>
-                        </div>
+                        {/* Action Buttons: Clean & Ergonomic */}
+                        <div className="flex flex-wrap items-center justify-between gap-2 pt-2 border-t border-[#111111]/10">
+                          <div className="flex flex-wrap items-center gap-1.5 grow sm:grow-0">
+                            {ord.status === 'menunggu' && (
+                              <>
+                                <button
+                                  type="button"
+                                  onClick={() => handleUpdateOrderStatus(ord.id, 'lunas', 'qris')}
+                                  className="cursor-pointer flex-1 sm:flex-initial px-3.5 py-1.5 rounded-full font-sans font-bold text-xs bg-emerald-600 text-white hover:bg-emerald-700 border border-emerald-800 shadow-xs flex items-center justify-center gap-1 transition active:scale-95"
+                                  title="Tandai Lunas via QRIS"
+                                >
+                                  <span>📱</span> Lunas QRIS
+                                </button>
+                                <button
+                                  type="button"
+                                  onClick={() => handleUpdateOrderStatus(ord.id, 'lunas', 'tunai')}
+                                  className="cursor-pointer flex-1 sm:flex-initial px-3.5 py-1.5 rounded-full font-sans font-bold text-xs bg-[#FFD700] text-[#111111] hover:brightness-105 border border-[#111111] shadow-xs flex items-center justify-center gap-1 transition active:scale-95"
+                                  title="Tandai Lunas via Tunai"
+                                >
+                                  <span>💵</span> Lunas Tunai
+                                </button>
+                                <button
+                                  type="button"
+                                  onClick={() => handleUpdateOrderStatus(ord.id, 'lunas', 'transfer')}
+                                  className="cursor-pointer px-2.5 py-1.5 rounded-full font-sans font-bold text-xs bg-white hover:bg-blue-50 text-blue-800 border border-blue-300"
+                                  title="Tandai Lunas via Transfer"
+                                >
+                                  🏦 Transfer
+                                </button>
+                              </>
+                            )}
 
-                        {/* 1-Click Status Buttons: Tunai, QRIS, Transfer, Batal Beli, Struk & Tagihan WA */}
-                        <div className="flex flex-wrap items-center gap-1.5">
-                          <button
-                            type="button"
-                            onClick={() => handleUpdateOrderStatus(ord.id, 'lunas', 'tunai')}
-                            className={`cursor-pointer px-2.5 py-1 rounded-full font-sans font-bold text-[11px] border transition ${
-                              ord.status === 'lunas' && ord.payment_method === 'tunai'
-                                ? 'bg-amber-400 text-[#111111] border-amber-600 ring-2 ring-amber-400'
-                                : 'bg-white hover:bg-amber-50 text-[#111111] border-[#111111]/30'
-                            }`}
-                            title="Tandai Lunas via Tunai"
-                          >
-                            💵 Tunai
-                          </button>
+                            {ord.status === 'lunas' && (
+                              <span className="px-3 py-1 rounded-full font-sans font-bold text-xs bg-emerald-100 text-emerald-800 border border-emerald-300 flex items-center gap-1">
+                                ✓ Lunas ({(ord.payment_method || 'tunai').toUpperCase()})
+                              </span>
+                            )}
+                          </div>
 
-                          <button
-                            type="button"
-                            onClick={() => handleUpdateOrderStatus(ord.id, 'lunas', 'qris')}
-                            className={`cursor-pointer px-2.5 py-1 rounded-full font-sans font-bold text-[11px] border transition ${
-                              ord.status === 'lunas' && ord.payment_method === 'qris'
-                                ? 'bg-emerald-500 text-white border-emerald-700 ring-2 ring-emerald-400'
-                                : 'bg-white hover:bg-emerald-50 text-[#111111] border-[#111111]/30'
-                            }`}
-                            title="Tandai Lunas via QRIS"
-                          >
-                            📱 QRIS
-                          </button>
+                          <div className="flex items-center gap-1.5 ml-auto">
+                            <button
+                              type="button"
+                              onClick={() => setSelectedOrderForReceipt(ord)}
+                              className="cursor-pointer px-3 py-1.5 rounded-full font-sans font-bold text-xs bg-[#111111] text-[#FFD700] border border-[#111111] hover:brightness-110 flex items-center gap-1 transition"
+                              title="Buka / Cetak Struk Kasir"
+                            >
+                              <span>🧾</span>
+                              <span className="hidden xs:inline">Struk</span>
+                            </button>
 
-                          <button
-                            type="button"
-                            onClick={() => handleUpdateOrderStatus(ord.id, 'lunas', 'transfer')}
-                            className={`cursor-pointer px-2.5 py-1 rounded-full font-sans font-bold text-[11px] border transition ${
-                              ord.status === 'lunas' && ord.payment_method === 'transfer'
-                                ? 'bg-blue-600 text-white border-blue-800 ring-2 ring-blue-400'
-                                : 'bg-white hover:bg-blue-50 text-[#111111] border-[#111111]/30'
-                            }`}
-                            title="Tandai Lunas via Transfer"
-                          >
-                            🏦 Transfer
-                          </button>
+                            <button
+                              type="button"
+                              onClick={() => handleSendInvoiceWhatsApp(ord)}
+                              className="cursor-pointer px-3 py-1.5 rounded-full font-sans font-bold text-xs bg-[#25D366] text-white border border-emerald-700 hover:brightness-105 flex items-center gap-1 transition"
+                              title="Kirim Tagihan / Invoice ke WhatsApp"
+                            >
+                              <span>📲</span>
+                              <span className="hidden xs:inline">WA</span>
+                            </button>
 
-                          <button
-                            type="button"
-                            onClick={() => handleUpdateOrderStatus(ord.id, 'batal')}
-                            className={`cursor-pointer px-2.5 py-1 rounded-full font-sans font-bold text-[11px] border transition ${
-                              ord.status === 'batal'
-                                ? 'bg-red-500 text-white border-red-700'
-                                : 'bg-white hover:bg-red-50 text-red-700 border-red-200'
-                            }`}
-                            title="Tandai pesanan batal beli"
-                          >
-                            ❌ Batal
-                          </button>
+                            {ord.status === 'menunggu' && (
+                              <button
+                                type="button"
+                                onClick={() => handleUpdateOrderStatus(ord.id, 'batal')}
+                                className="cursor-pointer px-2 py-1.5 rounded-full font-sans font-bold text-xs bg-white text-rose-700 hover:bg-rose-50 border border-rose-200 transition"
+                                title="Tandai pesanan batal"
+                              >
+                                ✕
+                              </button>
+                            )}
 
-                          <button
-                            type="button"
-                            onClick={() => setSelectedOrderForReceipt(ord)}
-                            className="cursor-pointer px-2.5 py-1 rounded-full font-sans font-bold text-[11px] bg-[#111111] text-[#FFD700] border-2 border-[#111111] hover:brightness-110 shadow-xs flex items-center gap-1 transition active:translate-y-0.5"
-                            title="Buka / Cetak Struk Kasir & Kirim ke WhatsApp"
-                          >
-                            <span>🧾</span> Struk
-                          </button>
-
-                          <button
-                            type="button"
-                            onClick={() => handleSendInvoiceWhatsApp(ord)}
-                            className="cursor-pointer px-2.5 py-1 rounded-full font-sans font-bold text-[11px] bg-[#25D366] text-white border border-emerald-700 hover:bg-[#20ba59] shadow-xs flex items-center gap-1 transition active:translate-y-0.5"
-                            title="1-Tap Kirim Rincian Tagihan, Rekening BCA/Mandiri & QRIS ke WhatsApp Pembeli"
-                          >
-                            <span>📲</span> Tagihan WA
-                          </button>
-
-                          <button
-                            type="button"
-                            onClick={() => handleDeleteOrder(ord.id)}
-                            className="cursor-pointer text-gray-400 hover:text-red-500 p-1 text-xs"
-                            title="Hapus riwayat pesanan ini"
-                          >
-                            🗑️
-                          </button>
+                            <button
+                              type="button"
+                              onClick={() => handleDeleteOrder(ord.id)}
+                              className="cursor-pointer text-gray-400 hover:text-red-500 p-1.5 text-xs"
+                              title="Hapus riwayat pesanan ini"
+                            >
+                              🗑️
+                            </button>
+                          </div>
                         </div>
                       </div>
                     </div>
                   ))}
+                </div>
+              )}
+            </div>
+
+            {/* ACCORDION: GRAFIK & ANALISIS PENJUALAN DAPUR (TIDAK MENGHALANGI ANTREAN) */}
+            <div className="bg-white rounded-[22px] border-2 border-[#111111] shadow-[3px_3px_0_#111111] overflow-hidden mt-6">
+              <button
+                type="button"
+                onClick={() => setIsChartsExpanded(!isChartsExpanded)}
+                className="w-full px-4 sm:px-5 py-3.5 flex items-center justify-between text-left font-sans font-bold text-sm bg-gradient-to-r from-amber-50 to-white hover:bg-amber-100/60 transition cursor-pointer"
+              >
+                <div className="flex items-center gap-2.5">
+                  <span className="text-xl">📊</span>
+                  <div>
+                    <span className="font-hand font-bold text-xl text-[#111111] block leading-tight">
+                      Grafik Menu Best Seller & Analisis Omset
+                    </span>
+                    <span className="font-sans text-[11px] text-[#5C3D2E]/70 font-normal">
+                      Peringkat menu terlaris & rincian pembayaran (QRIS/Tunai/Transfer)
+                    </span>
+                  </div>
+                </div>
+                <span className="text-xs bg-[#FFD700] text-[#111111] px-3 py-1 rounded-full font-bold border border-[#111111]/30 shrink-0">
+                  {isChartsExpanded ? 'Tutup ▲' : 'Buka Grafik ▼'}
+                </span>
+              </button>
+
+              {isChartsExpanded && (
+                <div className="p-4 sm:p-6 border-t-2 border-[#111111]/10 space-y-6 animate-in slide-in-from-top-2 duration-200">
+                  {/* Detailed Metric Cards */}
+                  <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-3">
+                    <div className="bg-[#FFF8E7] rounded-[18px] p-4 border border-[#111111]/20">
+                      <span className="text-[11px] font-sans font-bold uppercase text-[#5C3D2E]/70 block">
+                        Omset Terbayar (Lunas)
+                      </span>
+                      <div className="font-hand font-bold text-2xl text-[#111111] mt-1">
+                        Rp {totalOmsetLunas.toLocaleString('id-ID')}
+                      </div>
+                      <div className="text-[11px] font-sans text-emerald-700 font-bold mt-1">
+                        ✓ {lunasOrders.length} transaksi selesai
+                      </div>
+                    </div>
+
+                    <div className="bg-[#FFF8E7] rounded-[18px] p-4 border border-[#111111]/20">
+                      <span className="text-[11px] font-sans font-bold uppercase text-[#5C3D2E]/70 block">
+                        Porsi Risoles Terjual
+                      </span>
+                      <div className="font-hand font-bold text-2xl text-[#111111] mt-1">
+                        {totalPorsiTerjual} Porsi
+                      </div>
+                      <div className="text-[11px] font-sans text-[#5C3D2E]/80 mt-1">
+                        Digoreng fresh di wajan panas
+                      </div>
+                    </div>
+
+                    <div className="bg-[#FFF8E7] rounded-[18px] p-4 border border-[#111111]/20">
+                      <span className="text-[11px] font-sans font-bold uppercase text-[#5C3D2E]/70 block">
+                        Menunggu Pembayaran
+                      </span>
+                      <div className="font-hand font-bold text-2xl text-[#111111] mt-1">
+                        {pendingOrders.length} Order
+                      </div>
+                      <div className="text-[11px] font-sans text-amber-700 font-bold mt-1">
+                        Rp {totalOmsetPending.toLocaleString('id-ID')} butuh konfirmasi
+                      </div>
+                    </div>
+
+                    <div className="bg-[#FFFDF4] rounded-[18px] p-4 border border-[#111111]/20 space-y-1">
+                      <span className="text-[11px] font-sans font-bold uppercase text-[#5C3D2E]/70 block mb-1">
+                        Breakdown Pembayaran
+                      </span>
+                      <div className="flex justify-between text-xs font-sans">
+                        <span>📱 QRIS:</span>
+                        <strong>Rp {qrisTotal.toLocaleString('id-ID')} ({qrisOrders.length}x)</strong>
+                      </div>
+                      <div className="flex justify-between text-xs font-sans">
+                        <span>💵 Tunai:</span>
+                        <strong>Rp {tunaiTotal.toLocaleString('id-ID')} ({tunaiOrders.length}x)</strong>
+                      </div>
+                      <div className="flex justify-between text-xs font-sans">
+                        <span>🏦 Transfer:</span>
+                        <strong>Rp {transferTotal.toLocaleString('id-ID')} ({transferOrders.length}x)</strong>
+                      </div>
+                    </div>
+                  </div>
+
+                  {/* VISUAL GRAFIK PENJUALAN & LEADERBOARD BEST SELLER */}
+                  <div className="grid lg:grid-cols-[1.2fr_0.8fr] gap-6">
+                    {/* Leaderboard Menu Terlaris Bar Chart */}
+                    <div className="bg-[#FFFDF4] rounded-[20px] p-5 border-2 border-[#111111]/15 space-y-4">
+                      <div className="flex items-center justify-between">
+                        <div>
+                          <h4 className="font-hand font-bold text-xl text-[#111111] leading-none">
+                            🏆 Menu Paling Laris (Best Seller)
+                          </h4>
+                          <p className="font-sans text-xs text-[#5C3D2E]/70 mt-1">
+                            Peringkat menu berdasarkan total porsi terbayar lunas.
+                          </p>
+                        </div>
+                        <span className="font-sans text-xs font-bold bg-[#FFD700] px-3 py-1 rounded-full border border-[#111111]">
+                          {bestSellerList.length} Menu
+                        </span>
+                      </div>
+
+                      {bestSellerList.length === 0 ? (
+                        <div className="text-center py-6 font-sans text-xs text-[#5C3D2E]/60 italic">
+                          Belum ada data penjualan lunas. Begitu pesanan ditandai lunas, grafik akan langsung muncul di sini!
+                        </div>
+                      ) : (
+                        <div className="space-y-3 pt-2">
+                          {bestSellerList.map((item, idx) => {
+                            const pct = Math.round((item.qty / maxSoldQty) * 100);
+                            const rankBadge = idx === 0 ? '🥇' : idx === 1 ? '🥈' : idx === 2 ? '🥉' : `#${idx + 1}`;
+                            return (
+                              <div key={item.nama} className="space-y-1">
+                                <div className="flex items-center justify-between text-xs font-sans">
+                                  <span className="font-bold text-[#111111] flex items-center gap-1.5">
+                                    <span className="w-5 text-center">{rankBadge}</span>
+                                    <span>{item.nama}</span>
+                                  </span>
+                                  <span className="text-[#5C3D2E]">
+                                    <strong>{item.qty} porsi</strong> • Rp {item.totalRp.toLocaleString('id-ID')}
+                                  </span>
+                                </div>
+                                <div className="w-full bg-[#FFF8E7] rounded-full h-3.5 overflow-hidden border border-[#111111]/20 p-0.5">
+                                  <div
+                                    className="bg-gradient-to-r from-[#FFD700] via-amber-400 to-[#FFD700] h-full rounded-full transition-all duration-700"
+                                    style={{ width: `${Math.max(pct, 6)}%` }}
+                                  />
+                                </div>
+                              </div>
+                            );
+                          })}
+                        </div>
+                      )}
+                    </div>
+
+                    {/* Perbandingan Metode Pembayaran */}
+                    <div className="bg-[#FFFDF4] rounded-[20px] p-5 border-2 border-[#111111]/15 flex flex-col justify-between space-y-4">
+                      <div>
+                        <h4 className="font-hand font-bold text-xl text-[#111111] leading-none">
+                          💳 Sebaran Metode Bayar
+                        </h4>
+                        <p className="font-sans text-xs text-[#5C3D2E]/70 mt-1">
+                          Pelanggan paling suka bayar pakai apa?
+                        </p>
+
+                        <div className="mt-4 space-y-3 font-sans text-xs">
+                          {/* QRIS */}
+                          <div>
+                            <div className="flex justify-between font-bold mb-1">
+                              <span className="flex items-center gap-1.5">
+                                <span className="w-2.5 h-2.5 rounded-full bg-emerald-500 inline-block" />
+                                📱 QRIS
+                              </span>
+                              <span>{totalOmsetLunas > 0 ? Math.round((qrisTotal / totalOmsetLunas) * 100) : 0}%</span>
+                            </div>
+                            <div className="w-full bg-gray-100 rounded-full h-2.5 overflow-hidden border border-[#111111]/20">
+                              <div
+                                className="bg-emerald-500 h-full rounded-full transition-all duration-700"
+                                style={{ width: `${totalOmsetLunas > 0 ? (qrisTotal / totalOmsetLunas) * 100 : 0}%` }}
+                              />
+                            </div>
+                          </div>
+
+                          {/* Tunai */}
+                          <div>
+                            <div className="flex justify-between font-bold mb-1">
+                              <span className="flex items-center gap-1.5">
+                                <span className="w-2.5 h-2.5 rounded-full bg-amber-400 inline-block" />
+                                💵 Tunai
+                              </span>
+                              <span>{totalOmsetLunas > 0 ? Math.round((tunaiTotal / totalOmsetLunas) * 100) : 0}%</span>
+                            </div>
+                            <div className="w-full bg-gray-100 rounded-full h-2.5 overflow-hidden border border-[#111111]/20">
+                              <div
+                                className="bg-amber-400 h-full rounded-full transition-all duration-700"
+                                style={{ width: `${totalOmsetLunas > 0 ? (tunaiTotal / totalOmsetLunas) * 100 : 0}%` }}
+                              />
+                            </div>
+                          </div>
+
+                          {/* Transfer */}
+                          <div>
+                            <div className="flex justify-between font-bold mb-1">
+                              <span className="flex items-center gap-1.5">
+                                <span className="w-2.5 h-2.5 rounded-full bg-blue-500 inline-block" />
+                                🏦 Transfer Bank
+                              </span>
+                              <span>{totalOmsetLunas > 0 ? Math.round((transferTotal / totalOmsetLunas) * 100) : 0}%</span>
+                            </div>
+                            <div className="w-full bg-gray-100 rounded-full h-2.5 overflow-hidden border border-[#111111]/20">
+                              <div
+                                className="bg-blue-500 h-full rounded-full transition-all duration-700"
+                                style={{ width: `${totalOmsetLunas > 0 ? (transferTotal / totalOmsetLunas) * 100 : 0}%` }}
+                              />
+                            </div>
+                          </div>
+                        </div>
+                      </div>
+
+                      <div className="p-3 bg-[#FFF8E7] rounded-[14px] border border-[#FFD700] text-[11px] font-sans text-[#5C3D2E]">
+                        💡 <strong>Tips Dapur:</strong> Setiap kali pesanan lunas, sistem otomatis mencatat menu & saos terfavorit pembeli!
+                      </div>
+                    </div>
+                  </div>
                 </div>
               )}
             </div>
