@@ -21,13 +21,19 @@ export const KitchenClosingModal: React.FC<KitchenClosingModalProps> = ({
 }) => {
   const [closingDate] = useState(() => new Date().toISOString().split('T')[0]);
   const [evalNotes, setEvalNotes] = useState('Alhamdulillah gorengan hari ini habis, sisa adonan aman di kulkas');
+  const [ownerWa, setOwnerWa] = useState(() => storageService.getOwnerWa());
 
   if (!isOpen) return null;
 
-  // Filter today's completed orders
-  const todayOrders = orders.filter((o) => {
+  // Filter today's completed orders and DP orders
+  const todayLunasOrders = orders.filter((o) => {
     const oDate = (o.completed_at || o.created_at || '').split('T')[0];
     return oDate === closingDate && o.status === 'lunas';
+  });
+
+  const todayDpOrders = orders.filter((o) => {
+    const oDate = (o.created_at || '').split('T')[0];
+    return oDate === closingDate && o.status === 'dp';
   });
 
   // Filter today's expenses
@@ -40,14 +46,19 @@ export const KitchenClosingModal: React.FC<KitchenClosingModalProps> = ({
   let portionsMatang = 0;
   let portionsFrozen = 0;
   let cashRevenue = 0;
-  let nonCashRevenue = 0;
+  let qrisRevenue = 0;
+  let transferRevenue = 0;
+  let dpRevenue = 0;
+  let pendingReceivables = 0;
   const itemCounts: Record<string, number> = {};
 
-  todayOrders.forEach((o) => {
+  todayLunasOrders.forEach((o) => {
     if (o.payment_method === 'tunai') {
       cashRevenue += o.total_price;
+    } else if (o.payment_method === 'transfer') {
+      transferRevenue += o.total_price;
     } else {
-      nonCashRevenue += o.total_price;
+      qrisRevenue += o.total_price;
     }
 
     o.items.forEach((it) => {
@@ -61,9 +72,36 @@ export const KitchenClosingModal: React.FC<KitchenClosingModalProps> = ({
     });
   });
 
-  const grossRevenue = cashRevenue + nonCashRevenue;
+  todayDpOrders.forEach((o) => {
+    const dp = o.dp_amount || 0;
+    dpRevenue += dp;
+    const remaining = o.remaining_amount !== undefined ? o.remaining_amount : Math.max(0, o.total_price - dp);
+    pendingReceivables += remaining;
+
+    if (o.payment_method === 'tunai') {
+      cashRevenue += dp;
+    } else if (o.payment_method === 'transfer') {
+      transferRevenue += dp;
+    } else {
+      qrisRevenue += dp;
+    }
+
+    o.items.forEach((it) => {
+      totalPortions += it.qty;
+      if (it.variantType === 'frozen') {
+        portionsFrozen += it.qty;
+      } else {
+        portionsMatang += it.qty;
+      }
+      itemCounts[it.nama] = (itemCounts[it.nama] || 0) + it.qty;
+    });
+  });
+
+  const nonCashRevenue = qrisRevenue + transferRevenue;
+  const grossRevenue = cashRevenue + nonCashRevenue; // Total cash physically / digitally received today
   const totalExpenseNominal = todayExpenses.reduce((sum, e) => sum + e.nominal, 0);
   const netProfit = grossRevenue - totalExpenseNominal;
+  const netProfitMargin = grossRevenue > 0 ? Math.round((netProfit / grossRevenue) * 100) : 0;
 
   // Top selling items
   const sortedItems = Object.entries(itemCounts)
@@ -85,40 +123,52 @@ export const KitchenClosingModal: React.FC<KitchenClosingModalProps> = ({
   });
 
   const generateRecapText = (): string => {
-    let msg = `🌙 *REKAP TUTUP DAPUR MALAM — DULANG INDONESIA* 🥟✨\n`;
-    msg += `📅 Tanggal: *${formattedDate}*\n`;
+    let msg = `🌙 *LAPORAN CLOSING DAPUR DULANG INDONESIA* 🥟✨\n`;
+    msg += `📅 Hari/Tgl: *${formattedDate}*\n`;
     if (storeConfig?.activeKloter) {
-      msg += `🏷️ Kloter Aktif: *${storeConfig.activeKloter}*\n`;
+      msg += `🏷️ Kloter: *${storeConfig.activeKloter}*\n`;
     }
-    msg += `⏰ Jam Tutup: *${new Date().toLocaleTimeString('id-ID', { hour: '2-digit', minute: '2-digit' })} WIB*\n`;
-    msg += `----------------------------------------\n`;
-    msg += `📊 *RINGKASAN PENJUALAN:*\n`;
-    msg += `• Total Transaksi Lunas: *${todayOrders.length} Pesanan*\n`;
-    msg += `• Total Porsi Terjual: *${totalPortions} Pcs*\n`;
-    msg += `  - 🍳 Goreng Matang: *${portionsMatang} Pcs*\n`;
-    msg += `  - ❄️ Frozen Food (Beku): *${portionsFrozen} Pcs*\n`;
-    msg += `----------------------------------------\n`;
-    msg += `💰 *ARUS KAS HARI INI:*\n`;
-    msg += `• Omzet Kotor: *Rp ${grossRevenue.toLocaleString('id-ID')}*\n`;
-    msg += `  - 💵 Uang Tunai (Cash): Rp ${cashRevenue.toLocaleString('id-ID')}\n`;
-    msg += `  - 📱 Non-Tunai (QRIS / Transfer): Rp ${nonCashRevenue.toLocaleString('id-ID')}\n`;
-    msg += `• Pengeluaran Kas Bahan: *-Rp ${totalExpenseNominal.toLocaleString('id-ID')}*\n`;
-    msg += `*✨ SISA KAS BERSIH (PROFIT): Rp ${netProfit.toLocaleString('id-ID')}*\n`;
-    msg += `----------------------------------------\n`;
+    msg += `⏰ Jam Closing: *${new Date().toLocaleTimeString('id-ID', { hour: '2-digit', minute: '2-digit' })} WIB*\n`;
+    msg += `━━━━━━━━━━━━━━━━━━━━━━━━\n`;
+    msg += `💰 *RINGKASAN KAS & PROFIT HARI INI:*\n`;
+    msg += `• Total Uang Masuk (Cash In): *Rp ${grossRevenue.toLocaleString('id-ID')}*\n`;
+    if (todayLunasOrders.length > 0) {
+      msg += `  ├ Pesanan Lunas (${todayLunasOrders.length}x): Rp ${(grossRevenue - dpRevenue).toLocaleString('id-ID')}\n`;
+    }
+    if (todayDpOrders.length > 0) {
+      msg += `  └ Uang Muka DP Masuk (${todayDpOrders.length}x): Rp ${dpRevenue.toLocaleString('id-ID')}\n`;
+    }
+    msg += `\n• Rincian Metode Penerimaan:\n`;
+    msg += `  💵 Tunai (Kas Fisik Dapur): Rp ${cashRevenue.toLocaleString('id-ID')}\n`;
+    msg += `  📲 QRIS: Rp ${qrisRevenue.toLocaleString('id-ID')}\n`;
+    msg += `  💳 Transfer Bank: Rp ${transferRevenue.toLocaleString('id-ID')}\n`;
+    msg += `\n• Total Belanja & Biaya Dapur: *-Rp ${totalExpenseNominal.toLocaleString('id-ID')}* (${todayExpenses.length} pos)\n`;
+    msg += `━━━━━━━━━━━━━━━━━━━━━━━━\n`;
+    msg += `🚀 *LABA BERSIH HARI INI: Rp ${netProfit.toLocaleString('id-ID')}*\n`;
+    msg += `📊 Margin Profit: *${netProfitMargin}%*\n`;
+    msg += `━━━━━━━━━━━━━━━━━━━━━━━━\n`;
+    msg += `🥟 *PORSI RISOLES TERJUAL:*\n`;
+    msg += `• Total Terjual: *${totalPortions} Pcs*\n`;
+    msg += `  - 🍳 Goreng Matang: ${portionsMatang} Pcs\n`;
+    msg += `  - ❄️ Frozen Food: ${portionsFrozen} Pcs\n`;
     if (sortedItems.length > 0) {
-      msg += `🏆 *MENU TERLARIS HARI INI:*\n`;
+      msg += `\n🏆 *Menu Terlaris:*\n`;
       sortedItems.forEach((it, idx) => {
         msg += `  ${idx + 1}. ${it.name} (${it.qty} pcs)\n`;
       });
     }
-    msg += `----------------------------------------\n`;
-    msg += `🌅 *PRE-ORDER BESOK SUBUH:*\n`;
-    msg += `• ${tomorrowOrders.length} Pesanan Booking (${tomorrowPcs} pcs risoles)\n`;
+    if (pendingReceivables > 0) {
+      msg += `\n⏳ *Piutang / Sisa Tagihan DP Pending:* Rp ${pendingReceivables.toLocaleString('id-ID')}\n`;
+    }
+    if (tomorrowOrders.length > 0) {
+      msg += `\n🌅 *Pre-Order Booking Besok:* ${tomorrowOrders.length} Pesanan (${tomorrowPcs} pcs risoles)\n`;
+    }
     if (evalNotes.trim()) {
-      msg += `----------------------------------------\n`;
+      msg += `━━━━━━━━━━━━━━━━━━━━━━━━\n`;
       msg += `📝 *Catatan Evaluasi Dapur:*\n"${evalNotes.trim()}"\n`;
     }
-    msg += `\nTerima kasih atas kerja keras hari ini! Istirahat cukup, besok subuh goreng lagi dengan senyuman 😊🙏💛`;
+    msg += `━━━━━━━━━━━━━━━━━━━━━━━━\n`;
+    msg += `Terima kasih atas kerja keras hari ini! Dapur Dulang istirahat malam, besok subuh siap melayani pelanggan dengan sepenuh hati 😊🙏💛`;
     return msg;
   };
 
@@ -127,13 +177,16 @@ export const KitchenClosingModal: React.FC<KitchenClosingModalProps> = ({
       id: `RECAP-${closingDate}`,
       recapDate: closingDate,
       closedAt: new Date().toISOString(),
-      totalOrders: todayOrders.length,
+      totalOrders: todayLunasOrders.length + todayDpOrders.length,
       totalPortions,
       portionsMatang,
       portionsFrozen,
       grossRevenue,
       cashRevenue,
       nonCashRevenue,
+      dpRevenue,
+      pendingReceivables,
+      totalCashFlowIn: grossRevenue,
       totalExpenses: totalExpenseNominal,
       netProfit,
       topSellingItems: sortedItems,
@@ -141,11 +194,15 @@ export const KitchenClosingModal: React.FC<KitchenClosingModalProps> = ({
       notes: evalNotes,
     };
     storageService.saveKitchenRecap(recap);
+    storageService.setOwnerWa(ownerWa);
 
     const text = generateRecapText();
-    const url = `https://wa.me/?text=${encodeURIComponent(text)}`;
+    const cleanWa = ownerWa.replace(/\D/g, '');
+    const url = cleanWa
+      ? `https://wa.me/${cleanWa}?text=${encodeURIComponent(text)}`
+      : `https://wa.me/?text=${encodeURIComponent(text)}`;
     window.open(url, '_blank', 'noopener,noreferrer');
-    onShowToast('Rekap tutup dapur disiapkan di WhatsApp! 🌙📋');
+    onShowToast(`Laporan closing disiapkan untuk WhatsApp Owner! 🌙📋`);
   };
 
   const handleCopyClipboard = () => {
@@ -159,13 +216,16 @@ export const KitchenClosingModal: React.FC<KitchenClosingModalProps> = ({
       id: `RECAP-${closingDate}`,
       recapDate: closingDate,
       closedAt: new Date().toISOString(),
-      totalOrders: todayOrders.length,
+      totalOrders: todayLunasOrders.length + todayDpOrders.length,
       totalPortions,
       portionsMatang,
       portionsFrozen,
       grossRevenue,
       cashRevenue,
       nonCashRevenue,
+      dpRevenue,
+      pendingReceivables,
+      totalCashFlowIn: grossRevenue,
       totalExpenses: totalExpenseNominal,
       netProfit,
       topSellingItems: sortedItems,
@@ -211,22 +271,29 @@ export const KitchenClosingModal: React.FC<KitchenClosingModalProps> = ({
                 ✨ Sisa Kas Bersih (Profit Hari Ini):
               </span>
               <span className="text-[11px] font-mono bg-white/10 px-2 py-0.5 rounded-full text-[#FFF8E7]/80">
-                {todayOrders.length} transaksi
+                {todayLunasOrders.length + todayDpOrders.length} transaksi ({todayLunasOrders.length} lunas, {todayDpOrders.length} DP)
               </span>
             </div>
 
-            <div className="font-hand font-bold text-4xl sm:text-5xl text-[#FFD700] leading-none">
-              Rp {netProfit.toLocaleString('id-ID')}
+            <div className="flex items-baseline gap-3">
+              <div className="font-hand font-bold text-4xl sm:text-5xl text-[#FFD700] leading-none">
+                Rp {netProfit.toLocaleString('id-ID')}
+              </div>
+              <span className="text-xs font-sans font-bold text-emerald-400 bg-emerald-950/80 px-2.5 py-1 rounded-full border border-emerald-700">
+                Margin: {netProfitMargin}%
+              </span>
             </div>
 
             <div className="grid grid-cols-2 gap-3 pt-3 border-t border-white/10 text-xs font-sans">
               <div>
-                <span className="text-white/60 block">Omzet Kotor:</span>
+                <span className="text-white/60 block">Total Uang Masuk (Cash In):</span>
                 <strong className="text-emerald-400 font-bold text-sm">
                   +Rp {grossRevenue.toLocaleString('id-ID')}
                 </strong>
-                <div className="text-[10px] text-white/50 mt-0.5">
-                  Tunai: Rp {cashRevenue.toLocaleString('id-ID')} | QRIS: Rp {nonCashRevenue.toLocaleString('id-ID')}
+                <div className="text-[10px] text-white/70 mt-1 space-y-0.5 font-mono">
+                  <div>💵 Tunai: Rp {cashRevenue.toLocaleString('id-ID')}</div>
+                  <div>📲 QRIS: Rp {qrisRevenue.toLocaleString('id-ID')}</div>
+                  <div>💳 Transfer: Rp {transferRevenue.toLocaleString('id-ID')}</div>
                 </div>
               </div>
               <div>
@@ -234,9 +301,14 @@ export const KitchenClosingModal: React.FC<KitchenClosingModalProps> = ({
                 <strong className="text-red-400 font-bold text-sm">
                   -Rp {totalExpenseNominal.toLocaleString('id-ID')}
                 </strong>
-                <div className="text-[10px] text-white/50 mt-0.5">
+                <div className="text-[10px] text-white/70 mt-1">
                   {todayExpenses.length} catatan belanja
                 </div>
+                {pendingReceivables > 0 && (
+                  <div className="mt-2 text-[10px] bg-amber-400/20 text-amber-300 p-1.5 rounded-lg border border-amber-400/30">
+                    ⏳ Sisa DP Pending: Rp {pendingReceivables.toLocaleString('id-ID')}
+                  </div>
+                )}
               </div>
             </div>
           </div>
@@ -312,6 +384,28 @@ export const KitchenClosingModal: React.FC<KitchenClosingModalProps> = ({
               className="w-full rounded-xl border-2 border-[#111111] p-2.5 font-sans text-xs bg-white focus:outline-none focus:ring-1 focus:ring-[#FFD700]"
             />
           </div>
+
+          {/* Target Nomor WA Pribadi Owner */}
+          <div className="bg-emerald-50 rounded-[18px] p-3.5 border-2 border-emerald-400 flex flex-col sm:flex-row items-start sm:items-center justify-between gap-3 text-xs font-sans">
+            <div>
+              <strong className="block text-emerald-950 font-bold flex items-center gap-1.5">
+                <span>📱</span>
+                <span>Kirim Langsung ke WA Pribadi Owner:</span>
+              </strong>
+              <span className="text-emerald-800 text-[11px]">
+                Rekap closing otomatis terbuka di chat nomor ini tanpa repot cari kontak
+              </span>
+            </div>
+            <div className="w-full sm:w-auto flex items-center gap-1.5">
+              <input
+                type="tel"
+                value={ownerWa}
+                onChange={(e) => setOwnerWa(e.target.value)}
+                placeholder="6287703397035"
+                className="w-full sm:w-44 bg-white border-2 border-emerald-600 rounded-full px-3 py-1.5 font-mono text-xs font-bold text-[#111111] focus:outline-none focus:ring-2 focus:ring-emerald-400"
+              />
+            </div>
+          </div>
         </div>
 
         {/* Action Buttons Footer */}
@@ -349,7 +443,7 @@ export const KitchenClosingModal: React.FC<KitchenClosingModalProps> = ({
               className="cursor-pointer bg-[#25D366] hover:bg-[#20ba59] text-white border-2 border-[#111111] px-5 py-2.5 rounded-full font-sans font-bold text-xs shadow-[3px_3px_0_#111111] transition flex items-center gap-1.5 active:translate-y-0.5"
             >
               <span>📲</span>
-              <span>Kirim Rekap ke WA</span>
+              <span>Kirim ke WA Owner (1-Klik)</span>
             </button>
           </div>
         </div>

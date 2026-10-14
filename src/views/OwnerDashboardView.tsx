@@ -3266,7 +3266,9 @@ Catatan Kurir: Pastikan posisi dus ditaruh datar agar mayo tidak tumpah ya kak.`
       {/* TAB: BUKU KAS & PROFIT BERSIH DAPUR */}
       {activeTab === 'expenses' && (() => {
         const paidOrders = orders.filter((o) => o.status === 'lunas');
-        const totalOmsetKotor = paidOrders.reduce((sum, o) => sum + o.total_price, 0);
+        const dpOrdersList = orders.filter((o) => o.status === 'dp');
+        const totalOmsetKotor = paidOrders.reduce((sum, o) => sum + o.total_price, 0) +
+          dpOrdersList.reduce((sum, o) => sum + (o.dp_amount || 0), 0);
         const totalBelanjaDapur = expenses.reduce((sum, e) => sum + e.nominal, 0);
         const netProfit = totalOmsetKotor - totalBelanjaDapur;
         const netProfitMargin = totalOmsetKotor > 0 ? ((netProfit / totalOmsetKotor) * 100).toFixed(1) : '0';
@@ -3310,6 +3312,15 @@ Catatan Kurir: Pastikan posisi dus ditaruh datar agar mayo tidak tumpah ya kak.`
               </div>
 
               <div className="flex flex-wrap items-center gap-2">
+                <button
+                  type="button"
+                  onClick={() => setIsClosingModalOpen(true)}
+                  className="cursor-pointer bg-[#25D366] hover:bg-[#20ba59] text-white font-sans font-bold px-4 py-2.5 rounded-full text-xs border-2 border-[#111111] shadow-[2px_2px_0_#111111] transition flex items-center gap-1.5 active:translate-y-0.5"
+                  title="Rekap tutup dapur malam & kirim otomatis ke WA Owner"
+                >
+                  <span>🌙</span>
+                  <span>Tutup Dapur & Kirim Rekap WA</span>
+                </button>
                 <button
                   type="button"
                   onClick={() => setIsAddingExpense(!isAddingExpense)}

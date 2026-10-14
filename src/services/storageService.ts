@@ -22,6 +22,7 @@ import {
   DEFAULT_VOUCHERS,
   DEFAULT_ORDERS,
   DEFAULT_TESTIMONIALS,
+  BRAND,
 } from '../lib/constants';
 import { getSupabaseClient } from '../lib/supabase';
 import {
@@ -1908,6 +1909,14 @@ ${lines.join('\n')}
     if (typeof window !== 'undefined') {
       window.dispatchEvent(new Event('dulang_kitchen_recaps_updated'));
     }
+  },
+
+  getOwnerWa(): string {
+    return localStorage.getItem('dulang_owner_wa') || BRAND.whatsapp || '6287703397035';
+  },
+
+  setOwnerWa(wa: string): void {
+    localStorage.setItem('dulang_owner_wa', wa.replace(/\D/g, ''));
   },
 };
 

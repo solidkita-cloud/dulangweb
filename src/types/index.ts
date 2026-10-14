@@ -256,6 +256,9 @@ export interface KitchenClosingRecap {
   grossRevenue: number;
   cashRevenue: number;
   nonCashRevenue: number;
+  dpRevenue?: number;
+  pendingReceivables?: number;
+  totalCashFlowIn?: number;
   totalExpenses: number;
   netProfit: number;
   topSellingItems: { name: string; qty: number }[];
