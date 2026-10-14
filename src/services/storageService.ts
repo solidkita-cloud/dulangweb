@@ -641,6 +641,26 @@ ${lines.join('\n')}
     }
   },
 
+  markCustomerGreeted(customerId: string): void {
+    const customers = this.getCustomers();
+    const idx = customers.findIndex((c) => c.id === customerId);
+    if (idx < 0) return;
+
+    const today = new Date().toISOString().split('T')[0];
+    const updated = {
+      ...customers[idx],
+      last_greeted_at: today,
+    };
+    const newList = [...customers];
+    newList[idx] = updated;
+    this.saveCustomers(newList);
+
+    const client = getSupabaseClient();
+    if (client) {
+      client.from('customers').update({ last_greeted_at: today }).eq('id', customerId).then();
+    }
+  },
+
   // --- QR CODES MANAGEMENT ---
   getQRCodes(): QRCodeRecord[] {
     try {
@@ -1092,6 +1112,10 @@ ${lines.join('\n')}
           delivery_method: r.delivery_method === 'delivery' ? 'delivery' : 'pickup',
           shipping_cost: Number(r.shipping_cost || 0),
           shipping_district: r.shipping_district || undefined,
+          delivery_schedule: r.delivery_schedule || undefined,
+          delivery_slot: r.delivery_slot || undefined,
+          dp_amount: r.dp_amount ? Number(r.dp_amount) : undefined,
+          remaining_amount: r.remaining_amount ? Number(r.remaining_amount) : undefined,
           channel: r.channel || 'web_wa',
           notes: r.notes || undefined,
           created_at: r.created_at || new Date().toISOString(),
@@ -1424,6 +1448,47 @@ ${lines.join('\n')}
     };
   },
 
+  updateOrderDP(orderId: string, dpAmount: number, paymentMethod?: PaymentMethod): OrderRecord | null {
+    const list = this.getOrders();
+    const idx = list.findIndex((o) => o.id === orderId);
+    if (idx < 0) return null;
+
+    const existing = list[idx];
+    const cleanDp = Math.max(0, Math.min(dpAmount, existing.total_price));
+    const remaining = Math.max(0, existing.total_price - cleanDp);
+    const updatedOrder: OrderRecord = {
+      ...existing,
+      status: 'dp',
+      dp_amount: cleanDp,
+      remaining_amount: remaining,
+      payment_method: paymentMethod || existing.payment_method || 'transfer',
+    };
+
+    const updatedList = [...list];
+    updatedList[idx] = updatedOrder;
+    this.saveOrders(updatedList);
+
+    // Sync status perubahan ke Supabase Cloud
+    try {
+      const client = getSupabaseClient();
+      if (client) {
+        client
+          .from('orders')
+          .update({
+            status: 'dp',
+            payment_method: updatedOrder.payment_method,
+            notes: `${existing.notes || ''} [DP: Rp ${cleanDp.toLocaleString('id-ID')} | Sisa: Rp ${remaining.toLocaleString('id-ID')}]`.trim(),
+          })
+          .eq('id', orderId)
+          .then();
+      }
+    } catch (e) {
+      console.warn('Update order DP to Supabase error:', e);
+    }
+
+    return updatedOrder;
+  },
+
   updateOrderStatus(orderId: string, status: OrderStatus, paymentMethod?: PaymentMethod): OrderRecord | null {
     const list = this.getOrders();
     const idx = list.findIndex((o) => o.id === orderId);
@@ -1434,6 +1499,7 @@ ${lines.join('\n')}
       ...existing,
       status,
       payment_method: paymentMethod || existing.payment_method,
+      remaining_amount: status === 'lunas' ? 0 : existing.remaining_amount,
       completed_at: status === 'lunas' ? new Date().toISOString() : existing.completed_at,
     };
 

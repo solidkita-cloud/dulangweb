@@ -101,7 +101,8 @@ export const StickyCart: React.FC<StickyCartProps> = ({
 
   // 3a: Jadwal Kirim (Hari Ini vs Pre-Order Besok)
   const [deliveryDay, setDeliveryDay] = useState<'today' | 'tomorrow'>('today');
-  const [deliverySlot, setDeliverySlot] = useState<string>('Slot Pagi (10.00)');
+  const [deliverySlot, setDeliverySlot] = useState<string>('Sekarang / Fresh Panas 🍳');
+  const [customTimeInput, setCustomTimeInput] = useState<string>('');
 
   // Step 6 & 7: Sistem Voucher Diskon Unik ("Voucher Beranak")
   const [voucherCodeInput, setVoucherCodeInput] = useState('');
@@ -195,12 +196,17 @@ export const StickyCart: React.FC<StickyCartProps> = ({
         : `Kurir Dapur / Ojol Lokal ke Kec. ${selectedDistrict} (Ongkir: Rp ${shippingCost.toLocaleString('id-ID')}) 🛵`
     }\n`;
 
-    message += `📅 *Jadwal Kirim:* ${
-      deliveryDay === 'tomorrow'
-        ? `Besok Subuh (${deliverySlot}) 📅`
-        : 'Kloter Hari Ini (Fresh Panas) 🍳'
-    }\n`;
+    const finalSlotText =
+      deliverySlot === 'custom'
+        ? (customTimeInput.trim() ? `Jam Khusus: ${customTimeInput.trim()} WIB` : 'Jam Fleksibel')
+        : deliverySlot;
 
+    const fullScheduleText =
+      deliveryDay === 'tomorrow'
+        ? `Besok (${finalSlotText}) 📅`
+        : `Hari Ini (${finalSlotText}) 🍳`;
+
+    message += `📅 *Jadwal Kirim:* ${fullScheduleText}\n`;
     message += `\n🌶️ *Opsi Racikan Dapur:*\n`;
     message += `• Cabe Rawit: ${extraChili ? 'Ekstra Banyak (Gratis 🌶️)' : 'Standar'}\n`;
     message += `• Varian Mayo: ${mayoChoice === 'pedas' ? 'Mayo Pedas Gurih Mantap 🌶️' : 'Mayo Original Gurih Lumer 🥟'}\n`;
@@ -241,7 +247,8 @@ export const StickyCart: React.FC<StickyCartProps> = ({
           variantType: c.variantType || 'matang',
         })),
         total_price: finalPrice,
-        delivery_schedule: deliveryDay === 'tomorrow' ? `Besok (${deliverySlot})` : 'Hari Ini (Fresh Panas)',
+        delivery_schedule: fullScheduleText,
+        delivery_slot: finalSlotText,
         notes: [
           deliveryMethod === 'pickup' ? 'Ambil di Dapur' : `Antar Kurir (${selectedDistrict}): ${buyerAddress.trim()}`,
           shippingCost > 0 ? `Ongkir: Rp ${shippingCost}` : '',
@@ -525,14 +532,19 @@ export const StickyCart: React.FC<StickyCartProps> = ({
               </div>
 
               {/* 3a: Pilihan Waktu Pengiriman */}
-              <div className="space-y-1.5">
+              <div className="space-y-2">
                 <span className="font-sans text-[11px] font-bold uppercase text-[#5C3D2E]">
                   Jadwal Kirim:
                 </span>
                 <div className="grid grid-cols-2 gap-2">
                   <button
                     type="button"
-                    onClick={() => setDeliveryDay('today')}
+                    onClick={() => {
+                      setDeliveryDay('today');
+                      if (deliverySlot.includes('Subuh')) {
+                        setDeliverySlot('Sekarang / Fresh Panas 🍳');
+                      }
+                    }}
                     className={`cursor-pointer py-2 px-3 rounded-[12px] font-sans font-bold text-xs border-2 text-center transition flex items-center justify-center gap-1.5 ${
                       deliveryDay === 'today'
                         ? 'bg-[#111111] text-[#FFD700] border-[#111111] shadow-[2px_2px_0_#FFD700]'
@@ -544,7 +556,12 @@ export const StickyCart: React.FC<StickyCartProps> = ({
 
                   <button
                     type="button"
-                    onClick={() => setDeliveryDay('tomorrow')}
+                    onClick={() => {
+                      setDeliveryDay('tomorrow');
+                      if (deliverySlot === 'Sekarang / Fresh Panas 🍳') {
+                        setDeliverySlot('Subuh/Pagi (07.00 - 08.30) 🌅');
+                      }
+                    }}
                     className={`cursor-pointer py-2 px-3 rounded-[12px] font-sans font-bold text-xs border-2 text-center transition flex items-center justify-center gap-1.5 ${
                       deliveryDay === 'tomorrow'
                         ? 'bg-[#FFD700] text-[#111111] border-[#111111] shadow-[2px_2px_0_#111111]'
@@ -555,29 +572,62 @@ export const StickyCart: React.FC<StickyCartProps> = ({
                   </button>
                 </div>
 
-                {deliveryDay === 'tomorrow' && (
-                  <div className="pt-1.5 space-y-1">
-                    <span className="font-sans text-[10px] text-[#5C3D2E] font-semibold">
-                      Pilih jam kirim besok:
+                {/* Pilihan Slot Jam Hari Ini vs Besok */}
+                <div className="bg-[#FFFDF4] p-2.5 rounded-[12px] border border-[#111111]/20 space-y-1.5">
+                  <div className="flex items-center justify-between">
+                    <span className="font-sans text-[11px] text-[#5C3D2E] font-bold">
+                      {deliveryDay === 'today' ? '⏰ Pilih Jam Antar / Ambil Hari Ini:' : '⏰ Pilih Jam Acara / Kirim Besok:'}
                     </span>
-                    <div className="grid grid-cols-3 gap-1.5">
-                      {['Slot Pagi (10.00)', 'Slot Siang (13.00)', 'Slot Sore (16.00)'].map((slot) => (
+                    <span className="text-[10px] text-emerald-800 font-medium">Bisa tentukan jam</span>
+                  </div>
+
+                  <div className="grid grid-cols-2 sm:grid-cols-4 gap-1.5">
+                    {(deliveryDay === 'today'
+                      ? [
+                          'Sekarang / Fresh Panas 🍳',
+                          'Siang (11.00 - 12.30) ☀️',
+                          'Sore (15.30 - 17.00) 🌇',
+                          'custom',
+                        ]
+                      : [
+                          'Subuh/Pagi (07.00 - 08.30) 🌅',
+                          'Siang (11.00 - 12.30) ☀️',
+                          'Sore (15.30 - 17.00) 🌇',
+                          'custom',
+                        ]
+                    ).map((slot) => {
+                      const isCustom = slot === 'custom';
+                      const label = isCustom ? 'Jam Khusus ⏰' : slot;
+                      const isSelected = isCustom ? deliverySlot === 'custom' : deliverySlot === slot;
+                      return (
                         <button
                           key={slot}
                           type="button"
                           onClick={() => setDeliverySlot(slot)}
-                          className={`cursor-pointer py-1.5 px-2 rounded-[8px] font-sans font-bold text-[10px] border text-center transition ${
-                            deliverySlot === slot
-                              ? 'bg-[#111111] text-[#FFD700] border-[#111111]'
-                              : 'bg-white text-[#111111] border-[#111111]/30 hover:bg-gray-50'
+                          className={`cursor-pointer py-1.5 px-2 rounded-[8px] font-sans font-bold text-[10px] border text-center transition truncate ${
+                            isSelected
+                              ? 'bg-[#111111] text-[#FFD700] border-[#111111] shadow-xs'
+                              : 'bg-white text-[#111111] border-[#111111]/30 hover:bg-[#FFEEC2]/60'
                           }`}
                         >
-                          {slot}
+                          {label}
                         </button>
-                      ))}
-                    </div>
+                      );
+                    })}
                   </div>
-                )}
+
+                  {deliverySlot === 'custom' && (
+                    <div className="pt-1 flex items-center gap-2">
+                      <input
+                        type="text"
+                        value={customTimeInput}
+                        onChange={(e) => setCustomTimeInput(e.target.value)}
+                        placeholder="Ketik jam tiba (misal: 09:30 atau 14:00)..."
+                        className="flex-1 bg-white border border-[#111111] rounded-[8px] px-3 py-1.5 font-sans text-xs focus:outline-none focus:ring-1 focus:ring-[#FFD700]"
+                      />
+                    </div>
+                  )}
+                </div>
               </div>
 
               {/* 1. Ekstra Cabe Rawit Hijau */}

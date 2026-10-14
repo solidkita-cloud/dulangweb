@@ -37,6 +37,7 @@ export interface Customer {
   birth_day?: number; // 1-31 (Hari lahir)
   birth_month?: number; // 1-12 (Bulan lahir - TANPA TAHUN demi privasi)
   notes?: string;
+  last_greeted_at?: string; // Tanggal terakhir disapa via WA (YYYY-MM-DD)
 }
 
 export interface QRCodeRecord {
@@ -128,7 +129,7 @@ export interface Voucher {
 
 // --- SISTEM PENCATATAN PENJUALAN & KASIR DAPUR ---
 export type PaymentMethod = 'tunai' | 'qris' | 'transfer';
-export type OrderStatus = 'menunggu' | 'lunas' | 'batal';
+export type OrderStatus = 'menunggu' | 'dp' | 'lunas' | 'batal';
 
 export interface OrderItem {
   menu_id: string;
@@ -146,7 +147,10 @@ export interface OrderRecord {
   customer_qr_id?: string;
   items: OrderItem[];
   total_price: number;
+  dp_amount?: number;
+  remaining_amount?: number;
   delivery_schedule?: string;
+  delivery_slot?: string;
   notes?: string;
   payment_method?: PaymentMethod;
   status: OrderStatus;

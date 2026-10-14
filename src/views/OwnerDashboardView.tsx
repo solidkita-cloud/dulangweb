@@ -19,6 +19,7 @@ import { StoreClosedModal } from '../components/common/StoreClosedModal';
 import { ImageCropModal } from '../components/common/ImageCropModal';
 import { SubuhCalculatorModal } from '../components/common/SubuhCalculatorModal';
 import { KitchenClosingModal } from '../components/common/KitchenClosingModal';
+import { InvoiceA4Modal } from '../components/common/InvoiceA4Modal';
 import { StickerGeneratorView } from './StickerGeneratorView';
 import {
   logSecurityEvent,
@@ -99,8 +100,13 @@ export const OwnerDashboardView: React.FC<OwnerDashboardViewProps> = ({
 
   // --- ORDERS & SALES POS STATE ---
   const [orders, setOrders] = useState<OrderRecord[]>(() => storageService.getOrders());
-  const [orderFilter, setOrderFilter] = useState<'all' | 'menunggu' | 'lunas' | 'batal'>('all');
+  const [orderFilter, setOrderFilter] = useState<'all' | 'menunggu' | 'dp' | 'lunas' | 'batal'>('all');
   const [orderSearch, setOrderSearch] = useState('');
+  const [selectedOrderForInvoice, setSelectedOrderForInvoice] = useState<OrderRecord | null>(null);
+  const [dpModalOrder, setDpModalOrder] = useState<OrderRecord | null>(null);
+  const [dpInputNominal, setDpInputNominal] = useState<number | ''>(50000);
+  const [dpPaymentMethod, setDpPaymentMethod] = useState<PaymentMethod>('transfer');
+  const [customerSegmentFilter, setCustomerSegmentFilter] = useState<'all' | 'sultan' | 'setia' | 'dormant'>('all');
   const [isAddingWalkInOrder, setIsAddingWalkInOrder] = useState(false);
   const [walkInCustName, setWalkInCustName] = useState('');
   const [walkInCustWa, setWalkInCustWa] = useState('');
@@ -773,6 +779,76 @@ Catatan Kurir: Pastikan posisi dus ditaruh datar agar mayo tidak tumpah ya kak.`
     storageService.saveOrders(next);
     setOrders(next);
     onShowToast(`Pesanan #${orderId} dihapus.`);
+  };
+
+  const handleSaveDP = (e: React.FormEvent) => {
+    e.preventDefault();
+    if (!dpModalOrder) return;
+    const nominal = Number(dpInputNominal) || 0;
+    if (nominal <= 0) {
+      alert('Nominal DP harus lebih dari Rp 0');
+      return;
+    }
+    const updated = storageService.updateOrderDP(dpModalOrder.id, nominal, dpPaymentMethod);
+    if (updated) {
+      setOrders(storageService.getOrders());
+      onShowToast(`Uang Muka (DP) Rp ${nominal.toLocaleString('id-ID')} berhasil dicatat untuk #${dpModalOrder.id}! 💵✨`);
+      setDpModalOrder(null);
+    }
+  };
+
+  const handleSettleOrder = (orderId: string, method: PaymentMethod = 'tunai') => {
+    const updated = storageService.updateOrderStatus(orderId, 'lunas', method);
+    if (updated) {
+      setOrders(storageService.getOrders());
+      setCustomers(storageService.getCustomers());
+      onShowToast(`Pesanan #${orderId} telah LUNAS sepenuhnya! Data kas & pelanggan diperbarui. ✓🎉`);
+    }
+  };
+
+  const handleSendDpReminderWA = (ord: OrderRecord) => {
+    const dp = ord.dp_amount || 0;
+    const sisa = ord.remaining_amount !== undefined ? ord.remaining_amount : (ord.total_price - dp);
+    let msg = `Halo Kak ${ord.customer_name}! 🙏✨\n\n`;
+    msg += `Terima kasih banyak, pembayaran *Uang Muka (DP)* sebesar *Rp ${dp.toLocaleString('id-ID')}* untuk pesanan *#${ord.id}* telah kami terima di Dapur Dulang. 🥟\n\n`;
+    msg += `📋 *Rincian Pesanan:*\n`;
+    ord.items.forEach((it) => {
+      msg += `• ${it.qty}x ${it.nama}\n`;
+    });
+    msg += `\n⏰ *Jadwal Kirim/Ambil:* ${ord.delivery_schedule || 'Sesuai Jadwal'}\n`;
+    msg += `💰 *Sisa Tagihan Pelunasan:* Rp ${sisa.toLocaleString('id-ID')}\n\n`;
+    msg += `Sisa pembayaran dapat dilunasi saat serah terima pesanan (Tunai / QRIS). Dapur kami siap goreng fresh! Terima kasih banyak Kak! 🙏✨`;
+
+    const waNum = (ord.customer_wa || '').replace(/\D/g, '');
+    const url = waNum ? `https://wa.me/${waNum}?text=${encodeURIComponent(msg)}` : `https://wa.me/?text=${encodeURIComponent(msg)}`;
+    window.open(url, '_blank');
+  };
+
+  const handleSendFriendlyGreeting = (c: Customer) => {
+    let msg = `Halo Kak ${c.name}! 😊🙏\n\n`;
+    msg += `Salam hangat dari Tim Dapur Dulang Indonesia.\n`;
+    msg += `Semoga harinya menyenangkan ya Kak!\n\n`;
+    msg += `Dapur Dulang hari ini lagi goreng kloter fresh *${c.favorite_menu || 'Risoles Mayo Lumer'}*. Barangkali Kak ${c.name} lagi kangen yang anget-anget dan gurih dari wajan, mau kita siapin buat sore ini? 🥟🔥\n\n`;
+    msg += `Bisa langsung pesan santai via web resmi kami:\n`;
+    msg += `https://dulangweb.vercel.app/\n\n`;
+    msg += `Terima kasih banyak ya Kak ${c.name}! Sehat selalu sekeluarga 🙏✨`;
+
+    const waNum = c.wa ? c.wa.replace(/\D/g, '') : '';
+    const url = waNum ? `https://wa.me/${waNum}?text=${encodeURIComponent(msg)}` : `https://wa.me/?text=${encodeURIComponent(msg)}`;
+    window.open(url, '_blank');
+
+    storageService.markCustomerGreeted(c.id);
+    setCustomers(storageService.getCustomers());
+    onShowToast(`Draft sapaan untuk Kak ${c.name} dibuka di WhatsApp! Tanggal disapa tercatat. 📱✨`);
+  };
+
+  const isDormantCust = (c: Customer) => {
+    const lastActiveStr = c.last_scan_at || c.consent_at || c.first_scan_at;
+    if (!lastActiveStr) return false;
+    const lastActiveDate = new Date(lastActiveStr);
+    if (isNaN(lastActiveDate.getTime())) return false;
+    const diffDays = (Date.now() - lastActiveDate.getTime()) / (1000 * 60 * 60 * 24);
+    return diffDays >= 14;
   };
 
   const handleAddWalkInItem = () => {
@@ -2096,12 +2172,15 @@ Catatan Kurir: Pastikan posisi dus ditaruh datar agar mayo tidak tumpah ya kak.`
       {/* TAB: KASIR & GRAFIK PENJUALAN */}
       {activeTab === 'orders' && (() => {
         const lunasOrders = orders.filter((o) => o.status === 'lunas');
+        const dpOrders = orders.filter((o) => o.status === 'dp');
         const pendingOrders = orders.filter((o) => o.status === 'menunggu');
         const batalOrders = orders.filter((o) => o.status === 'batal');
 
-        const totalOmsetLunas = lunasOrders.reduce((sum, o) => sum + o.total_price, 0);
-        const totalOmsetPending = pendingOrders.reduce((sum, o) => sum + o.total_price, 0);
-        const totalPorsiTerjual = lunasOrders
+        const totalOmsetLunas = lunasOrders.reduce((sum, o) => sum + o.total_price, 0) +
+          dpOrders.reduce((sum, o) => sum + (o.dp_amount || 0), 0);
+        const totalOmsetPending = pendingOrders.reduce((sum, o) => sum + o.total_price, 0) +
+          dpOrders.reduce((sum, o) => sum + (o.remaining_amount !== undefined ? o.remaining_amount : (o.total_price - (o.dp_amount || 0))), 0);
+        const totalPorsiTerjual = [...lunasOrders, ...dpOrders]
           .flatMap((o) => o.items)
           .reduce((sum, it) => sum + it.qty, 0);
 
@@ -2681,7 +2760,7 @@ Catatan Kurir: Pastikan posisi dus ditaruh datar agar mayo tidak tumpah ya kak.`
                 {/* Filters & Search */}
                 <div className="flex flex-wrap items-center gap-2">
                   <div className="inline-flex p-0.5 sm:p-1 bg-white border-2 border-[#111111] rounded-full shadow-2xs gap-0.5 overflow-x-auto max-w-full">
-                    {(['all', 'menunggu', 'lunas', 'batal'] as const).map((st) => (
+                    {(['all', 'menunggu', 'dp', 'lunas', 'batal'] as const).map((st) => (
                       <button
                         key={st}
                         type="button"
@@ -2694,6 +2773,7 @@ Catatan Kurir: Pastikan posisi dus ditaruh datar agar mayo tidak tumpah ya kak.`
                       >
                         {st === 'all' && `Semua (${orders.length})`}
                         {st === 'menunggu' && `⏳ Menunggu (${pendingOrders.length})`}
+                        {st === 'dp' && `🟡 DP Masuk (${dpOrders.length})`}
                         {st === 'lunas' && `✓ Lunas (${lunasOrders.length})`}
                         {st === 'batal' && `✕ Batal (${batalOrders.length})`}
                       </button>
@@ -2726,7 +2806,7 @@ Catatan Kurir: Pastikan posisi dus ditaruh datar agar mayo tidak tumpah ya kak.`
                         ord.status === 'menunggu' ? 'bg-amber-50/50 border-amber-500' : ''
                       }`}
                     >
-                      <div className="space-y-2">
+                      <div className="space-y-2.5">
                         {/* Top Meta Bar */}
                         <div className="flex flex-wrap items-center justify-between gap-1.5 border-b border-[#111111]/10 pb-2">
                           <div className="flex items-center gap-1.5 flex-wrap">
@@ -2751,6 +2831,8 @@ Catatan Kurir: Pastikan posisi dus ditaruh datar agar mayo tidak tumpah ya kak.`
                             className={`font-sans text-[11px] font-bold px-2.5 py-0.5 rounded-full uppercase ${
                               ord.status === 'lunas'
                                 ? 'bg-emerald-100 text-emerald-800 border border-emerald-300'
+                                : ord.status === 'dp'
+                                ? 'bg-amber-100 text-amber-900 border border-amber-500 font-extrabold'
                                 : ord.status === 'menunggu'
                                 ? 'bg-amber-100 text-amber-900 border border-amber-400 animate-pulse'
                                 : 'bg-red-100 text-red-800 border border-red-300'
@@ -2758,11 +2840,29 @@ Catatan Kurir: Pastikan posisi dus ditaruh datar agar mayo tidak tumpah ya kak.`
                           >
                             {ord.status === 'lunas'
                               ? `✓ Lunas (${(ord.payment_method || 'tunai').toUpperCase()})`
+                              : ord.status === 'dp'
+                              ? `🟡 DP: Rp ${(ord.dp_amount || 0).toLocaleString('id-ID')} (Sisa: Rp ${(ord.remaining_amount !== undefined ? ord.remaining_amount : (ord.total_price - (ord.dp_amount || 0))).toLocaleString('id-ID')})`
                               : ord.status === 'menunggu'
                               ? '⏳ Menunggu Konfirmasi'
                               : '✕ Batal Beli'}
                           </span>
                         </div>
+
+                        {/* Prominent Delivery Slot & Schedule Badge */}
+                        {ord.delivery_schedule && (
+                          <div className="bg-gradient-to-r from-amber-500/10 via-amber-500/20 to-amber-500/10 border border-amber-600/30 text-amber-950 px-3 py-1.5 rounded-[12px] font-sans font-bold text-xs flex items-center justify-between gap-2 shadow-2xs">
+                            <div className="flex items-center gap-1.5 truncate">
+                              <span className="text-sm">⏰</span>
+                              <span className="text-[11px] uppercase tracking-wide text-[#5C3D2E]">Jadwal Kirim / Acara:</span>
+                              <span className="bg-[#111111] text-[#FFD700] px-2.5 py-0.5 rounded-full font-mono text-[11px] font-bold truncate">
+                                {ord.delivery_schedule}
+                              </span>
+                            </div>
+                            <span className="text-[10px] font-semibold text-emerald-800 bg-white/80 px-2 py-0.5 rounded-full border border-emerald-300 shrink-0 hidden xs:inline">
+                              Prioritas Dapur 🔥
+                            </span>
+                          </div>
+                        )}
 
                         {/* Customer Info */}
                         <div className="flex items-center justify-between gap-2">
@@ -2853,7 +2953,39 @@ Catatan Kurir: Pastikan posisi dus ditaruh datar agar mayo tidak tumpah ya kak.`
                                 >
                                   🏦 Transfer
                                 </button>
+                                <button
+                                  type="button"
+                                  onClick={() => {
+                                    setDpModalOrder(ord);
+                                    setDpInputNominal(Math.round(ord.total_price * 0.5));
+                                  }}
+                                  className="cursor-pointer px-3 py-1.5 rounded-full font-sans font-bold text-xs bg-amber-400 text-amber-950 hover:bg-amber-500 border border-amber-600 shadow-xs flex items-center justify-center gap-1 transition active:scale-95"
+                                  title="Catat Pembayaran Uang Muka (DP)"
+                                >
+                                  <span>💵</span> Terima DP
+                                </button>
                               </>
+                            )}
+
+                            {ord.status === 'dp' && (
+                              <div className="flex flex-wrap items-center gap-1.5">
+                                <button
+                                  type="button"
+                                  onClick={() => handleSettleOrder(ord.id, 'tunai')}
+                                  className="cursor-pointer px-3.5 py-1.5 rounded-full font-sans font-bold text-xs bg-emerald-600 text-white hover:bg-emerald-700 border border-emerald-800 shadow-xs flex items-center gap-1 transition active:scale-95"
+                                  title="Terima Pelunasan Sisa Tagihan"
+                                >
+                                  <span>✓</span> Pelunasan (Rp {(ord.remaining_amount !== undefined ? ord.remaining_amount : (ord.total_price - (ord.dp_amount || 0))).toLocaleString('id-ID')})
+                                </button>
+                                <button
+                                  type="button"
+                                  onClick={() => handleSendDpReminderWA(ord)}
+                                  className="cursor-pointer px-3 py-1.5 rounded-full font-sans font-bold text-xs bg-[#25D366] text-white hover:brightness-105 border border-emerald-800 shadow-xs flex items-center gap-1 transition"
+                                  title="Kirim Konfirmasi DP & Info Sisa ke WhatsApp"
+                                >
+                                  <span>📲</span> WA Sisa DP
+                                </button>
+                              </div>
                             )}
 
                             {ord.status === 'lunas' && (
@@ -2872,6 +3004,16 @@ Catatan Kurir: Pastikan posisi dus ditaruh datar agar mayo tidak tumpah ya kak.`
                             >
                               <span>🧾</span>
                               <span className="hidden xs:inline">Struk</span>
+                            </button>
+
+                            <button
+                              type="button"
+                              onClick={() => setSelectedOrderForInvoice(ord)}
+                              className="cursor-pointer px-3 py-1.5 rounded-full font-sans font-bold text-xs bg-blue-900 text-white border border-blue-950 hover:bg-blue-800 flex items-center gap-1 transition"
+                              title="Cetak Invoice / Kuitansi Formal A4 untuk Kantor / Instansi"
+                            >
+                              <span>📄</span>
+                              <span className="hidden xs:inline">Invoice A4</span>
                             </button>
 
                             <button
@@ -4579,15 +4721,51 @@ Catatan Kurir: Pastikan posisi dus ditaruh datar agar mayo tidak tumpah ya kak.`
               </p>
             </div>
             <div className="flex flex-wrap items-center gap-2">
-              <span className="px-3 py-1 bg-white border border-[#111111] rounded-full font-sans text-xs font-bold shadow-sm">
-                👑 Sultan: {customers.filter((c) => c.status === 'Sultan Dulang').length}
-              </span>
-              <span className="px-3 py-1 bg-[#FFD700] border border-[#111111] rounded-full font-sans text-xs font-bold shadow-sm">
-                Setia: {customers.filter((c) => c.status === 'Setia').length}
-              </span>
-              <span className="px-3 py-1 bg-gray-100 border border-[#111111]/30 rounded-full font-sans text-xs font-bold">
-                Baru: {customers.filter((c) => c.status === 'Baru').length}
-              </span>
+              <button
+                type="button"
+                onClick={() => setCustomerSegmentFilter('all')}
+                className={`cursor-pointer px-3 py-1.5 rounded-full font-sans text-xs font-bold transition border ${
+                  customerSegmentFilter === 'all'
+                    ? 'bg-[#111111] text-[#FFD700] border-[#111111] shadow-xs'
+                    : 'bg-white text-[#111111] border-[#111111]/30 hover:border-[#111111]'
+                }`}
+              >
+                Semua ({customers.length})
+              </button>
+              <button
+                type="button"
+                onClick={() => setCustomerSegmentFilter('sultan')}
+                className={`cursor-pointer px-3 py-1.5 rounded-full font-sans text-xs font-bold transition border ${
+                  customerSegmentFilter === 'sultan'
+                    ? 'bg-[#111111] text-[#FFD700] border-[#111111] shadow-xs'
+                    : 'bg-white text-[#111111] border-[#111111]/30 hover:border-[#111111]'
+                }`}
+              >
+                👑 Sultan ({customers.filter((c) => c.status === 'Sultan Dulang').length})
+              </button>
+              <button
+                type="button"
+                onClick={() => setCustomerSegmentFilter('setia')}
+                className={`cursor-pointer px-3 py-1.5 rounded-full font-sans text-xs font-bold transition border ${
+                  customerSegmentFilter === 'setia'
+                    ? 'bg-[#FFD700] text-[#111111] border-[#111111] shadow-xs'
+                    : 'bg-[#FFF8E7] text-[#111111] border-[#111111]/30 hover:border-[#111111]'
+                }`}
+              >
+                ⭐ Setia ({customers.filter((c) => c.status === 'Setia').length})
+              </button>
+              <button
+                type="button"
+                onClick={() => setCustomerSegmentFilter('dormant')}
+                className={`cursor-pointer px-3 py-1.5 rounded-full font-sans text-xs font-bold transition border ${
+                  customerSegmentFilter === 'dormant'
+                    ? 'bg-amber-800 text-white border-amber-900 shadow-xs'
+                    : 'bg-amber-50 text-amber-900 border-amber-300 hover:border-amber-600'
+                }`}
+                title="Pelanggan yang belum order/scan lagi lebih dari 14 hari"
+              >
+                💤 Perlu Disapa &gt;14 Hari ({customers.filter(isDormantCust).length})
+              </button>
             </div>
           </div>
 
@@ -4949,7 +5127,14 @@ Catatan Kurir: Pastikan posisi dus ditaruh datar agar mayo tidak tumpah ya kak.`
                   </tr>
                 </thead>
                 <tbody className="divide-y divide-[#111111]/10">
-                  {customers.map((c) => {
+                  {customers
+                    .filter((c) => {
+                      if (customerSegmentFilter === 'sultan') return c.status === 'Sultan Dulang';
+                      if (customerSegmentFilter === 'setia') return c.status === 'Setia';
+                      if (customerSegmentFilter === 'dormant') return isDormantCust(c);
+                      return true;
+                    })
+                    .map((c) => {
                     const isNewHighlight = highlightedCustId === c.id || highlightedCustId === c.qr_code_id;
                     return (
                       <tr
@@ -4968,15 +5153,35 @@ Catatan Kurir: Pastikan posisi dus ditaruh datar agar mayo tidak tumpah ya kak.`
                         </td>
                         <td className="py-3 px-4 font-bold text-[#111111]">
                           <div>{c.name}</div>
-                          {c.birth_day && c.birth_month && (
-                            <span className="inline-flex items-center gap-1 text-[10px] font-sans font-medium text-amber-900 bg-amber-100/80 px-2 py-0.5 rounded-full border border-amber-300 mt-1">
-                              <span>🎂</span>
-                              <span>
-                                {c.birth_day}{' '}
-                                {MONTHS_INDONESIA.find((m) => m.value === c.birth_month)?.label}
+                          <div className="flex flex-wrap items-center gap-1 mt-1">
+                            {c.birth_day && c.birth_month && (
+                              <span className="inline-flex items-center gap-1 text-[10px] font-sans font-medium text-amber-900 bg-amber-100/80 px-2 py-0.5 rounded-full border border-amber-300">
+                                <span>🎂</span>
+                                <span>
+                                  {c.birth_day}{' '}
+                                  {MONTHS_INDONESIA.find((m) => m.value === c.birth_month)?.label}
+                                </span>
                               </span>
-                            </span>
-                          )}
+                            )}
+                            {c.last_greeted_at && (
+                              <span
+                                className="inline-flex items-center gap-1 text-[10px] font-sans font-medium text-emerald-800 bg-emerald-100/80 px-2 py-0.5 rounded-full border border-emerald-300"
+                                title={`Terakhir disapa via WA: ${c.last_greeted_at}`}
+                              >
+                                <span>💬</span>
+                                <span>Disapa {c.last_greeted_at}</span>
+                              </span>
+                            )}
+                            {isDormantCust(c) && !c.last_greeted_at && (
+                              <span
+                                className="inline-flex items-center gap-1 text-[10px] font-sans font-medium text-amber-900 bg-amber-100 px-2 py-0.5 rounded-full border border-amber-300"
+                                title="Belum pernah pesan / scan lagi > 14 hari"
+                              >
+                                <span>💤</span>
+                                <span>&gt;14 hr pasif</span>
+                              </span>
+                            )}
+                          </div>
                         </td>
                         <td className="py-3 px-4 font-mono text-xs">
                           +{c.wa}
@@ -5037,6 +5242,14 @@ Catatan Kurir: Pastikan posisi dus ditaruh datar agar mayo tidak tumpah ya kak.`
                         </td>
                         <td className="py-3 px-4 text-right">
                           <div className="inline-flex items-center gap-1.5">
+                            <button
+                              type="button"
+                              onClick={() => handleSendFriendlyGreeting(c)}
+                              className="cursor-pointer bg-emerald-600 hover:bg-emerald-700 text-white px-2.5 py-1 rounded-full text-[11px] font-bold shadow-xs flex items-center gap-1 transition"
+                              title="Kirim sapaan hangat Dapur Dulang & tawarkan menu favorit via WA (Manual 1-by-1)"
+                            >
+                              <span>💬</span> Sapa WA
+                            </button>
                             {c.birth_day && c.birth_month && (
                               <button
                                 type="button"
@@ -5077,6 +5290,18 @@ Catatan Kurir: Pastikan posisi dus ditaruh datar agar mayo tidak tumpah ya kak.`
                       </tr>
                     );
                   })}
+                  {customers.filter((c) => {
+                    if (customerSegmentFilter === 'sultan') return c.status === 'Sultan Dulang';
+                    if (customerSegmentFilter === 'setia') return c.status === 'Setia';
+                    if (customerSegmentFilter === 'dormant') return isDormantCust(c);
+                    return true;
+                  }).length === 0 && (
+                    <tr>
+                      <td colSpan={9} className="py-8 text-center text-[#5C3D2E]/70 font-sans text-xs">
+                        Tidak ada data pelanggan untuk kategori ini.
+                      </td>
+                    </tr>
+                  )}
                 </tbody>
               </table>
             </div>
@@ -6074,6 +6299,136 @@ Catatan Kurir: Pastikan posisi dus ditaruh datar agar mayo tidak tumpah ya kak.`
                 Tutup Nota
               </button>
             </div>
+          </div>
+        </div>
+      )}
+
+      {/* INVOICE & KUITANSI RESMI A4 MODAL */}
+      <InvoiceA4Modal
+        order={selectedOrderForInvoice}
+        onClose={() => setSelectedOrderForInvoice(null)}
+        storeConfig={storeConfig}
+        onShowToast={onShowToast}
+      />
+
+      {/* MODAL CATAT UANG MUKA (DP) PESANAN */}
+      {dpModalOrder && (
+        <div className="fixed inset-0 z-50 bg-black/60 backdrop-blur-xs flex items-center justify-center p-3 sm:p-4 overflow-y-auto">
+          <div className="bg-white rounded-[24px] max-w-sm w-full border-2 border-[#111111] shadow-[8px_8px_0_#111111] overflow-hidden animate-in zoom-in-95 duration-200">
+            <div className="bg-[#111111] text-[#FFD700] px-5 py-3.5 flex items-center justify-between">
+              <div className="flex items-center gap-2">
+                <span className="text-xl">💵</span>
+                <span className="font-hand font-bold text-lg text-white">Catat Uang Muka (DP)</span>
+              </div>
+              <button
+                type="button"
+                onClick={() => setDpModalOrder(null)}
+                className="cursor-pointer text-white/70 hover:text-white text-base font-bold"
+              >
+                ✕
+              </button>
+            </div>
+
+            <form onSubmit={handleSaveDP} className="p-5 space-y-4">
+              <div className="bg-amber-50 rounded-xl p-3 border border-amber-200 text-xs text-[#5C3D2E] space-y-1">
+                <div className="flex justify-between font-medium">
+                  <span>No. Pesanan:</span>
+                  <span className="font-bold text-[#111111]">#{dpModalOrder.id}</span>
+                </div>
+                <div className="flex justify-between font-medium">
+                  <span>Nama Pemesan:</span>
+                  <span className="font-bold text-[#111111]">{dpModalOrder.customer_name}</span>
+                </div>
+                <div className="flex justify-between font-bold text-sm text-[#111111] border-t border-amber-300 pt-1 mt-1">
+                  <span>Total Tagihan:</span>
+                  <span className="text-emerald-800">Rp {dpModalOrder.total_price.toLocaleString('id-ID')}</span>
+                </div>
+              </div>
+
+              <div>
+                <label className="block font-sans text-xs font-bold text-[#111111] mb-1">
+                  Nominal DP Masuk (Rp):
+                </label>
+                <input
+                  type="number"
+                  required
+                  min={1000}
+                  max={dpModalOrder.total_price}
+                  value={dpInputNominal}
+                  onChange={(e) => setDpInputNominal(e.target.value ? Number(e.target.value) : '')}
+                  className="w-full bg-white border-2 border-[#111111] rounded-[12px] px-3.5 py-2 font-mono font-bold text-base text-[#111111] focus:outline-none focus:ring-2 focus:ring-[#FFD700]"
+                />
+                
+                {/* Pilihan Cepat Persentase / Nominal */}
+                <div className="flex flex-wrap items-center gap-1.5 mt-2">
+                  <span className="text-[10px] text-[#5C3D2E] font-semibold">Cepat:</span>
+                  {[
+                    { label: '30%', val: Math.round(dpModalOrder.total_price * 0.3) },
+                    { label: '50%', val: Math.round(dpModalOrder.total_price * 0.5) },
+                    { label: 'Rp 50rb', val: 50000 },
+                    { label: 'Rp 100rb', val: 100000 },
+                  ].map((p) => (
+                    <button
+                      key={p.label}
+                      type="button"
+                      onClick={() => setDpInputNominal(p.val)}
+                      className="cursor-pointer text-[10px] font-sans font-bold bg-gray-100 hover:bg-[#FFD700] text-[#111111] px-2 py-0.5 rounded-full border border-gray-300 transition"
+                    >
+                      {p.label}
+                    </button>
+                  ))}
+                </div>
+              </div>
+
+              {/* Sisa Tagihan Preview */}
+              {Number(dpInputNominal) > 0 && (
+                <div className="bg-emerald-50 rounded-xl p-3 border border-emerald-200 text-xs flex justify-between items-center font-bold">
+                  <span className="text-emerald-900">Sisa Pelunasan:</span>
+                  <span className="text-rose-700 font-mono text-sm">
+                    Rp {Math.max(0, dpModalOrder.total_price - Number(dpInputNominal)).toLocaleString('id-ID')}
+                  </span>
+                </div>
+              )}
+
+              {/* Metode Pembayaran DP */}
+              <div>
+                <label className="block font-sans text-xs font-bold text-[#5C3D2E] mb-1">
+                  Metode Bayar DP:
+                </label>
+                <div className="grid grid-cols-3 gap-1.5">
+                  {(['transfer', 'qris', 'tunai'] as const).map((m) => (
+                    <button
+                      key={m}
+                      type="button"
+                      onClick={() => setDpPaymentMethod(m)}
+                      className={`cursor-pointer py-1.5 px-2 rounded-lg font-sans font-bold text-xs border text-center transition uppercase ${
+                        dpPaymentMethod === m
+                          ? 'bg-[#111111] text-[#FFD700] border-[#111111]'
+                          : 'bg-white text-gray-700 border-gray-300'
+                      }`}
+                    >
+                      {m}
+                    </button>
+                  ))}
+                </div>
+              </div>
+
+              <div className="pt-2 flex items-center gap-2">
+                <button
+                  type="button"
+                  onClick={() => setDpModalOrder(null)}
+                  className="cursor-pointer flex-1 py-2 rounded-full font-sans font-bold text-xs border-2 border-gray-300 text-gray-700 hover:bg-gray-100 transition"
+                >
+                  Batal
+                </button>
+                <button
+                  type="submit"
+                  className="cursor-pointer flex-1 py-2 rounded-full font-sans font-bold text-xs bg-[#FFD700] text-[#111111] border-2 border-[#111111] shadow-xs hover:brightness-105 transition"
+                >
+                  Simpan DP 💵
+                </button>
+              </div>
+            </form>
           </div>
         </div>
       )}
