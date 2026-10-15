@@ -84,6 +84,12 @@ export const CuteQRCard: React.FC<CuteQRCardProps> = ({
           );
           ctx.restore();
         }
+
+        // Pastikan ukuran tampilan CSS tetap imut & pas (160px), tidak meledak jadi raksasa
+        canvas.style.width = '160px';
+        canvas.style.height = '160px';
+        canvas.style.maxWidth = '160px';
+        canvas.style.maxHeight = '160px';
       } catch (err) {
         console.error('QR rendering error:', err);
       }
@@ -119,8 +125,8 @@ export const CuteQRCard: React.FC<CuteQRCardProps> = ({
         </div>
       </div>
 
-      {/* Main Cute Black Card */}
-      <div className="flex-1 relative bg-[#111111] text-white rounded-[26px] p-5 sm:p-6 border-[3px] border-[#111111] shadow-[8px_8px_0_#FFD700] rotate-[-2deg] mt-6 sm:mt-0">
+      {/* Main Cute Black Card (Pas & Imut, max-w 340px) */}
+      <div className="flex-1 max-w-[340px] relative bg-[#111111] text-white rounded-[26px] p-5 border-[3px] border-[#111111] shadow-[8px_8px_0_#FFD700] rotate-[-2deg] mt-6 sm:mt-0">
         {/* Yellow Tape on Top */}
         <div className="tape absolute -top-3.5 left-1/2 -translate-x-1/2 w-[88px] h-[22px] rotate-[-3deg] rounded-[3px] border border-[#111111]/20 z-20" />
         <div className="tape absolute -top-2 right-10 w-[36px] h-[14px] rotate-[16deg] rounded-[2px] bg-[#FFF8E7]/70 border border-[#111111]/10 z-20 hidden sm:block" />
@@ -151,10 +157,14 @@ export const CuteQRCard: React.FC<CuteQRCardProps> = ({
 
           <div
             onClick={() => onScanClick && onScanClick(activeId)}
-            className="cursor-pointer group relative bg-white rounded-[16px] p-3 border-2 border-[#111111] shadow-[4px_4px_0_#FFD700] hover:scale-[1.02] transition-transform"
+            className="cursor-pointer group relative bg-white rounded-[16px] p-2.5 border-2 border-[#111111] shadow-[4px_4px_0_#FFD700] hover:scale-[1.02] transition-transform inline-block"
             title="Klik untuk coba simulasi scan QR ini"
           >
-            <canvas ref={canvasRef} className="block rounded-[8px] w-[160px] h-[160px] sm:w-[176px] sm:h-[176px]" />
+            <canvas
+              ref={canvasRef}
+              style={{ width: '160px', height: '160px', maxWidth: '160px', maxHeight: '160px' }}
+              className="block rounded-[8px] !w-[160px] !h-[160px]"
+            />
             <div className="absolute inset-0 bg-[#FFD700]/0 group-hover:bg-[#FFD700]/10 transition-colors rounded-[16px]" />
           </div>
         </div>
