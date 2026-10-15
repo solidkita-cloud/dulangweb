@@ -16,6 +16,7 @@ import {
   KitchenClosingRecap,
   PantryIngredient,
   MenuRecipe,
+  KitchenCookingStatus,
 } from '../types';
 import {
   DEFAULT_MENUS,
@@ -1165,6 +1166,7 @@ ${lines.join('\n')}
       ...orderData,
       id: `ORD-${Date.now().toString().slice(-4)}`,
       created_at: new Date().toISOString(),
+      kitchen_status: orderData.kitchen_status || 'antre',
     };
     const updated = [newOrder, ...list];
     this.saveOrders(updated);
@@ -1543,6 +1545,96 @@ ${lines.join('\n')}
       this.deductIngredientsForOrder(updatedOrder);
     }
     return updatedOrder;
+  },
+
+  updateKitchenCookingStatus(orderId: string, kitchenStatus: KitchenCookingStatus): OrderRecord | null {
+    const list = this.getOrders();
+    const idx = list.findIndex((o) => o.id === orderId);
+    if (idx < 0) return null;
+
+    const existing = list[idx];
+    const now = new Date().toISOString();
+    const updatedOrder: OrderRecord = {
+      ...existing,
+      kitchen_status: kitchenStatus,
+      cooking_started_at:
+        kitchenStatus === 'sedang_goreng' && !existing.cooking_started_at ? now : existing.cooking_started_at,
+      cooking_completed_at:
+        (kitchenStatus === 'siap' || kitchenStatus === 'selesai') && !existing.cooking_completed_at
+          ? now
+          : existing.cooking_completed_at,
+    };
+
+    const updatedList = [...list];
+    updatedList[idx] = updatedOrder;
+    this.saveOrders(updatedList);
+
+    // Sync status perubahan ke Supabase Cloud jika aktif
+    try {
+      const client = getSupabaseClient();
+      if (client) {
+        client
+          .from('orders')
+          .update({
+            kitchen_status: updatedOrder.kitchen_status,
+            cooking_started_at: updatedOrder.cooking_started_at || null,
+            cooking_completed_at: updatedOrder.cooking_completed_at || null,
+          })
+          .eq('id', orderId)
+          .then();
+      }
+    } catch (e) {
+      console.warn('Update order kitchen_status to Supabase error:', e);
+    }
+
+    if (typeof window !== 'undefined') {
+      window.dispatchEvent(
+        new CustomEvent('dulang_kitchen_updated', {
+          detail: { order: updatedOrder, kitchenStatus },
+        })
+      );
+    }
+
+    return updatedOrder;
+  },
+
+  getKitchenOrders(): OrderRecord[] {
+    const orders = this.getOrders();
+    // Kembalikan semua pesanan yang bukan berstatus batal
+    return orders.filter((o) => o.status !== 'batal');
+  },
+
+  generateTrackingUrl(orderId: string): string {
+    const origin = typeof window !== 'undefined' ? window.location.origin : 'https://dulangweb.vercel.app';
+    return `${origin}/?track=${orderId}`;
+  },
+
+  generateWaTrackingMessage(order: OrderRecord): string {
+    const trackingUrl = this.generateTrackingUrl(order.id);
+    let statusText = 'Antre Masak di Dapur ⏳';
+    if (order.kitchen_status === 'sedang_goreng') statusText = 'Sedang Digoreng Hangat di Wajan 🔥';
+    else if (order.kitchen_status === 'packing') statusText = 'Sedang Ditiriskan & Masuk Dus Kemasan 📦';
+    else if (order.kitchen_status === 'siap')
+      statusText = order.delivery_method === 'delivery' ? 'Siap Dikirim Kurir 🛵' : 'Siap Diambil di Dapur 🥟✨';
+    else if (order.kitchen_status === 'selesai') statusText = 'Pesanan Sudah Selesai / Diterima 🎉';
+
+    const itemsSummary = (order.items || [])
+      .map((i) => `• ${i.qty}x ${i.nama} (${i.variantType === 'frozen' ? '❄️ Frozen' : '🔥 Matang'})`)
+      .join('\n');
+
+    return `*UPDATE MASAK DAPUR DULANG* 🥟✨
+━━━━━━━━━━━━━━━━━━━━━
+Halo Kak *${order.customer_name}*!
+Pesanan *#${order.id}* saat ini:
+👉 *${statusText}*
+
+*Rincian Menu:*
+${itemsSummary}
+
+Pantau proses penggorengan secara live di sini:
+🔗 ${trackingUrl}
+
+_Dapur Dulang Indonesia - Risoles & Katering Sidoarjo_`;
   },
 
   updateCustomerIntelligence(order: OrderRecord): void {

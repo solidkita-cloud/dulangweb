@@ -130,6 +130,7 @@ export interface Voucher {
 // --- SISTEM PENCATATAN PENJUALAN & KASIR DAPUR ---
 export type PaymentMethod = 'tunai' | 'qris' | 'transfer';
 export type OrderStatus = 'menunggu' | 'dp' | 'lunas' | 'batal';
+export type KitchenCookingStatus = 'antre' | 'sedang_goreng' | 'packing' | 'siap' | 'selesai';
 
 export interface OrderItem {
   menu_id: string;
@@ -163,6 +164,9 @@ export interface OrderRecord {
   shipping_cost?: number;
   shipping_district?: string;
   ingredients_deducted?: boolean;
+  kitchen_status?: KitchenCookingStatus;
+  cooking_started_at?: string;
+  cooking_completed_at?: string;
 }
 
 // --- PENDAPAT / TESTIMONI PELANGGAN (COLLAPSIBLE / ACCORDION) ---

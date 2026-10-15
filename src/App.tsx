@@ -9,6 +9,8 @@ import { StoreClosedModal } from './components/common/StoreClosedModal';
 import { LandingView } from './views/LandingView';
 import { SmartScanView } from './views/SmartScanView';
 import { OwnerDashboardView } from './views/OwnerDashboardView';
+import { KitchenDisplaySystem } from './components/kitchen/KitchenDisplaySystem';
+import { OrderTrackingView } from './views/OrderTrackingView';
 import { getSupabaseClient } from './lib/supabase';
 import { LOCKED_COPY } from './lib/constants';
 import { playNewCustomerChime } from './lib/audioNotifier';
@@ -19,6 +21,7 @@ export function App() {
   const [storeConfig, setStoreConfig] = useState<StoreConfig>(() => storageService.getStoreConfig());
   const [cart, setCart] = useState<CartItem[]>([]);
   const [activeScanId, setActiveScanId] = useState<string>('DULANG-042');
+  const [trackingOrderId, setTrackingOrderId] = useState<string>('');
   const [toastMessage, setToastMessage] = useState<string | null>(null);
   const [isOwnerLoggedIn, setIsOwnerLoggedIn] = useState<boolean>(false);
   const [isOwnerLoginOpen, setIsOwnerLoginOpen] = useState<boolean>(false);
@@ -69,6 +72,12 @@ export function App() {
       } else {
         setCurrentMode('cetak');
       }
+    } else if (params.has('track') || params.has('order')) {
+      const trk = params.get('track') || params.get('order') || '';
+      setTrackingOrderId(trk.trim());
+      setCurrentMode('track');
+    } else if (params.has('kds') || params.get('mode') === 'kds') {
+      setCurrentMode('kds');
     }
 
     const handleConfigUpdate = () => {
@@ -320,6 +329,21 @@ export function App() {
                 </button>
               </div>
             )
+          )}
+
+          {currentMode === 'kds' && (
+            <KitchenDisplaySystem
+              isStandalone
+              onShowToast={showToast}
+              onCloseStandalone={() => setCurrentMode(isOwnerLoggedIn ? 'pemilik' : 'pembeli')}
+            />
+          )}
+
+          {currentMode === 'track' && (
+            <OrderTrackingView
+              orderId={trackingOrderId}
+              onBackToMenu={() => setCurrentMode('pembeli')}
+            />
           )}
         </main>
 

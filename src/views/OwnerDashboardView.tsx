@@ -21,6 +21,7 @@ import { SubuhCalculatorModal } from '../components/common/SubuhCalculatorModal'
 import { KitchenClosingModal } from '../components/common/KitchenClosingModal';
 import { InvoiceA4Modal } from '../components/common/InvoiceA4Modal';
 import { RecipeInventoryTab } from '../components/owner/RecipeInventoryTab';
+import { KitchenDisplaySystem } from '../components/kitchen/KitchenDisplaySystem';
 import { StickerGeneratorView } from './StickerGeneratorView';
 import {
   logSecurityEvent,
@@ -36,7 +37,7 @@ interface OwnerDashboardViewProps {
   onUpdateStoreConfig: (config: StoreConfig) => void;
   onLogout: () => void;
   onShowToast: (msg: string) => void;
-  initialTab?: 'menu' | 'orders' | 'expenses' | 'customers' | 'inventory' | 'testimonials' | 'vouchers' | 'stickers' | 'stats' | 'settings';
+  initialTab?: 'menu' | 'orders' | 'expenses' | 'customers' | 'inventory' | 'kds' | 'testimonials' | 'vouchers' | 'stickers' | 'stats' | 'settings';
 }
 
 export const OwnerDashboardView: React.FC<OwnerDashboardViewProps> = ({
@@ -49,7 +50,7 @@ export const OwnerDashboardView: React.FC<OwnerDashboardViewProps> = ({
   initialTab,
 }) => {
   const [customers, setCustomers] = useState<Customer[]>(() => storageService.getCustomers());
-  const [activeTab, setActiveTab] = useState<'menu' | 'orders' | 'expenses' | 'customers' | 'inventory' | 'testimonials' | 'vouchers' | 'stickers' | 'stats' | 'settings'>(
+  const [activeTab, setActiveTab] = useState<'menu' | 'orders' | 'expenses' | 'customers' | 'inventory' | 'kds' | 'testimonials' | 'vouchers' | 'stickers' | 'stats' | 'settings'>(
     initialTab || 'orders'
   );
 
@@ -1627,8 +1628,20 @@ Catatan Kurir: Pastikan posisi dus ditaruh datar agar mayo tidak tumpah ya kak.`
           <span>🥩 Resep & Gudang</span>
         </button>
 
+        <button
+          type="button"
+          onClick={() => setActiveTab('kds')}
+          className={`shrink-0 px-4 sm:px-5 py-2 sm:py-2.5 rounded-full font-sans font-bold text-xs sm:text-[13px] border-2 cursor-pointer transition flex items-center gap-1.5 ${
+            activeTab === 'kds'
+              ? 'bg-[#111111] text-[#FFD700] border-[#111111] shadow-[2px_2px_0_#FFD700]'
+              : 'bg-white text-[#5C3D2E]/80 border-[#111111]/15 hover:border-[#111111]'
+          }`}
+        >
+          <span>🍳 Layar Dapur (KDS)</span>
+        </button>
+
         {/* If user selected a secondary tab (e.g. from drawer), show it as active pill */}
-        {activeTab !== 'orders' && activeTab !== 'menu' && activeTab !== 'expenses' && activeTab !== 'customers' && activeTab !== 'inventory' && (
+        {activeTab !== 'orders' && activeTab !== 'menu' && activeTab !== 'expenses' && activeTab !== 'customers' && activeTab !== 'inventory' && activeTab !== 'kds' && (
           <div className="shrink-0 inline-flex items-center gap-1.5 bg-[#FFD700] text-[#111111] border-2 border-[#111111] px-3.5 py-2 rounded-full font-sans font-bold text-xs shadow-[2px_2px_0_#111111]">
             <span>
               {activeTab === 'stickers' && '🏷️ Cetak Stiker QR'}
@@ -2912,6 +2925,15 @@ Catatan Kurir: Pastikan posisi dus ditaruh datar agar mayo tidak tumpah ya kak.`
                                 {ord.customer_qr_id}
                               </span>
                             )}
+                            {ord.kitchen_status && (
+                              <span className="ml-1.5 font-sans text-[10px] bg-[#111111] text-[#FFD700] px-2 py-0.5 rounded-full font-bold border border-[#FFD700]/30">
+                                {ord.kitchen_status === 'sedang_goreng' && '🔥 Di Wajan'}
+                                {ord.kitchen_status === 'packing' && '📦 Packing'}
+                                {ord.kitchen_status === 'siap' && '🥟 Siap Ambil'}
+                                {ord.kitchen_status === 'antre' && '⏳ Antre Masak'}
+                                {ord.kitchen_status === 'selesai' && '✅ Selesai'}
+                              </span>
+                            )}
                           </div>
 
                           <div className="text-right">
@@ -3053,6 +3075,26 @@ Catatan Kurir: Pastikan posisi dus ditaruh datar agar mayo tidak tumpah ya kak.`
                             >
                               <span>📲</span>
                               <span className="hidden xs:inline">WA</span>
+                            </button>
+
+                            <button
+                              type="button"
+                              onClick={() => {
+                                const waMsg = storageService.generateWaTrackingMessage(ord);
+                                const cleanWa = (ord.customer_wa || '').replace(/\D/g, '');
+                                let url = `https://wa.me/?text=${encodeURIComponent(waMsg)}`;
+                                if (cleanWa) {
+                                  const waNum = cleanWa.startsWith('0') ? '62' + cleanWa.slice(1) : cleanWa;
+                                  url = `https://wa.me/${waNum}?text=${encodeURIComponent(waMsg)}`;
+                                }
+                                window.open(url, '_blank');
+                                onShowToast(`Membuka WhatsApp untuk kirim link lacak pesanan #${ord.id}... 📱`);
+                              }}
+                              className="cursor-pointer px-3 py-1.5 rounded-full font-sans font-bold text-xs bg-amber-500 text-black border border-amber-600 hover:bg-amber-400 flex items-center gap-1 transition shadow-xs"
+                              title="Kirim link live tracking dapur ke WA pembeli"
+                            >
+                              <span>🔥</span>
+                              <span className="hidden xs:inline">Resi Live</span>
                             </button>
 
                             {ord.status === 'menunggu' && (
@@ -3715,6 +3757,11 @@ Catatan Kurir: Pastikan posisi dus ditaruh datar agar mayo tidak tumpah ya kak.`
           onShowToast={onShowToast}
           onRefreshExpenses={() => setExpenses(storageService.getExpenses())}
         />
+      )}
+
+      {/* TAB: LAYAR DAPUR & ANTREAN GORENG (KDS) */}
+      {activeTab === 'kds' && (
+        <KitchenDisplaySystem onShowToast={onShowToast} />
       )}
 
       {/* TAB 2: PENGATURAN TOKO & KEAMANAN */}
@@ -6614,6 +6661,23 @@ Catatan Kurir: Pastikan posisi dus ditaruh datar agar mayo tidak tumpah ya kak.`
                 <div className="text-xl mb-1">🥩</div>
                 <div className="font-sans font-bold text-xs">Resep & Gudang Bahan</div>
                 <div className="text-[10px] opacity-75">Stok bahan & HPP cuan</div>
+              </button>
+
+              <button
+                type="button"
+                onClick={() => {
+                  setActiveTab('kds');
+                  setIsMobileDrawerOpen(false);
+                }}
+                className={`p-3 rounded-[16px] border-2 border-[#111111] text-left transition cursor-pointer ${
+                  activeTab === 'kds'
+                    ? 'bg-[#111111] text-[#FFD700] shadow-[2px_2px_0_#FFD700]'
+                    : 'bg-white text-[#111111] shadow-[2px_2px_0_#111111] hover:bg-[#FFF8E7]'
+                }`}
+              >
+                <div className="text-xl mb-1">🍳</div>
+                <div className="font-sans font-bold text-xs">Layar Dapur (KDS)</div>
+                <div className="text-[10px] opacity-75">Antrean goreng real-time</div>
               </button>
 
               <button

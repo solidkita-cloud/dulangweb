@@ -1,7 +1,7 @@
 import React from 'react';
 import { BRAND, LOCKED_COPY } from '../../lib/constants';
 
-export type NavMode = 'pembeli' | 'pemilik' | 'cetak' | 'scan';
+export type NavMode = 'pembeli' | 'pemilik' | 'cetak' | 'scan' | 'kds' | 'track';
 
 interface HeaderProps {
   currentMode: NavMode;
@@ -44,7 +44,19 @@ export const Header: React.FC<HeaderProps> = ({
                   : 'text-[#FFF8E7]/70 hover:text-[#FFF8E7]'
               }`}
             >
-              Mode Pemilik (Dapur)
+              Kasir & Owner
+            </button>
+
+            <button
+              type="button"
+              onClick={() => onSelectMode('kds')}
+              className={`px-3.5 py-1.5 rounded-full transition-all cursor-pointer ${
+                currentMode === 'kds'
+                  ? 'bg-[#FFD700] text-[#111111] shadow'
+                  : 'text-[#FFF8E7]/70 hover:text-[#FFF8E7]'
+              }`}
+            >
+              🍳 Layar Dapur (KDS)
             </button>
 
             <button
@@ -56,7 +68,7 @@ export const Header: React.FC<HeaderProps> = ({
                   : 'text-[#FFF8E7]/70 hover:text-[#FFF8E7]'
               }`}
             >
-              🖨️ Cetak Stiker
+              🖨️ Stiker
             </button>
 
             {onLogout && (
@@ -97,7 +109,21 @@ export const Header: React.FC<HeaderProps> = ({
           </div>
         </div>
 
-        <div className="flex items-center gap-3">
+        <div className="flex items-center gap-2 sm:gap-3">
+          <button
+            type="button"
+            onClick={() => onSelectMode('track')}
+            className={`cursor-pointer px-3 py-1.5 rounded-full font-sans font-bold text-[12px] border transition flex items-center gap-1.5 ${
+              currentMode === 'track'
+                ? 'bg-[#111111] text-[#FFD700] border-[#111111] shadow-[2px_2px_0_#FFD700]'
+                : 'bg-white text-[#5C3D2E] border-[#111111]/20 hover:border-[#111111] shadow-2xs'
+            }`}
+            title="Lacak status penggorengan pesananmu secara langsung"
+          >
+            <span>🔥</span>
+            <span className="hidden xs:inline">Lacak Pesanan</span>
+          </button>
+
           <span className="hidden md:inline font-hand text-[15px] text-[#5C3D2E]/70">
             Sidoarjo • wajan panas tiap hari 🔥
           </span>
