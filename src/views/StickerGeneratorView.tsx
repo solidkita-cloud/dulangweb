@@ -118,9 +118,10 @@ export const StickerGeneratorView: React.FC<StickerGeneratorViewProps> = ({
             color: { dark: '#111111', light: '#FFFFFF' },
           });
 
-          // 2. Embed center Dulang logo on QR code
           const qrCtx = qrCanvas.getContext('2d');
           if (qrCtx && logo && logo.complete && logo.naturalWidth > 0) {
+            qrCtx.imageSmoothingEnabled = true;
+            qrCtx.imageSmoothingQuality = 'high';
             const center = qrRawSize / 2;
             const logoRadius = qrRawSize * 0.145; // ~29% diameter
 

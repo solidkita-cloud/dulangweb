@@ -1,4 +1,4 @@
-import React, { useEffect, useRef } from 'react';
+import React, { useState, useEffect, useRef } from 'react';
 import QRCode from 'qrcode';
 import { BRAND, LOCKED_COPY } from '../../lib/constants';
 
@@ -11,8 +11,17 @@ export const CuteQRCard: React.FC<CuteQRCardProps> = ({
   qrId = 'DULANG-042',
   onScanClick,
 }) => {
+  const sampleIds = ['DULANG-042', 'DULANG-015', 'DULANG-088', 'DULANG-BARU-99'];
+  const [activeId, setActiveId] = useState<string>(qrId);
   const canvasRef = useRef<HTMLCanvasElement | null>(null);
-  const scanUrl = `${window.location.origin}/?scan=${qrId}`;
+  const scanUrl = `${window.location.origin}/?scan=${activeId}`;
+
+  const handleCycleQr = (e?: React.MouseEvent) => {
+    if (e) e.stopPropagation();
+    const currIdx = sampleIds.indexOf(activeId);
+    const nextIdx = (currIdx + 1) % sampleIds.length;
+    setActiveId(sampleIds[nextIdx]);
+  };
 
   useEffect(() => {
     let isCancelled = false;
@@ -21,7 +30,7 @@ export const CuteQRCard: React.FC<CuteQRCardProps> = ({
 
     const renderQRWithLogo = async () => {
       try {
-        const qrSize = 160;
+        const qrSize = 512; // Crisp 3x Retina resolution
         await QRCode.toCanvas(canvas, scanUrl, {
           width: qrSize,
           margin: 1,
@@ -47,19 +56,21 @@ export const CuteQRCard: React.FC<CuteQRCardProps> = ({
 
         const ctx = canvas.getContext('2d');
         if (ctx && logoImg.complete && logoImg.naturalWidth > 0) {
+          ctx.imageSmoothingEnabled = true;
+          ctx.imageSmoothingQuality = 'high';
           const center = qrSize / 2;
           const logoRadius = qrSize * 0.145; // ~29% diameter
 
           // White circular background cutout
           ctx.beginPath();
-          ctx.arc(center, center, logoRadius + 2.5, 0, Math.PI * 2);
+          ctx.arc(center, center, logoRadius + 6, 0, Math.PI * 2);
           ctx.fillStyle = '#FFFFFF';
           ctx.fill();
-          ctx.lineWidth = 1.5;
+          ctx.lineWidth = 4;
           ctx.strokeStyle = '#111111';
           ctx.stroke();
 
-          // Circular clipped logo
+          // Circular clipped logo (sharp and clear)
           ctx.save();
           ctx.beginPath();
           ctx.arc(center, center, logoRadius, 0, Math.PI * 2);
@@ -139,11 +150,11 @@ export const CuteQRCard: React.FC<CuteQRCardProps> = ({
           </div>
 
           <div
-            onClick={() => onScanClick && onScanClick(qrId)}
+            onClick={() => onScanClick && onScanClick(activeId)}
             className="cursor-pointer group relative bg-white rounded-[16px] p-3 border-2 border-[#111111] shadow-[4px_4px_0_#FFD700] hover:scale-[1.02] transition-transform"
             title="Klik untuk coba simulasi scan QR ini"
           >
-            <canvas ref={canvasRef} className="block rounded-[8px]" />
+            <canvas ref={canvasRef} className="block rounded-[8px] w-[160px] h-[160px] sm:w-[176px] sm:h-[176px]" />
             <div className="absolute inset-0 bg-[#FFD700]/0 group-hover:bg-[#FFD700]/10 transition-colors rounded-[16px]" />
           </div>
         </div>
@@ -153,8 +164,16 @@ export const CuteQRCard: React.FC<CuteQRCardProps> = ({
           <div className="font-hand font-bold text-[24px] sm:text-[26px] leading-[1.1] text-white rotate-[-0.8deg]">
             {LOCKED_COPY.qrScanNote}
           </div>
-          <div className="mt-1 font-sans text-[10px] tracking-[0.16em] uppercase text-white/50">
-            ID: <span className="font-bold text-[#FFD700]">{qrId}</span> • Scan & Auto-Fill
+          <div className="mt-1 font-sans text-[10px] tracking-[0.16em] uppercase text-white/50 flex items-center justify-center gap-1.5 flex-wrap">
+            <span>ID: <strong className="text-[#FFD700] font-mono">{activeId}</strong> • SCAN & AUTO-FILL</span>
+            <button
+              type="button"
+              onClick={handleCycleQr}
+              className="cursor-pointer px-2 py-0.5 rounded-full bg-white/10 hover:bg-[#FFD700] hover:text-[#111111] text-white/80 transition-colors text-[9px] font-sans font-bold border border-white/20"
+              title="Ganti contoh ID dus simulasi"
+            >
+              Ganti Dus 🔄
+            </button>
           </div>
         </div>
 
@@ -162,10 +181,10 @@ export const CuteQRCard: React.FC<CuteQRCardProps> = ({
         <div className="mt-4 flex justify-center">
           <button
             type="button"
-            onClick={() => onScanClick && onScanClick(qrId)}
+            onClick={() => onScanClick && onScanClick(activeId)}
             className="cursor-pointer inline-flex items-center gap-2 bg-[#FFD700] text-[#111111] border-2 border-[#111111] rounded-full px-5 py-2 font-hand font-bold text-[18px] leading-none rotate-[-1deg] shadow-[3px_3px_0_#FFFFFF] hover:translate-y-[-1px] transition-all"
           >
-            <span>Coba Scan Dus Ini</span>
+            <span>Coba Scan Dus Ini ({activeId})</span>
             <span>→</span>
           </button>
         </div>
