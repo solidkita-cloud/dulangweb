@@ -162,6 +162,7 @@ export interface OrderRecord {
   delivery_method?: 'pickup' | 'delivery';
   shipping_cost?: number;
   shipping_district?: string;
+  ingredients_deducted?: boolean;
 }
 
 // --- PENDAPAT / TESTIMONI PELANGGAN (COLLAPSIBLE / ACCORDION) ---
@@ -264,4 +265,33 @@ export interface KitchenClosingRecap {
   topSellingItems: { name: string; qty: number }[];
   tomorrowPreOrdersCount: number;
   notes?: string;
+}
+
+// --- GUDANG BAHAN BAKU & RESEP HPP OTOMATIS (COGS / RECIPE COSTING) ---
+export type IngredientCategory = 'kulit' | 'isian' | 'panir_minyak' | 'kemasan';
+
+export interface PantryIngredient {
+  id: string;
+  name: string;
+  category: IngredientCategory;
+  unit: string;               // 'kg', 'butir', 'liter', 'pack', 'pcs', 'kotak'
+  currentStock: number;       // e.g. 5.5
+  minStock: number;           // warning threshold, e.g. 2
+  costPerUnit: number;        // harga beli per unit (e.g. 12000 / kg)
+  updatedAt?: string;
+}
+
+export interface RecipeItemComponent {
+  ingredientId: string;       // references PantryIngredient.id
+  ingredientName: string;
+  amountPerPcs: number;       // kebutuhan per 1 butir risoles dalam satuan bahan
+  unit: string;
+}
+
+export interface MenuRecipe {
+  menuId: string;             // references MenuItem.id
+  menuName: string;
+  components: RecipeItemComponent[];
+  calculatedHpp: number;      // total HPP / biaya bahan per 1 butir
+  updatedAt?: string;
 }

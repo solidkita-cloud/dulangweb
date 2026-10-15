@@ -14,6 +14,8 @@ import {
   GoldenTicketRecord,
   SubuhPrepPlan,
   KitchenClosingRecap,
+  PantryIngredient,
+  MenuRecipe,
 } from '../types';
 import {
   DEFAULT_MENUS,
@@ -24,6 +26,11 @@ import {
   DEFAULT_TESTIMONIALS,
   BRAND,
 } from '../lib/constants';
+import {
+  DEFAULT_PANTRY_INGREDIENTS,
+  DEFAULT_MENU_RECIPES,
+  calculateRecipeHpp,
+} from '../lib/defaultRecipes';
 import { getSupabaseClient } from '../lib/supabase';
 import {
   isOwnerSessionValid,
@@ -46,6 +53,8 @@ const STORAGE_KEYS = {
   GOLDEN_TICKETS: 'dulang_golden_tickets_v1',
   SUBUH_PLANS: 'dulang_subuh_plans_v1',
   KITCHEN_RECAPS: 'dulang_kitchen_recaps_v1',
+  PANTRY_INGREDIENTS: 'dulang_pantry_ingredients_v1',
+  MENU_RECIPES: 'dulang_menu_recipes_v1',
 };
 
 export const DEFAULT_EXPENSES: ExpenseRecord[] = [];
@@ -1526,9 +1535,12 @@ ${lines.join('\n')}
       console.warn('Update order to Supabase error:', e);
     }
 
-    // Jika berstatus lunas, otomatis mutakhirkan profil preferensi pelanggan (si A sukanya apa)
-    if (status === 'lunas' && updatedOrder.customer_name) {
-      this.updateCustomerIntelligence(updatedOrder);
+    // Jika berstatus lunas, otomatis mutakhirkan profil preferensi pelanggan & potong stok bahan baku
+    if (status === 'lunas') {
+      if (updatedOrder.customer_name) {
+        this.updateCustomerIntelligence(updatedOrder);
+      }
+      this.deductIngredientsForOrder(updatedOrder);
     }
     return updatedOrder;
   },
@@ -1917,6 +1929,144 @@ ${lines.join('\n')}
 
   setOwnerWa(wa: string): void {
     localStorage.setItem('dulang_owner_wa', wa.replace(/\D/g, ''));
+  },
+
+  // --- GUDANG BAHAN BAKU & RESEP HPP OTOMATIS ---
+  getPantryIngredients(): PantryIngredient[] {
+    try {
+      const data = localStorage.getItem(STORAGE_KEYS.PANTRY_INGREDIENTS);
+      if (data) {
+        const parsed = JSON.parse(data);
+        if (Array.isArray(parsed) && parsed.length > 0) return parsed;
+      }
+    } catch (e) {
+      console.warn('Failed to read pantry ingredients:', e);
+    }
+    return DEFAULT_PANTRY_INGREDIENTS;
+  },
+
+  savePantryIngredients(list: PantryIngredient[]): void {
+    localStorage.setItem(STORAGE_KEYS.PANTRY_INGREDIENTS, JSON.stringify(list));
+    if (typeof window !== 'undefined') {
+      window.dispatchEvent(new Event('dulang_pantry_updated'));
+    }
+  },
+
+  restockIngredient(
+    id: string,
+    addedQty: number,
+    costPerUnit?: number,
+    recordExpense = false,
+    expenseDate?: string
+  ): void {
+    const list = this.getPantryIngredients();
+    const idx = list.findIndex((p) => p.id === id);
+    if (idx < 0) return;
+
+    const item = list[idx];
+    const newStock = Number((item.currentStock + addedQty).toFixed(2));
+    const newCost = costPerUnit !== undefined && costPerUnit > 0 ? costPerUnit : item.costPerUnit;
+
+    list[idx] = {
+      ...item,
+      currentStock: newStock,
+      costPerUnit: newCost,
+      updatedAt: new Date().toISOString(),
+    };
+
+    this.savePantryIngredients(list);
+
+    if (recordExpense) {
+      const totalCost = Math.round(addedQty * newCost);
+      if (totalCost > 0) {
+        this.addExpense({
+          tanggal: expenseDate || new Date().toISOString().split('T')[0],
+          nama_item: `Belanja Restock ${item.name} (${addedQty} ${item.unit})`,
+          kategori: item.category === 'kemasan' ? 'kemasan' : 'bahan_baku',
+          nominal: totalCost,
+          catatan: `Restock otomatis dari modul gudang bahan`,
+        });
+      }
+    }
+  },
+
+  getMenuRecipes(): MenuRecipe[] {
+    try {
+      const data = localStorage.getItem(STORAGE_KEYS.MENU_RECIPES);
+      if (data) {
+        const parsed = JSON.parse(data);
+        if (Array.isArray(parsed) && parsed.length > 0) return parsed;
+      }
+    } catch (e) {
+      console.warn('Failed to read menu recipes:', e);
+    }
+    return DEFAULT_MENU_RECIPES;
+  },
+
+  saveMenuRecipes(recipes: MenuRecipe[]): void {
+    localStorage.setItem(STORAGE_KEYS.MENU_RECIPES, JSON.stringify(recipes));
+    if (typeof window !== 'undefined') {
+      window.dispatchEvent(new Event('dulang_recipes_updated'));
+    }
+  },
+
+  saveMenuRecipe(recipe: MenuRecipe): void {
+    const recipes = this.getMenuRecipes();
+    const pantry = this.getPantryIngredients();
+    const hpp = calculateRecipeHpp(recipe.components, pantry);
+    const updatedRecipe = {
+      ...recipe,
+      calculatedHpp: hpp > 0 ? hpp : recipe.calculatedHpp,
+      updatedAt: new Date().toISOString(),
+    };
+    const idx = recipes.findIndex((r) => r.menuId === recipe.menuId);
+    if (idx >= 0) {
+      recipes[idx] = updatedRecipe;
+    } else {
+      recipes.push(updatedRecipe);
+    }
+    this.saveMenuRecipes(recipes);
+  },
+
+  deductIngredientsForOrder(order: OrderRecord): { deducted: boolean; lowStockItems: PantryIngredient[] } {
+    if (!order.items || order.items.length === 0 || order.ingredients_deducted) {
+      return { deducted: false, lowStockItems: [] };
+    }
+
+    const pantry = this.getPantryIngredients();
+    const recipes = this.getMenuRecipes();
+    let hasChanges = false;
+
+    order.items.forEach((ordItem) => {
+      const recipe = recipes.find(
+        (r) => r.menuId === ordItem.menu_id || r.menuName.toLowerCase() === ordItem.nama.toLowerCase()
+      );
+      if (!recipe) return;
+
+      recipe.components.forEach((comp) => {
+        const pIdx = pantry.findIndex((p) => p.id === comp.ingredientId);
+        if (pIdx >= 0) {
+          const usedQty = comp.amountPerPcs * ordItem.qty;
+          pantry[pIdx].currentStock = Math.max(0, Number((pantry[pIdx].currentStock - usedQty).toFixed(3)));
+          pantry[pIdx].updatedAt = new Date().toISOString();
+          hasChanges = true;
+        }
+      });
+    });
+
+    if (hasChanges) {
+      this.savePantryIngredients(pantry);
+      order.ingredients_deducted = true;
+      const allOrders = this.getOrders();
+      const oIdx = allOrders.findIndex((o) => o.id === order.id);
+      if (oIdx >= 0) {
+        allOrders[oIdx].ingredients_deducted = true;
+        this.saveOrders(allOrders);
+      }
+    }
+
+    const lowStockItems = pantry.filter((p) => p.currentStock <= p.minStock);
+    return { deducted: hasChanges, lowStockItems };
   },
 };
 

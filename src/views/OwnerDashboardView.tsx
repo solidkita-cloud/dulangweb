@@ -20,6 +20,7 @@ import { ImageCropModal } from '../components/common/ImageCropModal';
 import { SubuhCalculatorModal } from '../components/common/SubuhCalculatorModal';
 import { KitchenClosingModal } from '../components/common/KitchenClosingModal';
 import { InvoiceA4Modal } from '../components/common/InvoiceA4Modal';
+import { RecipeInventoryTab } from '../components/owner/RecipeInventoryTab';
 import { StickerGeneratorView } from './StickerGeneratorView';
 import {
   logSecurityEvent,
@@ -35,7 +36,7 @@ interface OwnerDashboardViewProps {
   onUpdateStoreConfig: (config: StoreConfig) => void;
   onLogout: () => void;
   onShowToast: (msg: string) => void;
-  initialTab?: 'menu' | 'orders' | 'expenses' | 'customers' | 'testimonials' | 'vouchers' | 'stickers' | 'stats' | 'settings';
+  initialTab?: 'menu' | 'orders' | 'expenses' | 'customers' | 'inventory' | 'testimonials' | 'vouchers' | 'stickers' | 'stats' | 'settings';
 }
 
 export const OwnerDashboardView: React.FC<OwnerDashboardViewProps> = ({
@@ -48,7 +49,7 @@ export const OwnerDashboardView: React.FC<OwnerDashboardViewProps> = ({
   initialTab,
 }) => {
   const [customers, setCustomers] = useState<Customer[]>(() => storageService.getCustomers());
-  const [activeTab, setActiveTab] = useState<'menu' | 'orders' | 'expenses' | 'customers' | 'testimonials' | 'vouchers' | 'stickers' | 'stats' | 'settings'>(
+  const [activeTab, setActiveTab] = useState<'menu' | 'orders' | 'expenses' | 'customers' | 'inventory' | 'testimonials' | 'vouchers' | 'stickers' | 'stats' | 'settings'>(
     initialTab || 'orders'
   );
 
@@ -764,7 +765,13 @@ Catatan Kurir: Pastikan posisi dus ditaruh datar agar mayo tidak tumpah ya kak.`
       }
 
       if (status === 'lunas') {
-        onShowToast(`Pesanan #${orderId} LUNAS via ${(method || updated.payment_method || 'tunai').toUpperCase()}! Data selera pelanggan otomatis dicatat. 🥟✨`);
+        const pantry = storageService.getPantryIngredients();
+        const low = pantry.filter((p) => p.currentStock <= p.minStock);
+        let msg = `Pesanan #${orderId} LUNAS via ${(method || updated.payment_method || 'tunai').toUpperCase()}! Selera & stok bahan baku otomatis diperbarui. 🥟✨`;
+        if (low.length > 0) {
+          msg += ` ⚠️ Stok (${low.map((i) => i.name).join(', ')}) menipis!`;
+        }
+        onShowToast(msg);
       } else if (status === 'batal') {
         onShowToast(`Pesanan #${orderId} ditandai batal beli.`);
       } else {
@@ -911,6 +918,7 @@ Catatan Kurir: Pastikan posisi dus ditaruh datar agar mayo tidak tumpah ya kak.`
     };
     storageService.addOrder(newOrder);
     storageService.updateCustomerIntelligence(newOrder);
+    const { lowStockItems } = storageService.deductIngredientsForOrder(newOrder);
     setOrders(storageService.getOrders());
     setCustomers(storageService.getCustomers());
     onUpdateMenus(storageService.getMenus());
@@ -921,7 +929,11 @@ Catatan Kurir: Pastikan posisi dus ditaruh datar agar mayo tidak tumpah ya kak.`
     setWalkInCart([]);
     setWalkInCashReceived('');
     setSelectedOrderForReceipt(newOrder);
-    onShowToast(`Transaksi Dapur senilai Rp ${totalPrice.toLocaleString('id-ID')} (${walkInPaymentMethod.toUpperCase()}) Lunas! Struk siap dicetak/dikirim. 🧾✨`);
+    let toastMsg = `Transaksi Dapur senilai Rp ${totalPrice.toLocaleString('id-ID')} (${walkInPaymentMethod.toUpperCase()}) Lunas! Bahan baku terpotong otomatis. 🧾✨`;
+    if (lowStockItems.length > 0) {
+      toastMsg += ` ⚠️ Peringatan: Stok ${lowStockItems.map((i) => i.name).join(', ')} menipis!`;
+    }
+    onShowToast(toastMsg);
   };
 
   const handleQuickWaOrder = (e: React.FormEvent) => {
@@ -955,12 +967,17 @@ Catatan Kurir: Pastikan posisi dus ditaruh datar agar mayo tidak tumpah ya kak.`
 
     if (res.success && res.order) {
       playNewCustomerChime();
+      const { lowStockItems } = storageService.deductIngredientsForOrder(res.order);
       setOrders(storageService.getOrders());
       setCustomers(storageService.getCustomers());
       onUpdateMenus(storageService.getMenus());
       setSelectedOrderForReceipt(res.order);
       setQuickWaOrderText('');
-      onShowToast(`⚡ ${res.message} 🔔`);
+      let msg = `⚡ ${res.message} 🔔`;
+      if (lowStockItems.length > 0) {
+        msg += ` ⚠️ Stok bahan (${lowStockItems.map((i) => i.name).join(', ')}) menipis!`;
+      }
+      onShowToast(msg);
     } else {
       alert(res.message || 'Gagal memproses teks pesanan!');
     }
@@ -1598,8 +1615,20 @@ Catatan Kurir: Pastikan posisi dus ditaruh datar agar mayo tidak tumpah ya kak.`
           <span className="text-[10px] text-[#5C3D2E]/70 font-bold">({customers.length})</span>
         </button>
 
+        <button
+          type="button"
+          onClick={() => setActiveTab('inventory')}
+          className={`shrink-0 px-4 sm:px-5 py-2 sm:py-2.5 rounded-full font-sans font-bold text-xs sm:text-[13px] border-2 cursor-pointer transition flex items-center gap-1.5 ${
+            activeTab === 'inventory'
+              ? 'bg-[#111111] text-[#FFD700] border-[#111111] shadow-[2px_2px_0_#FFD700]'
+              : 'bg-white text-[#5C3D2E]/80 border-[#111111]/15 hover:border-[#111111]'
+          }`}
+        >
+          <span>🥩 Resep & Gudang</span>
+        </button>
+
         {/* If user selected a secondary tab (e.g. from drawer), show it as active pill */}
-        {activeTab !== 'orders' && activeTab !== 'menu' && activeTab !== 'expenses' && activeTab !== 'customers' && (
+        {activeTab !== 'orders' && activeTab !== 'menu' && activeTab !== 'expenses' && activeTab !== 'customers' && activeTab !== 'inventory' && (
           <div className="shrink-0 inline-flex items-center gap-1.5 bg-[#FFD700] text-[#111111] border-2 border-[#111111] px-3.5 py-2 rounded-full font-sans font-bold text-xs shadow-[2px_2px_0_#111111]">
             <span>
               {activeTab === 'stickers' && '🏷️ Cetak Stiker QR'}
@@ -3678,6 +3707,15 @@ Catatan Kurir: Pastikan posisi dus ditaruh datar agar mayo tidak tumpah ya kak.`
           </div>
         );
       })()}
+
+      {/* TAB: GUDANG BAHAN BAKU & RESEP HPP OTOMATIS */}
+      {activeTab === 'inventory' && (
+        <RecipeInventoryTab
+          menus={menus}
+          onShowToast={onShowToast}
+          onRefreshExpenses={() => setExpenses(storageService.getExpenses())}
+        />
+      )}
 
       {/* TAB 2: PENGATURAN TOKO & KEAMANAN */}
       {activeTab === 'settings' && (
@@ -6559,6 +6597,23 @@ Catatan Kurir: Pastikan posisi dus ditaruh datar agar mayo tidak tumpah ya kak.`
                 <div className="text-xl mb-1">🍲</div>
                 <div className="font-sans font-bold text-xs">Kelola Menu</div>
                 <div className="text-[10px] opacity-75">Harga & stok porsi</div>
+              </button>
+
+              <button
+                type="button"
+                onClick={() => {
+                  setActiveTab('inventory');
+                  setIsMobileDrawerOpen(false);
+                }}
+                className={`p-3 rounded-[16px] border-2 border-[#111111] text-left transition cursor-pointer ${
+                  activeTab === 'inventory'
+                    ? 'bg-[#111111] text-[#FFD700] shadow-[2px_2px_0_#FFD700]'
+                    : 'bg-white text-[#111111] shadow-[2px_2px_0_#111111] hover:bg-[#FFF8E7]'
+                }`}
+              >
+                <div className="text-xl mb-1">🥩</div>
+                <div className="font-sans font-bold text-xs">Resep & Gudang Bahan</div>
+                <div className="text-[10px] opacity-75">Stok bahan & HPP cuan</div>
               </button>
 
               <button
