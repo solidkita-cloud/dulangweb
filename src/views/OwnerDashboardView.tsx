@@ -781,12 +781,18 @@ Catatan Kurir: Pastikan posisi dus ditaruh datar agar mayo tidak tumpah ya kak.`
     }
   };
 
-  const handleDeleteOrder = (orderId: string) => {
+  const handleDeleteOrder = async (orderId: string) => {
     if (!window.confirm(`Hapus catatan pesanan #${orderId}?`)) return;
-    const next = orders.filter((o) => o.id !== orderId);
-    storageService.saveOrders(next);
-    setOrders(next);
-    onShowToast(`Pesanan #${orderId} dihapus.`);
+    await storageService.deleteOrder(orderId);
+    setOrders(storageService.getOrders());
+    onShowToast(`Pesanan #${orderId} telah dihapus permanen dari sistem & cloud.`);
+  };
+
+  const handleClearAllOrders = async () => {
+    if (!window.confirm('Hapus SEMUA riwayat pesanan (termasuk pesanan uji coba)? Tindakan ini permanen.')) return;
+    await storageService.clearOrders();
+    setOrders([]);
+    onShowToast('Semua riwayat pesanan berhasil dibersihkan.');
   };
 
   const handleSaveDP = (e: React.FormEvent) => {
@@ -2829,6 +2835,17 @@ Catatan Kurir: Pastikan posisi dus ditaruh datar agar mayo tidak tumpah ya kak.`
                     placeholder="Cari nama / ID..."
                     className="rounded-full border-2 border-[#111111] px-3.5 py-1 font-sans text-xs bg-white focus:outline-none focus:border-[#FFD700] grow sm:grow-0"
                   />
+
+                  {orders.length > 0 && (
+                    <button
+                      type="button"
+                      onClick={handleClearAllOrders}
+                      className="cursor-pointer px-3 py-1 rounded-full text-[11px] font-sans font-bold bg-white hover:bg-rose-50 text-rose-600 border border-rose-200 transition shrink-0 ml-auto"
+                      title="Bersihkan semua pesanan uji coba / dummy"
+                    >
+                      🧹 Bersihkan Data Uji Coba
+                    </button>
+                  )}
                 </div>
               </div>
 

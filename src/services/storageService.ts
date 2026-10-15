@@ -1103,35 +1103,48 @@ ${lines.join('\n')}
 
       if (error || !data) return this.getOrders();
 
-      const localOrders = this.getOrders();
+      const deletedRaw = localStorage.getItem('dulang_deleted_order_ids') || '[]';
+      let deletedIds: Set<string>;
+      try {
+        deletedIds = new Set(JSON.parse(deletedRaw));
+      } catch {
+        deletedIds = new Set();
+      }
+
+      const localOrders = this.getOrders().filter((o) => !deletedIds.has(o.id));
       const map = new Map<string, OrderRecord>();
 
-      // Keep local orders
+      // Keep local orders that haven't been deleted
       localOrders.forEach((o) => map.set(o.id, o));
 
-      // Merge remote orders from Supabase
+      // Merge remote orders from Supabase (skip any that were deleted)
       data.forEach((r: any) => {
-        map.set(r.id, {
-          id: r.id,
-          customer_name: r.customer_name || 'Pelanggan Web',
-          customer_wa: r.customer_wa || undefined,
-          customer_qr_id: r.customer_qr_id || undefined,
-          items: Array.isArray(r.items) ? r.items : [],
-          total_price: Number(r.total_price || 0),
-          payment_method: (r.payment_method as PaymentMethod) || 'tunai',
-          status: (r.status as OrderStatus) || 'menunggu',
-          delivery_method: r.delivery_method === 'delivery' ? 'delivery' : 'pickup',
-          shipping_cost: Number(r.shipping_cost || 0),
-          shipping_district: r.shipping_district || undefined,
-          delivery_schedule: r.delivery_schedule || undefined,
-          delivery_slot: r.delivery_slot || undefined,
-          dp_amount: r.dp_amount ? Number(r.dp_amount) : undefined,
-          remaining_amount: r.remaining_amount ? Number(r.remaining_amount) : undefined,
-          channel: r.channel || 'web_wa',
-          notes: r.notes || undefined,
-          created_at: r.created_at || new Date().toISOString(),
-          completed_at: r.completed_at || undefined,
-        });
+        if (!deletedIds.has(r.id)) {
+          map.set(r.id, {
+            id: r.id,
+            customer_name: r.customer_name || 'Pelanggan Web',
+            customer_wa: r.customer_wa || undefined,
+            customer_qr_id: r.customer_qr_id || undefined,
+            items: Array.isArray(r.items) ? r.items : [],
+            total_price: Number(r.total_price || 0),
+            payment_method: (r.payment_method as PaymentMethod) || 'tunai',
+            status: (r.status as OrderStatus) || 'menunggu',
+            delivery_method: r.delivery_method === 'delivery' ? 'delivery' : 'pickup',
+            shipping_cost: Number(r.shipping_cost || 0),
+            shipping_district: r.shipping_district || undefined,
+            delivery_schedule: r.delivery_schedule || undefined,
+            delivery_slot: r.delivery_slot || undefined,
+            dp_amount: r.dp_amount ? Number(r.dp_amount) : undefined,
+            remaining_amount: r.remaining_amount ? Number(r.remaining_amount) : undefined,
+            channel: r.channel || 'web_wa',
+            notes: r.notes || undefined,
+            kitchen_status: r.kitchen_status || undefined,
+            cooking_started_at: r.cooking_started_at || undefined,
+            cooking_completed_at: r.cooking_completed_at || undefined,
+            created_at: r.created_at || new Date().toISOString(),
+            completed_at: r.completed_at || undefined,
+          });
+        }
       });
 
       const merged = Array.from(map.values()).sort(
@@ -1157,6 +1170,46 @@ ${lines.join('\n')}
       }
     } catch (e) {
       console.error('Failed to save orders:', e);
+    }
+  },
+
+  async deleteOrder(orderId: string): Promise<boolean> {
+    try {
+      const list = this.getOrders().filter((o) => o.id !== orderId);
+      this.saveOrders(list);
+
+      // Catat ID ke daftar tombstone agar sinkronisasi cloud tidak memunculkannya lagi
+      try {
+        const deletedRaw = localStorage.getItem('dulang_deleted_order_ids') || '[]';
+        const deletedIds: string[] = JSON.parse(deletedRaw);
+        if (!deletedIds.includes(orderId)) {
+          deletedIds.push(orderId);
+          if (deletedIds.length > 300) deletedIds.shift();
+          localStorage.setItem('dulang_deleted_order_ids', JSON.stringify(deletedIds));
+        }
+      } catch (err) {
+        console.warn('Failed to store deleted order ID:', err);
+      }
+
+      // Hapus permanen dari tabel Supabase Cloud
+      const client = getSupabaseClient();
+      if (client) {
+        try {
+          await client.from('orders').delete().eq('id', orderId);
+        } catch (err) {
+          console.warn('Failed to delete order from Supabase:', err);
+        }
+      }
+
+      if (typeof window !== 'undefined') {
+        window.dispatchEvent(new CustomEvent('dulang_kitchen_updated', { detail: { orderId, deleted: true } }));
+        window.dispatchEvent(new Event('dulang_orders_updated'));
+      }
+
+      return true;
+    } catch (e) {
+      console.error('Failed to delete order:', e);
+      return false;
     }
   },
 
@@ -1699,11 +1752,35 @@ _Dapur Dulang Indonesia - Risoles & Katering Sidoarjo_`;
     }
   },
 
-  clearOrders(): void {
+  async clearOrders(): Promise<void> {
     try {
+      const current = this.getOrders();
       localStorage.setItem(STORAGE_KEYS.ORDERS, JSON.stringify([]));
+
+      try {
+        const deletedRaw = localStorage.getItem('dulang_deleted_order_ids') || '[]';
+        const deletedIds: string[] = JSON.parse(deletedRaw);
+        current.forEach((o) => {
+          if (!deletedIds.includes(o.id)) deletedIds.push(o.id);
+        });
+        localStorage.setItem('dulang_deleted_order_ids', JSON.stringify(deletedIds));
+      } catch (err) {
+        console.warn('Failed to store deleted order IDs:', err);
+      }
+
+      const client = getSupabaseClient();
+      if (client && current.length > 0) {
+        try {
+          const ids = current.map((o) => o.id);
+          await client.from('orders').delete().in('id', ids);
+        } catch (err) {
+          console.warn('Failed to clear orders from Supabase:', err);
+        }
+      }
+
       if (typeof window !== 'undefined') {
         window.dispatchEvent(new Event('dulang_orders_updated'));
+        window.dispatchEvent(new CustomEvent('dulang_kitchen_updated', { detail: { cleared: true } }));
       }
     } catch (e) {
       console.error('Failed to clear orders:', e);
