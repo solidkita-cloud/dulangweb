@@ -123,6 +123,7 @@ export const OwnerDashboardView: React.FC<OwnerDashboardViewProps> = ({
   const [selectedOrderForReceipt, setSelectedOrderForReceipt] = useState<OrderRecord | null>(null);
   const [receiptPaperWidth, setReceiptPaperWidth] = useState<'58mm' | '80mm'>('58mm');
   const [quickWaOrderText, setQuickWaOrderText] = useState('');
+  const [mobileActionOrder, setMobileActionOrder] = useState<OrderRecord | null>(null);
 
   // --- DULANG-2 KITCHEN COCKPIT & PROGRESSIVE DISCLOSURE STATE ---
   const [isMobileDrawerOpen, setIsMobileDrawerOpen] = useState<boolean>(false);
@@ -1562,20 +1563,20 @@ Catatan Kurir: Pastikan posisi dus ditaruh datar agar mayo tidak tumpah ya kak.`
         </div>
       )}
 
-      {/* Navigation Pills (Horizontal Scroll on Mobile, Clean on Desktop) */}
-      <div className="flex items-center gap-2 overflow-x-auto no-scrollbar pb-2 pt-1 border-b-2 border-[#111111]/10">
+      {/* Navigation Pills (Compact on Mobile, Full on Desktop) */}
+      <div className="flex items-center gap-1.5 sm:gap-2 overflow-x-auto no-scrollbar py-1 sm:py-2 border-b border-[#111111]/10 sm:border-b-2">
         <button
           type="button"
           onClick={() => setActiveTab('orders')}
-          className={`shrink-0 px-4 sm:px-5 py-2 sm:py-2.5 rounded-full font-sans font-bold text-xs sm:text-[13px] border-2 cursor-pointer transition flex items-center gap-1.5 ${
+          className={`shrink-0 px-3 sm:px-5 py-1.5 sm:py-2.5 rounded-full font-sans font-bold text-[11px] sm:text-[13px] border sm:border-2 cursor-pointer transition flex items-center gap-1 sm:gap-1.5 ${
             activeTab === 'orders'
-              ? 'bg-[#111111] text-[#FFD700] border-[#111111] shadow-[2px_2px_0_#FFD700]'
+              ? 'bg-[#111111] text-[#FFD700] border-[#111111] shadow-xs sm:shadow-[2px_2px_0_#FFD700]'
               : 'bg-white text-[#5C3D2E]/80 border-[#111111]/15 hover:border-[#111111]'
           }`}
         >
           <span>🛒 Antrean & Kasir</span>
           {orders.filter((o) => o.status === 'menunggu').length > 0 && (
-            <span className="bg-red-500 text-white text-[10px] font-bold px-2 py-0.5 rounded-full animate-pulse">
+            <span className="bg-red-500 text-white text-[9px] sm:text-[10px] font-bold px-1.5 sm:px-2 py-0.2 rounded-full animate-pulse">
               {orders.filter((o) => o.status === 'menunggu').length} Baru
             </span>
           )}
@@ -1584,27 +1585,27 @@ Catatan Kurir: Pastikan posisi dus ditaruh datar agar mayo tidak tumpah ya kak.`
         <button
           type="button"
           onClick={() => setActiveTab('menu')}
-          className={`shrink-0 px-4 sm:px-5 py-2 sm:py-2.5 rounded-full font-sans font-bold text-xs sm:text-[13px] border-2 cursor-pointer transition flex items-center gap-1.5 ${
+          className={`shrink-0 px-3 sm:px-5 py-1.5 sm:py-2.5 rounded-full font-sans font-bold text-[11px] sm:text-[13px] border sm:border-2 cursor-pointer transition flex items-center gap-1 sm:gap-1.5 ${
             activeTab === 'menu'
-              ? 'bg-[#111111] text-[#FFD700] border-[#111111] shadow-[2px_2px_0_#FFD700]'
+              ? 'bg-[#111111] text-[#FFD700] border-[#111111] shadow-xs sm:shadow-[2px_2px_0_#FFD700]'
               : 'bg-white text-[#5C3D2E]/80 border-[#111111]/15 hover:border-[#111111]'
           }`}
         >
           <span>🍲 Stok & Menu</span>
-          <span className="text-[10px] text-[#5C3D2E]/70 font-bold">({menus.length})</span>
+          <span className="text-[9px] sm:text-[10px] text-[#5C3D2E]/70 font-bold">({menus.length})</span>
         </button>
 
         <button
           type="button"
           onClick={() => setActiveTab('expenses')}
-          className={`shrink-0 px-4 sm:px-5 py-2 sm:py-2.5 rounded-full font-sans font-bold text-xs sm:text-[13px] border-2 cursor-pointer transition flex items-center gap-1.5 ${
+          className={`shrink-0 px-3 sm:px-5 py-1.5 sm:py-2.5 rounded-full font-sans font-bold text-[11px] sm:text-[13px] border sm:border-2 cursor-pointer transition flex items-center gap-1 sm:gap-1.5 ${
             activeTab === 'expenses'
-              ? 'bg-[#111111] text-[#FFD700] border-[#111111] shadow-[2px_2px_0_#FFD700]'
+              ? 'bg-[#111111] text-[#FFD700] border-[#111111] shadow-xs sm:shadow-[2px_2px_0_#FFD700]'
               : 'bg-white text-[#5C3D2E]/80 border-[#111111]/15 hover:border-[#111111]'
           }`}
         >
           <span>💰 Kas Harian</span>
-          <span className="bg-[#FFD700] text-[#111111] text-[10px] font-bold px-1.5 py-0.2 rounded-full">
+          <span className="bg-[#FFD700] text-[#111111] text-[9px] sm:text-[10px] font-bold px-1.5 py-0.2 rounded-full">
             {expenses.length}
           </span>
         </button>
@@ -1612,22 +1613,22 @@ Catatan Kurir: Pastikan posisi dus ditaruh datar agar mayo tidak tumpah ya kak.`
         <button
           type="button"
           onClick={() => setActiveTab('customers')}
-          className={`shrink-0 px-4 sm:px-5 py-2 sm:py-2.5 rounded-full font-sans font-bold text-xs sm:text-[13px] border-2 cursor-pointer transition flex items-center gap-1.5 ${
+          className={`shrink-0 px-3 sm:px-5 py-1.5 sm:py-2.5 rounded-full font-sans font-bold text-[11px] sm:text-[13px] border sm:border-2 cursor-pointer transition flex items-center gap-1 sm:gap-1.5 ${
             activeTab === 'customers'
-              ? 'bg-[#111111] text-[#FFD700] border-[#111111] shadow-[2px_2px_0_#FFD700]'
+              ? 'bg-[#111111] text-[#FFD700] border-[#111111] shadow-xs sm:shadow-[2px_2px_0_#FFD700]'
               : 'bg-white text-[#5C3D2E]/80 border-[#111111]/15 hover:border-[#111111]'
           }`}
         >
           <span>👥 Pelanggan</span>
-          <span className="text-[10px] text-[#5C3D2E]/70 font-bold">({customers.length})</span>
+          <span className="text-[9px] sm:text-[10px] text-[#5C3D2E]/70 font-bold">({customers.length})</span>
         </button>
 
         <button
           type="button"
           onClick={() => setActiveTab('inventory')}
-          className={`shrink-0 px-4 sm:px-5 py-2 sm:py-2.5 rounded-full font-sans font-bold text-xs sm:text-[13px] border-2 cursor-pointer transition flex items-center gap-1.5 ${
+          className={`shrink-0 px-3 sm:px-5 py-1.5 sm:py-2.5 rounded-full font-sans font-bold text-[11px] sm:text-[13px] border sm:border-2 cursor-pointer transition flex items-center gap-1 sm:gap-1.5 ${
             activeTab === 'inventory'
-              ? 'bg-[#111111] text-[#FFD700] border-[#111111] shadow-[2px_2px_0_#FFD700]'
+              ? 'bg-[#111111] text-[#FFD700] border-[#111111] shadow-xs sm:shadow-[2px_2px_0_#FFD700]'
               : 'bg-white text-[#5C3D2E]/80 border-[#111111]/15 hover:border-[#111111]'
           }`}
         >
@@ -1637,9 +1638,9 @@ Catatan Kurir: Pastikan posisi dus ditaruh datar agar mayo tidak tumpah ya kak.`
         <button
           type="button"
           onClick={() => setActiveTab('kds')}
-          className={`shrink-0 px-4 sm:px-5 py-2 sm:py-2.5 rounded-full font-sans font-bold text-xs sm:text-[13px] border-2 cursor-pointer transition flex items-center gap-1.5 ${
+          className={`shrink-0 px-3 sm:px-5 py-1.5 sm:py-2.5 rounded-full font-sans font-bold text-[11px] sm:text-[13px] border sm:border-2 cursor-pointer transition flex items-center gap-1 sm:gap-1.5 ${
             activeTab === 'kds'
-              ? 'bg-[#111111] text-[#FFD700] border-[#111111] shadow-[2px_2px_0_#FFD700]'
+              ? 'bg-[#111111] text-[#FFD700] border-[#111111] shadow-xs sm:shadow-[2px_2px_0_#FFD700]'
               : 'bg-white text-[#5C3D2E]/80 border-[#111111]/15 hover:border-[#111111]'
           }`}
         >
@@ -1648,7 +1649,7 @@ Catatan Kurir: Pastikan posisi dus ditaruh datar agar mayo tidak tumpah ya kak.`
 
         {/* If user selected a secondary tab (e.g. from drawer), show it as active pill */}
         {activeTab !== 'orders' && activeTab !== 'menu' && activeTab !== 'expenses' && activeTab !== 'customers' && activeTab !== 'inventory' && activeTab !== 'kds' && (
-          <div className="shrink-0 inline-flex items-center gap-1.5 bg-[#FFD700] text-[#111111] border-2 border-[#111111] px-3.5 py-2 rounded-full font-sans font-bold text-xs shadow-[2px_2px_0_#111111]">
+          <div className="shrink-0 inline-flex items-center gap-1 bg-[#FFD700] text-[#111111] border sm:border-2 border-[#111111] px-2.5 sm:px-3.5 py-1 sm:py-2 rounded-full font-sans font-bold text-[11px] sm:text-xs shadow-xs sm:shadow-[2px_2px_0_#111111]">
             <span>
               {activeTab === 'stickers' && '🏷️ Cetak Stiker QR'}
               {activeTab === 'vouchers' && '🎟️ Voucher'}
@@ -1671,7 +1672,7 @@ Catatan Kurir: Pastikan posisi dus ditaruh datar agar mayo tidak tumpah ya kak.`
         <button
           type="button"
           onClick={() => setIsMobileDrawerOpen(true)}
-          className="shrink-0 ml-auto bg-amber-100 hover:bg-amber-200 text-amber-950 border-2 border-amber-300 px-3.5 py-2 rounded-full font-sans font-bold text-xs flex items-center gap-1 transition"
+          className="shrink-0 ml-auto bg-amber-50 sm:bg-amber-100 hover:bg-amber-200 text-amber-950 border sm:border-2 border-amber-300 px-3 sm:px-3.5 py-1.5 sm:py-2 rounded-full font-sans font-bold text-[11px] sm:text-xs flex items-center gap-1 transition"
         >
           <span>⚡</span>
           <span>Menu Lain...</span>
@@ -2270,17 +2271,17 @@ Catatan Kurir: Pastikan posisi dus ditaruh datar agar mayo tidak tumpah ya kak.`
         return (
           <div className="space-y-4 sm:space-y-6 animate-in fade-in duration-200">
             {/* Header Ringkas & Tombol Aksi Kasir */}
-            <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-3">
+            <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-2.5 sm:gap-3">
               <div>
-                <h2 className="font-hand font-bold text-[26px] sm:text-[34px] text-[#111111] leading-none">
+                <h2 className="font-hand font-bold text-2xl sm:text-[34px] text-[#111111] leading-none">
                   Antrean & Kasir Dapur
                 </h2>
-                <p className="font-sans text-xs text-[#5C3D2E]/70 mt-1">
+                <p className="font-sans text-[11px] sm:text-xs text-[#5C3D2E]/70 mt-0.5 sm:mt-1">
                   Pantau pesanan masuk secara live & konfirmasi pembayaran 1-klik.
                 </p>
               </div>
 
-              <div className="flex items-center gap-2 flex-wrap">
+              <div className="flex items-center gap-1.5 sm:gap-2 w-full sm:w-auto">
                 <button
                   type="button"
                   onClick={async () => {
@@ -2290,31 +2291,31 @@ Catatan Kurir: Pastikan posisi dus ditaruh datar agar mayo tidak tumpah ya kak.`
                     setIsSyncingCloud(false);
                     onShowToast('Antrean pesanan disinkronkan! 🥟✨');
                   }}
-                  className="cursor-pointer bg-white hover:bg-gray-100 text-[#111111] px-3.5 py-2 rounded-full font-sans font-bold text-xs border-2 border-[#111111] shadow-[2px_2px_0_#111111] flex items-center justify-center gap-1.5 transition active:scale-95"
+                  className="cursor-pointer bg-white hover:bg-gray-100 text-[#111111] px-2.5 sm:px-3.5 py-2 rounded-full font-sans font-bold text-xs border sm:border-2 border-[#111111] shadow-2xs sm:shadow-[2px_2px_0_#111111] flex items-center justify-center gap-1 transition active:scale-95 shrink-0"
                   title="Tarik pesanan terbaru dari Supabase Cloud"
                 >
-                  <span>🔄</span>
-                  <span>{isSyncingCloud ? 'Sync...' : 'Refresh'}</span>
+                  <span className={isSyncingCloud ? 'animate-spin' : ''}>🔄</span>
+                  <span className="hidden xs:inline">{isSyncingCloud ? 'Sync...' : 'Refresh'}</span>
                 </button>
 
                 <button
                   type="button"
                   onClick={() => setIsQuickWaOpen(!isQuickWaOpen)}
-                  className={`cursor-pointer px-3.5 py-2 rounded-full font-sans font-bold text-xs border-2 transition flex items-center gap-1 ${
+                  className={`cursor-pointer px-2.5 sm:px-3.5 py-2 rounded-full font-sans font-bold text-xs border transition flex items-center justify-center gap-1 shrink-0 ${
                     isQuickWaOpen
-                      ? 'bg-[#25D366] text-white border-[#111111] shadow-[2px_2px_0_#111111]'
+                      ? 'bg-[#25D366] text-white border-[#111111] shadow-2xs sm:shadow-[2px_2px_0_#111111]'
                       : 'bg-white text-emerald-800 border-[#25D366] hover:bg-emerald-50'
                   }`}
                   title="Buka input ketik cepat ala WhatsApp"
                 >
                   <span>💬</span>
-                  <span>Ketik WA</span>
+                  <span className="hidden xs:inline">Ketik WA</span>
                 </button>
 
                 <button
                   type="button"
                   onClick={() => setIsAddingWalkInOrder(!isAddingWalkInOrder)}
-                  className="cursor-pointer bg-[#111111] text-[#FFD700] hover:brightness-110 px-4 sm:px-5 py-2 sm:py-2.5 rounded-full font-sans font-bold text-xs sm:text-sm border-2 border-[#111111] shadow-[2px_2px_0_#FFD700] flex items-center justify-center gap-1.5 shrink-0 transition active:scale-95"
+                  className="cursor-pointer flex-1 sm:flex-initial bg-[#111111] text-[#FFD700] hover:brightness-110 px-3.5 sm:px-5 py-2 sm:py-2.5 rounded-full font-sans font-bold text-xs sm:text-sm border sm:border-2 border-[#111111] shadow-xs sm:shadow-[2px_2px_0_#FFD700] flex items-center justify-center gap-1.5 transition active:scale-95"
                 >
                   <span>{isAddingWalkInOrder ? 'Tutup Kasir ✕' : '+ Kasir Walk-In 💰'}</span>
                 </button>
@@ -2322,34 +2323,34 @@ Catatan Kurir: Pastikan posisi dus ditaruh datar agar mayo tidak tumpah ya kak.`
             </div>
 
             {/* RINGKASAN OMSET KASIR: 1 BARIS COMPACT STRIP (HEMAT TEMPAT DI HP) */}
-            <div className="grid grid-cols-3 gap-2 bg-white rounded-[18px] p-2.5 sm:p-4 border-2 border-[#111111] shadow-[3px_3px_0_#111111]">
-              <div className="text-center sm:text-left border-r border-[#111111]/10 pr-1 sm:pr-3">
-                <span className="text-[10px] sm:text-xs font-sans text-[#5C3D2E]/70 block font-bold uppercase tracking-tight">
+            <div className="grid grid-cols-3 gap-1.5 sm:gap-2 bg-[#FFFDF4] rounded-[16px] sm:rounded-[18px] p-2 sm:p-4 border border-[#111111]/15 sm:border-2 sm:border-[#111111] shadow-xs sm:shadow-[3px_3px_0_#111111]">
+              <div className="text-center sm:text-left border-r border-[#111111]/10 pr-1 sm:pr-3 min-w-0">
+                <span className="text-[9px] sm:text-xs font-sans text-[#5C3D2E]/70 block font-bold uppercase tracking-tight truncate">
                   Omset Lunas
                 </span>
-                <span className="font-hand font-bold text-base sm:text-2xl text-[#111111] block leading-tight">
+                <span className="font-hand font-bold text-xs xs:text-sm sm:text-2xl text-[#111111] block leading-tight truncate">
                   Rp {totalOmsetLunas.toLocaleString('id-ID')}
                 </span>
                 <span className="text-[10px] text-emerald-700 font-bold hidden sm:inline">
                   ✓ {lunasOrders.length} transaksi
                 </span>
               </div>
-              <div className="text-center sm:text-left border-r border-[#111111]/10 px-1 sm:px-3">
-                <span className="text-[10px] sm:text-xs font-sans text-[#5C3D2E]/70 block font-bold uppercase tracking-tight">
+              <div className="text-center sm:text-left border-r border-[#111111]/10 px-1 sm:px-3 min-w-0">
+                <span className="text-[9px] sm:text-xs font-sans text-[#5C3D2E]/70 block font-bold uppercase tracking-tight truncate">
                   Antrean Baru
                 </span>
-                <span className="font-hand font-bold text-base sm:text-2xl text-amber-700 block leading-tight">
+                <span className="font-hand font-bold text-xs xs:text-sm sm:text-2xl text-amber-700 block leading-tight truncate">
                   {pendingOrders.length} Order
                 </span>
                 <span className="text-[10px] text-amber-800 font-medium hidden sm:inline">
                   Rp {totalOmsetPending.toLocaleString('id-ID')}
                 </span>
               </div>
-              <div className="text-center sm:text-left pl-1 sm:pl-3">
-                <span className="text-[10px] sm:text-xs font-sans text-[#5C3D2E]/70 block font-bold uppercase tracking-tight">
+              <div className="text-center sm:text-left pl-1 sm:pl-3 min-w-0">
+                <span className="text-[9px] sm:text-xs font-sans text-[#5C3D2E]/70 block font-bold uppercase tracking-tight truncate">
                   Porsi Terjual
                 </span>
-                <span className="font-hand font-bold text-base sm:text-2xl text-[#111111] block leading-tight">
+                <span className="font-hand font-bold text-xs xs:text-sm sm:text-2xl text-[#111111] block leading-tight truncate">
                   {totalPorsiTerjual} Porsi
                 </span>
                 <span className="text-[10px] text-[#5C3D2E]/70 font-medium hidden sm:inline">
@@ -2806,8 +2807,8 @@ Catatan Kurir: Pastikan posisi dus ditaruh datar agar mayo tidak tumpah ya kak.`
                 </div>
 
                 {/* Filters & Search */}
-                <div className="flex flex-wrap items-center gap-2">
-                  <div className="inline-flex p-0.5 sm:p-1 bg-white border-2 border-[#111111] rounded-full shadow-2xs gap-0.5 overflow-x-auto max-w-full">
+                <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-2">
+                  <div className="inline-flex p-0.5 sm:p-1 bg-white border sm:border-2 border-[#111111] rounded-full shadow-2xs gap-0.5 overflow-x-auto no-scrollbar max-w-full">
                     {(['all', 'menunggu', 'dp', 'lunas', 'batal'] as const).map((st) => (
                       <button
                         key={st}
@@ -2821,31 +2822,33 @@ Catatan Kurir: Pastikan posisi dus ditaruh datar agar mayo tidak tumpah ya kak.`
                       >
                         {st === 'all' && `Semua (${orders.length})`}
                         {st === 'menunggu' && `⏳ Menunggu (${pendingOrders.length})`}
-                        {st === 'dp' && `🟡 DP Masuk (${dpOrders.length})`}
+                        {st === 'dp' && `🟡 DP (${dpOrders.length})`}
                         {st === 'lunas' && `✓ Lunas (${lunasOrders.length})`}
                         {st === 'batal' && `✕ Batal (${batalOrders.length})`}
                       </button>
                     ))}
                   </div>
 
-                  <input
-                    type="text"
-                    value={orderSearch}
-                    onChange={(e) => setOrderSearch(e.target.value)}
-                    placeholder="Cari nama / ID..."
-                    className="rounded-full border-2 border-[#111111] px-3.5 py-1 font-sans text-xs bg-white focus:outline-none focus:border-[#FFD700] grow sm:grow-0"
-                  />
+                  <div className="flex items-center gap-1.5 w-full sm:w-auto">
+                    <input
+                      type="text"
+                      value={orderSearch}
+                      onChange={(e) => setOrderSearch(e.target.value)}
+                      placeholder="Cari nama / ID..."
+                      className="rounded-full border sm:border-2 border-[#111111] px-3.5 py-1.5 sm:py-1 font-sans text-xs bg-white focus:outline-none focus:border-[#FFD700] flex-1 sm:w-44"
+                    />
 
-                  {orders.length > 0 && (
-                    <button
-                      type="button"
-                      onClick={handleClearAllOrders}
-                      className="cursor-pointer px-3 py-1 rounded-full text-[11px] font-sans font-bold bg-white hover:bg-rose-50 text-rose-600 border border-rose-200 transition shrink-0 ml-auto"
-                      title="Bersihkan semua pesanan uji coba / dummy"
-                    >
-                      🧹 Bersihkan Data Uji Coba
-                    </button>
-                  )}
+                    {orders.length > 0 && (
+                      <button
+                        type="button"
+                        onClick={handleClearAllOrders}
+                        className="cursor-pointer px-2.5 sm:px-3 py-1.5 sm:py-1 rounded-full text-[10px] sm:text-[11px] font-sans font-bold bg-white hover:bg-rose-50 text-rose-600 border border-rose-200 transition shrink-0"
+                        title="Bersihkan semua pesanan uji coba / dummy"
+                      >
+                        🧹 <span className="hidden xs:inline">Reset Uji Coba</span><span className="xs:hidden">Reset</span>
+                      </button>
+                    )}
+                  </div>
                 </div>
               </div>
 
@@ -2857,12 +2860,12 @@ Catatan Kurir: Pastikan posisi dus ditaruh datar agar mayo tidak tumpah ya kak.`
                   </p>
                 </div>
               ) : (
-                <div className="grid gap-3">
+                <div className="grid gap-2.5 sm:gap-3">
                   {filteredOrders.map((ord) => (
                     <div
                       key={ord.id}
-                      className={`bg-white rounded-[18px] sm:rounded-[20px] p-3.5 sm:p-5 border-2 border-[#111111] shadow-[3px_3px_0_#111111] transition-all ${
-                        ord.status === 'menunggu' ? 'bg-amber-50/50 border-amber-500' : ''
+                      className={`bg-white rounded-[16px] sm:rounded-[20px] p-3 sm:p-5 border sm:border-2 border-[#111111] shadow-[2px_2px_0_#111111] sm:shadow-[3px_3px_0_#111111] transition-all ${
+                        ord.status === 'menunggu' ? 'bg-amber-50/40 border-amber-500' : ''
                       }`}
                     >
                       <div className="space-y-2.5">
@@ -2993,7 +2996,8 @@ Catatan Kurir: Pastikan posisi dus ditaruh datar agar mayo tidak tumpah ya kak.`
                         )}
 
                         {/* Action Buttons: Clean & Ergonomic */}
-                        <div className="flex flex-wrap items-center justify-between gap-2 pt-2 border-t border-[#111111]/10">
+                        {/* DESKTOP ACTIONS: FULL SUITE */}
+                        <div className="hidden sm:flex flex-wrap items-center justify-between gap-2 pt-2 border-t border-[#111111]/10">
                           <div className="flex flex-wrap items-center gap-1.5 grow sm:grow-0">
                             {ord.status === 'menunggu' && (
                               <>
@@ -3134,6 +3138,88 @@ Catatan Kurir: Pastikan posisi dus ditaruh datar agar mayo tidak tumpah ya kak.`
                               🗑️
                             </button>
                           </div>
+                        </div>
+
+                        {/* MOBILE SMART ACTION BAR (SUPER CLEAN, ERGONOMIC, NO BUTTON SOUP) */}
+                        <div className="flex sm:hidden items-center justify-between gap-1.5 pt-2 border-t border-[#111111]/10">
+                          {ord.status === 'menunggu' && (
+                            <div className="flex items-center gap-1.5 flex-1 min-w-0">
+                              <button
+                                type="button"
+                                onClick={() => handleUpdateOrderStatus(ord.id, 'lunas', 'tunai')}
+                                className="cursor-pointer flex-1 py-2 px-2.5 rounded-full font-sans font-bold text-xs bg-[#FFD700] text-[#111111] border border-[#111111] shadow-xs flex items-center justify-center gap-1 active:scale-95"
+                              >
+                                <span>💵</span> Tunai
+                              </button>
+                              <button
+                                type="button"
+                                onClick={() => handleUpdateOrderStatus(ord.id, 'lunas', 'qris')}
+                                className="cursor-pointer flex-1 py-2 px-2.5 rounded-full font-sans font-bold text-xs bg-emerald-600 text-white border border-emerald-800 shadow-xs flex items-center justify-center gap-1 active:scale-95"
+                              >
+                                <span>📱</span> QRIS
+                              </button>
+                            </div>
+                          )}
+
+                          {ord.status === 'dp' && (
+                            <div className="flex items-center gap-1.5 flex-1 min-w-0">
+                              <button
+                                type="button"
+                                onClick={() => handleSettleOrder(ord.id, 'tunai')}
+                                className="cursor-pointer flex-1 py-2 px-2.5 rounded-full font-sans font-bold text-xs bg-emerald-600 text-white border border-emerald-800 shadow-xs flex items-center justify-center gap-1 active:scale-95 truncate"
+                              >
+                                <span>✓</span> Lunasi (Rp {(ord.remaining_amount !== undefined ? ord.remaining_amount : (ord.total_price - (ord.dp_amount || 0))).toLocaleString('id-ID')})
+                              </button>
+                              <button
+                                type="button"
+                                onClick={() => handleSendDpReminderWA(ord)}
+                                className="cursor-pointer px-2.5 py-2 rounded-full font-sans font-bold text-xs bg-[#25D366] text-white border border-emerald-800 shadow-xs flex items-center justify-center gap-1 active:scale-95 shrink-0"
+                                title="Kirim WA Sisa DP"
+                              >
+                                <span>📲</span> WA
+                              </button>
+                            </div>
+                          )}
+
+                          {ord.status === 'lunas' && (
+                            <div className="flex items-center gap-1.5 flex-1 min-w-0">
+                              <span className="font-sans font-bold text-[11px] text-emerald-800 bg-emerald-50 border border-emerald-200 px-2.5 py-1 rounded-full truncate">
+                                ✓ {(ord.payment_method || 'tunai').toUpperCase()}
+                              </span>
+                              <button
+                                type="button"
+                                onClick={() => setSelectedOrderForReceipt(ord)}
+                                className="cursor-pointer px-3 py-1.5 rounded-full font-sans font-bold text-xs bg-[#111111] text-[#FFD700] border border-[#111111] flex items-center gap-1 active:scale-95 ml-auto"
+                              >
+                                <span>🧾</span> Struk
+                              </button>
+                              <button
+                                type="button"
+                                onClick={() => handleSendInvoiceWhatsApp(ord)}
+                                className="cursor-pointer px-2.5 py-1.5 rounded-full font-sans font-bold text-xs bg-[#25D366] text-white border border-emerald-700 flex items-center gap-1 active:scale-95"
+                              >
+                                <span>📲</span> WA
+                              </button>
+                            </div>
+                          )}
+
+                          {ord.status === 'batal' && (
+                            <div className="flex items-center gap-1.5 flex-1">
+                              <span className="font-sans font-bold text-[11px] text-rose-800 bg-rose-50 border border-rose-200 px-2.5 py-1 rounded-full">
+                                ✕ Batal Beli
+                              </span>
+                            </div>
+                          )}
+
+                          {/* Quick Action Drawer Trigger on Mobile */}
+                          <button
+                            type="button"
+                            onClick={() => setMobileActionOrder(ord)}
+                            className="cursor-pointer w-9 h-9 rounded-full bg-gray-100 hover:bg-[#FFD700] text-[#111111] border border-[#111111]/25 font-bold flex items-center justify-center transition active:scale-95 shrink-0 text-xs shadow-2xs"
+                            title="Opsi aksi lengkap pesanan ini"
+                          >
+                            •••
+                          </button>
                         </div>
                       </div>
                     </div>
@@ -3419,73 +3505,73 @@ Catatan Kurir: Pastikan posisi dus ditaruh datar agar mayo tidak tumpah ya kak.`
               </div>
             </div>
 
-            {/* P&L METRIC CARDS */}
-            <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-4">
+            {/* P&L METRIC CARDS (2x2 GRID ON MOBILE, 4 COLS ON DESKTOP) */}
+            <div className="grid grid-cols-2 lg:grid-cols-4 gap-2.5 sm:gap-4">
               {/* Omset Penjualan Kotor */}
-              <div className="bg-white rounded-[22px] p-5 border-2 border-[#111111] shadow-[3px_3px_0_#111111] relative overflow-hidden">
+              <div className="bg-white rounded-[18px] sm:rounded-[22px] p-3.5 sm:p-5 border sm:border-2 border-[#111111] shadow-xs sm:shadow-[3px_3px_0_#111111] relative overflow-hidden">
                 <div className="flex items-center justify-between">
-                  <span className="font-sans text-xs font-bold uppercase tracking-wider text-[#5C3D2E]/80">
-                    Omset Penjualan (Lunas)
+                  <span className="font-sans text-[10px] sm:text-xs font-bold uppercase tracking-wider text-[#5C3D2E]/80 truncate">
+                    Omset Lunas
                   </span>
-                  <span className="text-xl">💰</span>
+                  <span className="text-base sm:text-xl">💰</span>
                 </div>
-                <div className="font-hand font-bold text-3xl sm:text-4xl text-[#111111] mt-2">
+                <div className="font-hand font-bold text-lg xs:text-xl sm:text-3xl lg:text-4xl text-[#111111] mt-1 sm:mt-2 truncate">
                   Rp {totalOmsetKotor.toLocaleString('id-ID')}
                 </div>
-                <div className="font-sans text-[11px] text-emerald-700 font-semibold mt-1">
-                  ✓ Dari {paidOrders.length} transaksi penjualan lunas
+                <div className="font-sans text-[10px] sm:text-[11px] text-emerald-700 font-semibold mt-0.5 sm:mt-1 truncate">
+                  ✓ {paidOrders.length} transaksi
                 </div>
               </div>
 
               {/* Total Belanja Dapur */}
-              <div className="bg-white rounded-[22px] p-5 border-2 border-[#111111] shadow-[3px_3px_0_#111111] relative overflow-hidden">
+              <div className="bg-white rounded-[18px] sm:rounded-[22px] p-3.5 sm:p-5 border sm:border-2 border-[#111111] shadow-xs sm:shadow-[3px_3px_0_#111111] relative overflow-hidden">
                 <div className="flex items-center justify-between">
-                  <span className="font-sans text-xs font-bold uppercase tracking-wider text-[#5C3D2E]/80">
-                    Total Belanja & Biaya
+                  <span className="font-sans text-[10px] sm:text-xs font-bold uppercase tracking-wider text-[#5C3D2E]/80 truncate">
+                    Total Belanja
                   </span>
-                  <span className="text-xl">🛒</span>
+                  <span className="text-base sm:text-xl">🛒</span>
                 </div>
-                <div className="font-hand font-bold text-3xl sm:text-4xl text-red-600 mt-2">
+                <div className="font-hand font-bold text-lg xs:text-xl sm:text-3xl lg:text-4xl text-red-600 mt-1 sm:mt-2 truncate">
                   Rp {totalBelanjaDapur.toLocaleString('id-ID')}
                 </div>
-                <div className="font-sans text-[11px] text-[#5C3D2E]/70 font-semibold mt-1">
-                  {expenses.length} pos pengeluaran tercatat
+                <div className="font-sans text-[10px] sm:text-[11px] text-[#5C3D2E]/70 font-semibold mt-0.5 sm:mt-1 truncate">
+                  {expenses.length} pos belanja
                 </div>
               </div>
 
               {/* Laba Bersih Dapur */}
               <div
-                className={`rounded-[22px] p-5 border-2 border-[#111111] shadow-[4px_4px_0_#111111] relative overflow-hidden ${
+                className={`rounded-[18px] sm:rounded-[22px] p-3.5 sm:p-5 border sm:border-2 border-[#111111] shadow-xs sm:shadow-[4px_4px_0_#111111] relative overflow-hidden ${
                   netProfit >= 0 ? 'bg-[#FFD700]' : 'bg-red-100'
                 }`}
               >
                 <div className="flex items-center justify-between">
-                  <span className="font-sans text-xs font-bold uppercase tracking-wider text-[#111111]">
-                    Laba Bersih Dapur
+                  <span className="font-sans text-[10px] sm:text-xs font-bold uppercase tracking-wider text-[#111111] truncate">
+                    Laba Bersih
                   </span>
-                  <span className="text-xl">{netProfit >= 0 ? '🚀' : '⚠️'}</span>
+                  <span className="text-base sm:text-xl">{netProfit >= 0 ? '🚀' : '⚠️'}</span>
                 </div>
-                <div className="font-hand font-bold text-3xl sm:text-4xl text-[#111111] mt-2">
+                <div className="font-hand font-bold text-lg xs:text-xl sm:text-3xl lg:text-4xl text-[#111111] mt-1 sm:mt-2 truncate">
                   {netProfit < 0 ? '-' : ''}Rp {Math.abs(netProfit).toLocaleString('id-ID')}
                 </div>
-                <div className="font-sans text-[11px] font-bold text-[#111111]/85 mt-1">
-                  {netProfit >= 0 ? '✨ Surplus Untung Dapur' : '⚠️ Belanja melebihi omset'}
+                <div className="font-sans text-[10px] sm:text-[11px] font-bold text-[#111111]/85 mt-0.5 sm:mt-1 truncate">
+                  {netProfit >= 0 ? '✨ Surplus Untung' : '⚠️ Melebihi omset'}
                 </div>
               </div>
 
               {/* Margin Laba Bersih */}
-              <div className="bg-[#111111] text-[#FFF8E7] rounded-[22px] p-5 border-2 border-[#111111] shadow-[3px_3px_0_#FFD700] relative overflow-hidden">
+              <div className="bg-[#111111] text-[#FFF8E7] rounded-[18px] sm:rounded-[22px] p-3.5 sm:p-5 border sm:border-2 border-[#111111] shadow-xs sm:shadow-[3px_3px_0_#FFD700] relative overflow-hidden">
                 <div className="flex items-center justify-between">
-                  <span className="font-sans text-xs font-bold uppercase tracking-wider text-[#FFD700]">
-                    Margin Profit Bersih
+                  <span className="font-sans text-[10px] sm:text-xs font-bold uppercase tracking-wider text-[#FFD700] truncate">
+                    Margin Profit
                   </span>
-                  <span className="text-xl">📊</span>
+                  <span className="text-base sm:text-xl">📊</span>
                 </div>
-                <div className="font-hand font-bold text-3xl sm:text-4xl text-[#FFD700] mt-2">
+                <div className="font-hand font-bold text-lg xs:text-xl sm:text-3xl lg:text-4xl text-[#FFD700] mt-1 sm:mt-2 truncate">
                   {netProfitMargin}%
                 </div>
-                <div className="font-sans text-[11px] text-white/70 font-semibold mt-1">
-                  Rasio keuntungan dari omset
+                <div className="font-sans text-[10px] sm:text-[11px] text-white/70 font-semibold mt-0.5 sm:mt-1 truncate">
+                  Rasio keuntungan
                 </div>
               </div>
             </div>
@@ -6621,6 +6707,249 @@ Catatan Kurir: Pastikan posisi dus ditaruh datar agar mayo tidak tumpah ya kak.`
         </div>
       )}
 
+      {/* MOBILE SMART ORDER ACTION DRAWER (PROGRESSIVE DISCLOSURE FOR CASHIER) */}
+      {mobileActionOrder && (
+        <div className="fixed inset-0 z-50 flex items-end sm:items-center justify-center bg-black/60 backdrop-blur-xs p-0 sm:p-4">
+          <div className="bg-[#FFFDF4] w-full max-w-md rounded-t-[28px] sm:rounded-[28px] border-t-3 sm:border-3 border-[#111111] shadow-[0_-8px_24px_rgba(0,0,0,0.3)] sm:shadow-[8px_8px_0_#111111] p-5 space-y-4 max-h-[85vh] overflow-y-auto animate-in slide-in-from-bottom duration-200">
+            {/* Header info */}
+            <div className="flex items-center justify-between pb-3 border-b-2 border-[#111111]/15">
+              <div>
+                <div className="flex items-center gap-1.5">
+                  <span className="font-mono font-bold text-xs bg-[#111111] text-[#FFD700] px-2.5 py-0.5 rounded-full">
+                    #{mobileActionOrder.id}
+                  </span>
+                  <span className={`text-[10px] font-bold px-2 py-0.5 rounded-full uppercase ${
+                    mobileActionOrder.status === 'lunas'
+                      ? 'bg-emerald-100 text-emerald-800'
+                      : mobileActionOrder.status === 'dp'
+                      ? 'bg-amber-100 text-amber-900'
+                      : mobileActionOrder.status === 'menunggu'
+                      ? 'bg-amber-100 text-amber-900'
+                      : 'bg-red-100 text-red-800'
+                  }`}>
+                    {mobileActionOrder.status === 'lunas' ? 'Lunas' : mobileActionOrder.status === 'dp' ? 'DP' : mobileActionOrder.status === 'menunggu' ? 'Menunggu' : 'Batal'}
+                  </span>
+                </div>
+                <h3 className="font-hand font-bold text-xl text-[#111111] mt-1 leading-tight">
+                  Kak {mobileActionOrder.customer_name}
+                </h3>
+                <span className="font-sans font-bold text-sm text-[#111111]">
+                  Total: Rp {mobileActionOrder.total_price.toLocaleString('id-ID')}
+                </span>
+              </div>
+              <button
+                type="button"
+                onClick={() => setMobileActionOrder(null)}
+                className="cursor-pointer w-8 h-8 rounded-full bg-white text-[#111111] border-2 border-[#111111] font-bold text-sm flex items-center justify-center hover:bg-[#FFD700]"
+              >
+                ✕
+              </button>
+            </div>
+
+            {/* Action Buttons List */}
+            <div className="space-y-2">
+              <div className="font-sans font-bold text-[11px] uppercase tracking-wider text-[#5C3D2E]/70 px-1">
+                Cetak & WhatsApp
+              </div>
+              <div className="grid grid-cols-2 gap-2">
+                <button
+                  type="button"
+                  onClick={() => {
+                    const ord = mobileActionOrder;
+                    setMobileActionOrder(null);
+                    setSelectedOrderForReceipt(ord);
+                  }}
+                  className="cursor-pointer p-3 rounded-2xl bg-white border-2 border-[#111111] shadow-[2px_2px_0_#111111] flex items-center gap-2 hover:bg-[#FFF8E7] transition active:scale-95 text-left"
+                >
+                  <span className="text-xl">🧾</span>
+                  <div>
+                    <div className="font-sans font-bold text-xs text-[#111111]">Struk Thermal</div>
+                    <div className="text-[10px] text-[#5C3D2E]/70">58mm / 80mm</div>
+                  </div>
+                </button>
+
+                <button
+                  type="button"
+                  onClick={() => {
+                    const ord = mobileActionOrder;
+                    setMobileActionOrder(null);
+                    handleSendInvoiceWhatsApp(ord);
+                  }}
+                  className="cursor-pointer p-3 rounded-2xl bg-emerald-50 border-2 border-emerald-600 shadow-[2px_2px_0_#059669] flex items-center gap-2 hover:bg-emerald-100 transition active:scale-95 text-left"
+                >
+                  <span className="text-xl">📲</span>
+                  <div>
+                    <div className="font-sans font-bold text-xs text-emerald-900">Tagihan WA</div>
+                    <div className="text-[10px] text-emerald-700">Kirim ke nomor</div>
+                  </div>
+                </button>
+
+                <button
+                  type="button"
+                  onClick={() => {
+                    const ord = mobileActionOrder;
+                    setMobileActionOrder(null);
+                    setSelectedOrderForInvoice(ord);
+                  }}
+                  className="cursor-pointer p-3 rounded-2xl bg-white border-2 border-blue-900 shadow-[2px_2px_0_#1e3a8a] flex items-center gap-2 hover:bg-blue-50 transition active:scale-95 text-left"
+                >
+                  <span className="text-xl">📄</span>
+                  <div>
+                    <div className="font-sans font-bold text-xs text-blue-950">Invoice A4</div>
+                    <div className="text-[10px] text-blue-800">Formal Instansi</div>
+                  </div>
+                </button>
+
+                <button
+                  type="button"
+                  onClick={() => {
+                    const ord = mobileActionOrder;
+                    setMobileActionOrder(null);
+                    const waMsg = storageService.generateWaTrackingMessage(ord);
+                    const cleanWa = (ord.customer_wa || '').replace(/\D/g, '');
+                    let url = `https://wa.me/?text=${encodeURIComponent(waMsg)}`;
+                    if (cleanWa) {
+                      const waNum = cleanWa.startsWith('0') ? '62' + cleanWa.slice(1) : cleanWa;
+                      url = `https://wa.me/${waNum}?text=${encodeURIComponent(waMsg)}`;
+                    }
+                    window.open(url, '_blank');
+                    onShowToast(`Membuka WhatsApp link live tracking pesanan #${ord.id}... 📱`);
+                  }}
+                  className="cursor-pointer p-3 rounded-2xl bg-amber-50 border-2 border-amber-600 shadow-[2px_2px_0_#d97706] flex items-center gap-2 hover:bg-amber-100 transition active:scale-95 text-left"
+                >
+                  <span className="text-xl">🔥</span>
+                  <div>
+                    <div className="font-sans font-bold text-xs text-amber-950">Resi Live WA</div>
+                    <div className="text-[10px] text-amber-800">Lacak masak</div>
+                  </div>
+                </button>
+              </div>
+
+              {/* Status & Payment Actions */}
+              {mobileActionOrder.status === 'menunggu' && (
+                <>
+                  <div className="font-sans font-bold text-[11px] uppercase tracking-wider text-[#5C3D2E]/70 px-1 pt-2">
+                    Metode Pembayaran
+                  </div>
+                  <div className="grid grid-cols-2 gap-2">
+                    <button
+                      type="button"
+                      onClick={() => {
+                        const id = mobileActionOrder.id;
+                        setMobileActionOrder(null);
+                        handleUpdateOrderStatus(id, 'lunas', 'transfer');
+                      }}
+                      className="cursor-pointer p-3 rounded-2xl bg-white border-2 border-blue-600 shadow-xs flex items-center gap-2 hover:bg-blue-50 text-left"
+                    >
+                      <span className="text-xl">🏦</span>
+                      <div>
+                        <div className="font-sans font-bold text-xs text-blue-900">Transfer Bank</div>
+                        <div className="text-[10px] text-blue-700">Tandai lunas</div>
+                      </div>
+                    </button>
+
+                    <button
+                      type="button"
+                      onClick={() => {
+                        const ord = mobileActionOrder;
+                        setMobileActionOrder(null);
+                        setDpModalOrder(ord);
+                        setDpInputNominal(Math.round(ord.total_price * 0.5));
+                      }}
+                      className="cursor-pointer p-3 rounded-2xl bg-amber-400 border-2 border-amber-600 shadow-xs flex items-center gap-2 hover:brightness-105 text-left"
+                    >
+                      <span className="text-xl">💵</span>
+                      <div>
+                        <div className="font-sans font-bold text-xs text-amber-950">Terima DP</div>
+                        <div className="text-[10px] text-amber-900">Uang Muka</div>
+                      </div>
+                    </button>
+                  </div>
+                </>
+              )}
+
+              {mobileActionOrder.status === 'dp' && (
+                <>
+                  <div className="font-sans font-bold text-[11px] uppercase tracking-wider text-[#5C3D2E]/70 px-1 pt-2">
+                    Pelunasan Sisa DP
+                  </div>
+                  <div className="grid grid-cols-2 gap-2">
+                    <button
+                      type="button"
+                      onClick={() => {
+                        const id = mobileActionOrder.id;
+                        setMobileActionOrder(null);
+                        handleSettleOrder(id, 'qris');
+                      }}
+                      className="cursor-pointer p-3 rounded-2xl bg-white border-2 border-emerald-600 shadow-xs flex items-center gap-2 hover:bg-emerald-50 text-left"
+                    >
+                      <span className="text-xl">📱</span>
+                      <div>
+                        <div className="font-sans font-bold text-xs text-emerald-900">Lunas via QRIS</div>
+                        <div className="text-[10px] text-emerald-700">Pelunasan digital</div>
+                      </div>
+                    </button>
+
+                    <button
+                      type="button"
+                      onClick={() => {
+                        const id = mobileActionOrder.id;
+                        setMobileActionOrder(null);
+                        handleSettleOrder(id, 'transfer');
+                      }}
+                      className="cursor-pointer p-3 rounded-2xl bg-white border-2 border-blue-600 shadow-xs flex items-center gap-2 hover:bg-blue-50 text-left"
+                    >
+                      <span className="text-xl">🏦</span>
+                      <div>
+                        <div className="font-sans font-bold text-xs text-blue-900">Lunas Transfer</div>
+                        <div className="text-[10px] text-blue-700">BCA / Mandiri / BRI</div>
+                      </div>
+                    </button>
+                  </div>
+                </>
+              )}
+
+              {/* Batalkan & Hapus */}
+              <div className="pt-2 border-t border-[#111111]/10 flex items-center gap-2">
+                {mobileActionOrder.status === 'menunggu' && (
+                  <button
+                    type="button"
+                    onClick={() => {
+                      const id = mobileActionOrder.id;
+                      setMobileActionOrder(null);
+                      handleUpdateOrderStatus(id, 'batal');
+                    }}
+                    className="cursor-pointer flex-1 py-2.5 rounded-full font-sans font-bold text-xs bg-rose-50 hover:bg-rose-100 text-rose-700 border border-rose-300 transition"
+                  >
+                    ✕ Batalkan Pesanan
+                  </button>
+                )}
+
+                <button
+                  type="button"
+                  onClick={() => {
+                    const id = mobileActionOrder.id;
+                    setMobileActionOrder(null);
+                    handleDeleteOrder(id);
+                  }}
+                  className="cursor-pointer flex-1 py-2.5 rounded-full font-sans font-bold text-xs bg-gray-100 hover:bg-red-50 text-red-600 border border-gray-300 hover:border-red-300 transition"
+                >
+                  🗑️ Hapus Pesanan
+                </button>
+              </div>
+            </div>
+
+            <button
+              type="button"
+              onClick={() => setMobileActionOrder(null)}
+              className="cursor-pointer w-full py-2.5 rounded-full bg-white hover:bg-gray-100 text-[#111111] font-sans font-bold text-xs border-2 border-[#111111] transition"
+            >
+              Tutup
+            </button>
+          </div>
+        </div>
+      )}
+
       {/* MENU DAPUR LAINNYA (SLIDE-UP DRAWER FOR PROGRESSIVE DISCLOSURE) */}
       {isMobileDrawerOpen && (
         <div className="fixed inset-0 z-50 flex items-end sm:items-center justify-center bg-black/60 backdrop-blur-xs p-0 sm:p-4">
@@ -6661,6 +6990,23 @@ Catatan Kurir: Pastikan posisi dus ditaruh datar agar mayo tidak tumpah ya kak.`
                 <div className="text-xl mb-1">🍲</div>
                 <div className="font-sans font-bold text-xs">Kelola Menu</div>
                 <div className="text-[10px] opacity-75">Harga & stok porsi</div>
+              </button>
+
+              <button
+                type="button"
+                onClick={() => {
+                  setActiveTab('customers');
+                  setIsMobileDrawerOpen(false);
+                }}
+                className={`p-3 rounded-[16px] border-2 border-[#111111] text-left transition cursor-pointer ${
+                  activeTab === 'customers'
+                    ? 'bg-[#111111] text-[#FFD700] shadow-[2px_2px_0_#FFD700]'
+                    : 'bg-white text-[#111111] shadow-[2px_2px_0_#111111] hover:bg-[#FFF8E7]'
+                }`}
+              >
+                <div className="text-xl mb-1">👥</div>
+                <div className="font-sans font-bold text-xs">Pelanggan Setia</div>
+                <div className="text-[10px] opacity-75">Smart QR & Riwayat</div>
               </button>
 
               <button
@@ -6813,13 +7159,13 @@ Catatan Kurir: Pastikan posisi dus ditaruh datar agar mayo tidak tumpah ya kak.`
       )}
 
       {/* KITCHEN COCKPIT BOTTOM NAVIGATION BAR (FIXED AT BOTTOM FOR MOBILE & APKS) */}
-      <div className="fixed bottom-0 left-0 right-0 z-40 bg-[#111111] text-[#FFF8E7] border-t-2 border-[#FFD700] px-3 py-2 sm:px-6 shadow-[0_-4px_16px_rgba(0,0,0,0.35)]">
+      <div className="fixed bottom-0 left-0 right-0 z-40 bg-[#111111] text-[#FFF8E7] border-t-2 border-[#FFD700] px-2 py-1.5 sm:px-6 shadow-[0_-4px_16px_rgba(0,0,0,0.35)]">
         <div className="max-w-md mx-auto flex items-center justify-around">
           {/* Tab 1: Kasir & Antrean */}
           <button
             type="button"
             onClick={() => setActiveTab('orders')}
-            className={`cursor-pointer flex flex-col items-center gap-0.5 py-1 px-3 rounded-xl transition ${
+            className={`cursor-pointer flex flex-col items-center gap-0.5 py-1 px-2.5 rounded-xl transition ${
               activeTab === 'orders' ? 'text-[#FFD700] font-bold scale-105' : 'text-white/70 hover:text-white'
             }`}
           >
@@ -6834,44 +7180,58 @@ Catatan Kurir: Pastikan posisi dus ditaruh datar agar mayo tidak tumpah ya kak.`
             <span className="text-[10px] sm:text-[11px] font-sans">Kasir</span>
           </button>
 
-          {/* Tab 2: Kas Harian */}
+          {/* Tab 2: Layar Dapur (KDS) */}
+          <button
+            type="button"
+            onClick={() => setActiveTab('kds')}
+            className={`cursor-pointer flex flex-col items-center gap-0.5 py-1 px-2.5 rounded-xl transition ${
+              activeTab === 'kds' ? 'text-[#FFD700] font-bold scale-105' : 'text-white/70 hover:text-white'
+            }`}
+          >
+            <div className="text-xl">
+              <span>🍳</span>
+            </div>
+            <span className="text-[10px] sm:text-[11px] font-sans">Dapur</span>
+          </button>
+
+          {/* Tab 3: Stok & Menu */}
+          <button
+            type="button"
+            onClick={() => setActiveTab('menu')}
+            className={`cursor-pointer flex flex-col items-center gap-0.5 py-1 px-2.5 rounded-xl transition ${
+              activeTab === 'menu' ? 'text-[#FFD700] font-bold scale-105' : 'text-white/70 hover:text-white'
+            }`}
+          >
+            <div className="text-xl">
+              <span>🍲</span>
+            </div>
+            <span className="text-[10px] sm:text-[11px] font-sans">Menu</span>
+          </button>
+
+          {/* Tab 4: Kas Harian */}
           <button
             type="button"
             onClick={() => setActiveTab('expenses')}
-            className={`cursor-pointer flex flex-col items-center gap-0.5 py-1 px-3 rounded-xl transition ${
+            className={`cursor-pointer flex flex-col items-center gap-0.5 py-1 px-2.5 rounded-xl transition ${
               activeTab === 'expenses' ? 'text-[#FFD700] font-bold scale-105' : 'text-white/70 hover:text-white'
             }`}
           >
             <div className="text-xl">
               <span>💰</span>
             </div>
-            <span className="text-[10px] sm:text-[11px] font-sans">Kas Dapur</span>
+            <span className="text-[10px] sm:text-[11px] font-sans">Kas</span>
           </button>
 
-          {/* Tab 3: Pelanggan */}
-          <button
-            type="button"
-            onClick={() => setActiveTab('customers')}
-            className={`cursor-pointer flex flex-col items-center gap-0.5 py-1 px-3 rounded-xl transition ${
-              activeTab === 'customers' ? 'text-[#FFD700] font-bold scale-105' : 'text-white/70 hover:text-white'
-            }`}
-          >
-            <div className="text-xl">
-              <span>👥</span>
-            </div>
-            <span className="text-[10px] sm:text-[11px] font-sans">Pelanggan</span>
-          </button>
-
-          {/* Tab 4: Menu Dapur Lainnya (Drawer Toggle) */}
+          {/* Tab 5: Menu Dapur Lainnya (Drawer Toggle) */}
           <button
             type="button"
             onClick={() => setIsMobileDrawerOpen(true)}
-            className="cursor-pointer flex flex-col items-center gap-0.5 py-1 px-3 rounded-xl text-white/70 hover:text-[#FFD700] transition"
+            className="cursor-pointer flex flex-col items-center gap-0.5 py-1 px-2.5 rounded-xl text-white/70 hover:text-[#FFD700] transition"
           >
             <div className="text-xl">
               <span>⚡</span>
             </div>
-            <span className="text-[10px] sm:text-[11px] font-sans">Menu Lain</span>
+            <span className="text-[10px] sm:text-[11px] font-sans">Lainnya</span>
           </button>
         </div>
       </div>
