@@ -10,6 +10,7 @@ import {
   CustomerTestimonial,
   ExpenseRecord,
   ExpenseCategory,
+  StaffRole,
 } from '../types';
 import { SIDOARJO_AREAS, INDONESIA_CITIES, CITY_DISTRICTS, MONTHS_INDONESIA, DEFAULT_SIDOARJO_DELIVERY_RATES } from '../lib/constants';
 import { getSupabaseCredentials, saveSupabaseCredentials, clearSupabaseCredentials } from '../lib/supabase';
@@ -53,6 +54,38 @@ export const OwnerDashboardView: React.FC<OwnerDashboardViewProps> = ({
   const [activeTab, setActiveTab] = useState<'menu' | 'orders' | 'expenses' | 'customers' | 'inventory' | 'kds' | 'testimonials' | 'vouchers' | 'stickers' | 'stats' | 'settings'>(
     initialTab || 'orders'
   );
+
+  // --- STAFF ROLE & MULTI-PIN STATE (Priority 2) ---
+  const [activeRole, setActiveRole] = useState<StaffRole>(() => storageService.getStaffRole());
+  const [isSwitchRoleModalOpen, setIsSwitchRoleModalOpen] = useState(false);
+  const [switchRolePinInput, setSwitchRolePinInput] = useState('');
+  const [switchRoleError, setSwitchRoleError] = useState('');
+  const [isSwitchingRoleLoading, setIsSwitchingRoleLoading] = useState(false);
+
+  useEffect(() => {
+    const handleRoleUpdated = (e: any) => {
+      const role = e.detail?.role || storageService.getStaffRole();
+      setActiveRole(role);
+    };
+    window.addEventListener('dulang_staff_role_updated', handleRoleUpdated);
+    return () => {
+      window.removeEventListener('dulang_staff_role_updated', handleRoleUpdated);
+    };
+  }, []);
+
+  // Enforce role-based tab restrictions automatically
+  useEffect(() => {
+    if (activeRole === 'cashier') {
+      const cashierRestrictedTabs = ['expenses', 'customers', 'inventory', 'testimonials', 'vouchers', 'stats', 'settings'];
+      if (cashierRestrictedTabs.includes(activeTab)) {
+        setActiveTab('orders');
+      }
+    } else if (activeRole === 'kitchen') {
+      if (activeTab !== 'kds' && activeTab !== 'menu') {
+        setActiveTab('kds');
+      }
+    }
+  }, [activeRole, activeTab]);
 
   useEffect(() => {
     if (initialTab) {
@@ -783,6 +816,10 @@ Catatan Kurir: Pastikan posisi dus ditaruh datar agar mayo tidak tumpah ya kak.`
   };
 
   const handleDeleteOrder = async (orderId: string) => {
+    if (activeRole !== 'owner') {
+      onShowToast('Akses ditolak! Hanya Owner yang berhak menghapus catatan pesanan. 🔒');
+      return;
+    }
     if (!window.confirm(`Hapus catatan pesanan #${orderId}?`)) return;
     await storageService.deleteOrder(orderId);
     setOrders(storageService.getOrders());
@@ -790,6 +827,10 @@ Catatan Kurir: Pastikan posisi dus ditaruh datar agar mayo tidak tumpah ya kak.`
   };
 
   const handleClearAllOrders = async () => {
+    if (activeRole !== 'owner') {
+      onShowToast('Akses ditolak! Hanya Owner yang berhak mereset semua pesanan. 🔒');
+      return;
+    }
     if (!window.confirm('Hapus SEMUA riwayat pesanan (termasuk pesanan uji coba)? Tindakan ini permanen.')) return;
     await storageService.clearOrders();
     setOrders([]);
@@ -1123,6 +1164,10 @@ Catatan Kurir: Pastikan posisi dus ditaruh datar agar mayo tidak tumpah ya kak.`
 
   // --- KASIR STRUK THERMAL & WHATSAPP NOTA ---
   const generateReceiptTextForWhatsApp = (ord: OrderRecord): string => {
+    const brandTitle = (storeConfig.brandName || 'Dapur Dulang Indonesia').toUpperCase();
+    const brandTag = storeConfig.brandTagline || 'Dibuat dengan wajan panas & tulisan tangan';
+    const footerMsg = storeConfig.receiptFooterNote || 'Matur suwun sanget sampun jajan! Hangatkan kembali bila perlu yaa 🙏✨';
+
     const dateStr = new Date(ord.created_at).toLocaleDateString('id-ID', {
       day: 'numeric',
       month: 'short',
@@ -1147,8 +1192,8 @@ Catatan Kurir: Pastikan posisi dus ditaruh datar agar mayo tidak tumpah ya kak.`
     }
 
     return (
-      `*🧾 NOTA RESMI DAPUR DULANG INDONESIA*\n` +
-      `_Dibuat dengan wajan panas & tulisan tangan_\n` +
+      `*🧾 NOTA RESMI ${brandTitle}*\n` +
+      `_${brandTag}_\n` +
       `----------------------------------------\n` +
       `*No. Pesanan:* #${ord.id}\n` +
       `*Waktu:* ${dateStr}\n` +
@@ -1161,8 +1206,7 @@ Catatan Kurir: Pastikan posisi dus ditaruh datar agar mayo tidak tumpah ya kak.`
       `${cashInfo}\n` +
       `*STATUS: LUNAS* ✓\n` +
       `----------------------------------------\n` +
-      `Matur suwun sanget sampun rawuh ing Dapur Dulang! 🙏✨\n` +
-      `_Simpan nota niki & scan barcode kardus kanggo kejutan di pesanan berikutnya!_ 🥟🔥`
+      `${footerMsg}\n`
     );
   };
 
@@ -1179,6 +1223,7 @@ Catatan Kurir: Pastikan posisi dus ditaruh datar agar mayo tidak tumpah ya kak.`
   const handleSendInvoiceWhatsApp = (ord: OrderRecord) => {
     const cleanWa = ord.customer_wa ? ord.customer_wa.replace(/\D/g, '') : '';
     const phone = cleanWa ? (cleanWa.startsWith('0') ? '62' + cleanWa.slice(1) : cleanWa) : '';
+    const brandDisplayName = storeConfig.brandName || 'Dapur Dulang Indonesia';
 
     const nmid = storeConfig.qrisNmid || 'ID1020057244342';
     const qrisUrl = typeof window !== 'undefined'
@@ -1194,7 +1239,7 @@ Catatan Kurir: Pastikan posisi dus ditaruh datar agar mayo tidak tumpah ya kak.`
       .join('\n');
 
     let msg = `Halo Kak ${ord.customer_name}! 🙏✨\n`;
-    msg += `Terima kasih banyak sudah memesan di *Dapur Dulang Indonesia* 🥟💛\n\n`;
+    msg += `Terima kasih banyak sudah memesan di *${brandDisplayName}* 💛\n\n`;
     msg += `📋 *RINCIAN TAGIHAN PESANAN (#${ord.id}):*\n`;
     msg += `${itemsText}\n`;
     if (ord.shipping_cost && ord.shipping_cost > 0) {
@@ -1205,14 +1250,14 @@ Catatan Kurir: Pastikan posisi dus ditaruh datar agar mayo tidak tumpah ya kak.`
     msg += `Status: *${ord.status === 'lunas' ? 'LUNAS (Terima Kasih! ✓)' : 'MENUNGGU PEMBAYARAN'}*\n\n`;
 
     msg += `📱 *PEMBAYARAN VIA QRIS (GPN):*\n`;
-    msg += `• *Nama Merchant:* DULANG INDONESIA\n`;
-    msg += `• *NMID:* ${nmid} (Dicetak oleh: OVO)\n`;
+    msg += `• *Nama Merchant:* ${brandDisplayName.toUpperCase()}\n`;
+    msg += `• *NMID:* ${nmid}\n`;
     msg += `• *Dukungan:* Bebas transfer dari semua Bank (BCA, Mandiri, BRI, BSI, dll) & E-Wallet (GoPay, OVO, ShopeePay, DANA, AstraPay)\n`;
     msg += `• *Link Barcode QRIS:* ${qrisUrl}\n`;
     msg += `• *Cara Bayar:* Silakan scan barcode QRIS yang kami lampirkan di chat ini atau klik link di atas ya Kak 😊\n\n`;
 
     msg += `Jika sudah scan & bayar, mohon kirimkan bukti tangkapan layar (screenshot) ke sini ya kak agar pesanan langsung kami proses hangat-hangat 🔥\n\n`;
-    msg += `Salam hangat dari Tim Dapur Dulang! 🙏💛`;
+    msg += `Salam hangat dari Tim ${brandDisplayName}! 🙏💛`;
 
     if (phone) {
       const url = `https://wa.me/${phone}?text=${encodeURIComponent(msg)}`;
@@ -1357,6 +1402,61 @@ Catatan Kurir: Pastikan posisi dus ditaruh datar agar mayo tidak tumpah ya kak.`
     onShowToast('Pengaturan kurir dapur & ongkir Sidoarjo berhasil disimpan! 🛵✓');
   };
 
+  const handleSaveBrandIdentity = (e: React.FormEvent) => {
+    e.preventDefault();
+    onUpdateStoreConfig(localConfig);
+    storageService.saveStoreConfig(localConfig);
+    onShowToast('Identitas usaha & white-label berhasil disimpan! ✨');
+  };
+
+  const handleSaveStaffPins = (e: React.FormEvent) => {
+    e.preventDefault();
+    if (localConfig.cashierPin && localConfig.cashierPin.length < 3) {
+      onShowToast('PIN Kasir minimal 3 karakter!');
+      return;
+    }
+    if (localConfig.kitchenPin && localConfig.kitchenPin.length < 3) {
+      onShowToast('PIN Dapur minimal 3 karakter!');
+      return;
+    }
+    onUpdateStoreConfig(localConfig);
+    storageService.saveStoreConfig(localConfig);
+    onShowToast('PIN Kasir & Dapur berhasil diperbarui! 🔑✓');
+  };
+
+  const handleSwitchRoleSubmit = async (e?: React.FormEvent) => {
+    if (e) e.preventDefault();
+    const clean = switchRolePinInput.trim();
+    if (!clean) {
+      setSwitchRoleError('Masukkan PIN terlebih dahulu!');
+      return;
+    }
+    setIsSwitchingRoleLoading(true);
+    setSwitchRoleError('');
+
+    try {
+      const res = await storageService.verifyAnyPin(clean);
+      if (res.success) {
+        storageService.setStaffRole(res.role);
+        setActiveRole(res.role);
+        setIsSwitchRoleModalOpen(false);
+        setSwitchRolePinInput('');
+        if (res.role === 'cashier') {
+          setActiveTab('orders');
+        } else if (res.role === 'kitchen') {
+          setActiveTab('kds');
+        }
+        onShowToast(`Beralih akses ke ${res.label}! 🎉`);
+      } else {
+        setSwitchRoleError('PIN tidak cocok! Masukkan PIN Owner, Kasir, atau Dapur.');
+      }
+    } catch (err) {
+      setSwitchRoleError('Gagal memverifikasi PIN.');
+    } finally {
+      setIsSwitchingRoleLoading(false);
+    }
+  };
+
   const handleSavePin = async (e: React.FormEvent) => {
     e.preventDefault();
     if (!oldPin.trim()) {
@@ -1415,14 +1515,31 @@ Catatan Kurir: Pastikan posisi dus ditaruh datar agar mayo tidak tumpah ya kak.`
       <div className="bg-[#111111] text-[#FFF8E7] rounded-[20px] sm:rounded-[24px] p-3.5 sm:p-6 lg:p-8 flex flex-col md:flex-row md:items-center justify-between gap-3 sm:gap-4 border-2 border-[#111111] shadow-[4px_4px_0_#FFD700] sm:shadow-[6px_6px_0_#FFD700]">
         <div className="flex items-center justify-between md:block">
           <div>
-            <div className="inline-flex items-center gap-1.5 bg-[#FFD700] text-[#111111] px-2.5 py-0.5 rounded-full font-sans text-[10px] sm:text-[11px] font-bold uppercase tracking-wider mb-1 sm:mb-2">
-              <span>🍳</span> Dapur & Pemilik
+            <div className="flex items-center gap-2 mb-1 sm:mb-2">
+              <button
+                type="button"
+                onClick={() => {
+                  setSwitchRolePinInput('');
+                  setSwitchRoleError('');
+                  setIsSwitchRoleModalOpen(true);
+                }}
+                className="cursor-pointer inline-flex items-center gap-1.5 bg-[#FFD700] hover:bg-[#FFE033] text-[#111111] px-2.5 py-0.5 rounded-full font-sans text-[10px] sm:text-[11px] font-bold uppercase tracking-wider transition border border-[#111111]/30 shadow-xs active:scale-95"
+                title="Klik untuk ganti peran staff (Owner / Kasir / Dapur)"
+              >
+                <span>{activeRole === 'owner' ? '👑' : activeRole === 'cashier' ? '🛒' : '🍳'}</span>
+                <span>{activeRole === 'owner' ? 'Owner' : activeRole === 'cashier' ? 'Kasir Stand' : 'Kru Dapur'}</span>
+                <span className="text-[9px] bg-[#111111]/15 px-1.5 py-0.2 rounded-full font-semibold">Ganti ⇄</span>
+              </button>
             </div>
             <h1 className="font-hand font-bold text-[24px] sm:text-[34px] lg:text-[44px] leading-tight text-white">
-              Dapur Dulang
+              {storeConfig.brandName || 'Dapur Dulang'}
             </h1>
             <p className="font-sans text-[12px] sm:text-[13px] text-[#FFF8E7]/70 mt-0.5 hidden sm:block">
-              Kelola menu, atur foto utama, ganti jam buka, ganti password, dan pantau pelanggan setia.
+              {activeRole === 'owner'
+                ? (storeConfig.brandTagline || 'Kelola menu, keuangan, gudang HPP, dan pantau operasional.')
+                : activeRole === 'cashier'
+                ? 'Mode Kasir POS: Input antrean, cetak struk nota, dan pantau pesanan pelanggan.'
+                : 'Mode Layar Dapur (KDS): Tampilan antrean masak pesanan fresh dari wajan.'}
             </p>
           </div>
 
@@ -1565,23 +1682,27 @@ Catatan Kurir: Pastikan posisi dus ditaruh datar agar mayo tidak tumpah ya kak.`
 
       {/* Navigation Pills (Compact on Mobile, Full on Desktop) */}
       <div className="flex items-center gap-1.5 sm:gap-2 overflow-x-auto no-scrollbar py-1 sm:py-2 border-b border-[#111111]/10 sm:border-b-2">
-        <button
-          type="button"
-          onClick={() => setActiveTab('orders')}
-          className={`shrink-0 px-3 sm:px-5 py-1.5 sm:py-2.5 rounded-full font-sans font-bold text-[11px] sm:text-[13px] border sm:border-2 cursor-pointer transition flex items-center gap-1 sm:gap-1.5 ${
-            activeTab === 'orders'
-              ? 'bg-[#111111] text-[#FFD700] border-[#111111] shadow-xs sm:shadow-[2px_2px_0_#FFD700]'
-              : 'bg-white text-[#5C3D2E]/80 border-[#111111]/15 hover:border-[#111111]'
-          }`}
-        >
-          <span>🛒 Antrean & Kasir</span>
-          {orders.filter((o) => o.status === 'menunggu').length > 0 && (
-            <span className="bg-red-500 text-white text-[9px] sm:text-[10px] font-bold px-1.5 sm:px-2 py-0.2 rounded-full animate-pulse">
-              {orders.filter((o) => o.status === 'menunggu').length} Baru
-            </span>
-          )}
-        </button>
+        {/* Orders Tab: Shown to Owner & Cashier */}
+        {(activeRole === 'owner' || activeRole === 'cashier') && (
+          <button
+            type="button"
+            onClick={() => setActiveTab('orders')}
+            className={`shrink-0 px-3 sm:px-5 py-1.5 sm:py-2.5 rounded-full font-sans font-bold text-[11px] sm:text-[13px] border sm:border-2 cursor-pointer transition flex items-center gap-1 sm:gap-1.5 ${
+              activeTab === 'orders'
+                ? 'bg-[#111111] text-[#FFD700] border-[#111111] shadow-xs sm:shadow-[2px_2px_0_#FFD700]'
+                : 'bg-white text-[#5C3D2E]/80 border-[#111111]/15 hover:border-[#111111]'
+            }`}
+          >
+            <span>🛒 Antrean & Kasir</span>
+            {orders.filter((o) => o.status === 'menunggu').length > 0 && (
+              <span className="bg-red-500 text-white text-[9px] sm:text-[10px] font-bold px-1.5 sm:px-2 py-0.2 rounded-full animate-pulse">
+                {orders.filter((o) => o.status === 'menunggu').length} Baru
+              </span>
+            )}
+          </button>
+        )}
 
+        {/* Menu Tab: Available to All Roles */}
         <button
           type="button"
           onClick={() => setActiveTab('menu')}
@@ -1595,46 +1716,56 @@ Catatan Kurir: Pastikan posisi dus ditaruh datar agar mayo tidak tumpah ya kak.`
           <span className="text-[9px] sm:text-[10px] text-[#5C3D2E]/70 font-bold">({menus.length})</span>
         </button>
 
-        <button
-          type="button"
-          onClick={() => setActiveTab('expenses')}
-          className={`shrink-0 px-3 sm:px-5 py-1.5 sm:py-2.5 rounded-full font-sans font-bold text-[11px] sm:text-[13px] border sm:border-2 cursor-pointer transition flex items-center gap-1 sm:gap-1.5 ${
-            activeTab === 'expenses'
-              ? 'bg-[#111111] text-[#FFD700] border-[#111111] shadow-xs sm:shadow-[2px_2px_0_#FFD700]'
-              : 'bg-white text-[#5C3D2E]/80 border-[#111111]/15 hover:border-[#111111]'
-          }`}
-        >
-          <span>💰 Kas Harian</span>
-          <span className="bg-[#FFD700] text-[#111111] text-[9px] sm:text-[10px] font-bold px-1.5 py-0.2 rounded-full">
-            {expenses.length}
-          </span>
-        </button>
+        {/* Expenses: Only for Owner */}
+        {activeRole === 'owner' && (
+          <button
+            type="button"
+            onClick={() => setActiveTab('expenses')}
+            className={`shrink-0 px-3 sm:px-5 py-1.5 sm:py-2.5 rounded-full font-sans font-bold text-[11px] sm:text-[13px] border sm:border-2 cursor-pointer transition flex items-center gap-1 sm:gap-1.5 ${
+              activeTab === 'expenses'
+                ? 'bg-[#111111] text-[#FFD700] border-[#111111] shadow-xs sm:shadow-[2px_2px_0_#FFD700]'
+                : 'bg-white text-[#5C3D2E]/80 border-[#111111]/15 hover:border-[#111111]'
+            }`}
+          >
+            <span>💰 Kas Harian</span>
+            <span className="bg-[#FFD700] text-[#111111] text-[9px] sm:text-[10px] font-bold px-1.5 py-0.2 rounded-full">
+              {expenses.length}
+            </span>
+          </button>
+        )}
 
-        <button
-          type="button"
-          onClick={() => setActiveTab('customers')}
-          className={`shrink-0 px-3 sm:px-5 py-1.5 sm:py-2.5 rounded-full font-sans font-bold text-[11px] sm:text-[13px] border sm:border-2 cursor-pointer transition flex items-center gap-1 sm:gap-1.5 ${
-            activeTab === 'customers'
-              ? 'bg-[#111111] text-[#FFD700] border-[#111111] shadow-xs sm:shadow-[2px_2px_0_#FFD700]'
-              : 'bg-white text-[#5C3D2E]/80 border-[#111111]/15 hover:border-[#111111]'
-          }`}
-        >
-          <span>👥 Pelanggan</span>
-          <span className="text-[9px] sm:text-[10px] text-[#5C3D2E]/70 font-bold">({customers.length})</span>
-        </button>
+        {/* Customers: Only for Owner */}
+        {activeRole === 'owner' && (
+          <button
+            type="button"
+            onClick={() => setActiveTab('customers')}
+            className={`shrink-0 px-3 sm:px-5 py-1.5 sm:py-2.5 rounded-full font-sans font-bold text-[11px] sm:text-[13px] border sm:border-2 cursor-pointer transition flex items-center gap-1 sm:gap-1.5 ${
+              activeTab === 'customers'
+                ? 'bg-[#111111] text-[#FFD700] border-[#111111] shadow-xs sm:shadow-[2px_2px_0_#FFD700]'
+                : 'bg-white text-[#5C3D2E]/80 border-[#111111]/15 hover:border-[#111111]'
+            }`}
+          >
+            <span>👥 Pelanggan</span>
+            <span className="text-[9px] sm:text-[10px] text-[#5C3D2E]/70 font-bold">({customers.length})</span>
+          </button>
+        )}
 
-        <button
-          type="button"
-          onClick={() => setActiveTab('inventory')}
-          className={`shrink-0 px-3 sm:px-5 py-1.5 sm:py-2.5 rounded-full font-sans font-bold text-[11px] sm:text-[13px] border sm:border-2 cursor-pointer transition flex items-center gap-1 sm:gap-1.5 ${
-            activeTab === 'inventory'
-              ? 'bg-[#111111] text-[#FFD700] border-[#111111] shadow-xs sm:shadow-[2px_2px_0_#FFD700]'
-              : 'bg-white text-[#5C3D2E]/80 border-[#111111]/15 hover:border-[#111111]'
-          }`}
-        >
-          <span>🥩 Resep & Gudang</span>
-        </button>
+        {/* Inventory: Only for Owner */}
+        {activeRole === 'owner' && (
+          <button
+            type="button"
+            onClick={() => setActiveTab('inventory')}
+            className={`shrink-0 px-3 sm:px-5 py-1.5 sm:py-2.5 rounded-full font-sans font-bold text-[11px] sm:text-[13px] border sm:border-2 cursor-pointer transition flex items-center gap-1 sm:gap-1.5 ${
+              activeTab === 'inventory'
+                ? 'bg-[#111111] text-[#FFD700] border-[#111111] shadow-xs sm:shadow-[2px_2px_0_#FFD700]'
+                : 'bg-white text-[#5C3D2E]/80 border-[#111111]/15 hover:border-[#111111]'
+            }`}
+          >
+            <span>🥩 Resep & Gudang</span>
+          </button>
+        )}
 
+        {/* KDS Tab: Available to All Roles */}
         <button
           type="button"
           onClick={() => setActiveTab('kds')}
@@ -1646,6 +1777,21 @@ Catatan Kurir: Pastikan posisi dus ditaruh datar agar mayo tidak tumpah ya kak.`
         >
           <span>🍳 Layar Dapur (KDS)</span>
         </button>
+
+        {/* Stickers: Convenient pill for cashier */}
+        {activeRole === 'cashier' && (
+          <button
+            type="button"
+            onClick={() => setActiveTab('stickers')}
+            className={`shrink-0 px-3 sm:px-5 py-1.5 sm:py-2.5 rounded-full font-sans font-bold text-[11px] sm:text-[13px] border sm:border-2 cursor-pointer transition flex items-center gap-1 sm:gap-1.5 ${
+              activeTab === 'stickers'
+                ? 'bg-[#111111] text-[#FFD700] border-[#111111] shadow-xs sm:shadow-[2px_2px_0_#FFD700]'
+                : 'bg-white text-[#5C3D2E]/80 border-[#111111]/15 hover:border-[#111111]'
+            }`}
+          >
+            <span>🏷️ Cetak Stiker QR</span>
+          </button>
+        )}
 
         {/* If user selected a secondary tab (e.g. from drawer), show it as active pill */}
         {activeTab !== 'orders' && activeTab !== 'menu' && activeTab !== 'expenses' && activeTab !== 'customers' && activeTab !== 'inventory' && activeTab !== 'kds' && (
@@ -2838,7 +2984,7 @@ Catatan Kurir: Pastikan posisi dus ditaruh datar agar mayo tidak tumpah ya kak.`
                       className="rounded-full border sm:border-2 border-[#111111] px-3.5 py-1.5 sm:py-1 font-sans text-xs bg-white focus:outline-none focus:border-[#FFD700] flex-1 sm:w-44"
                     />
 
-                    {orders.length > 0 && (
+                    {orders.length > 0 && activeRole === 'owner' && (
                       <button
                         type="button"
                         onClick={handleClearAllOrders}
@@ -3129,14 +3275,16 @@ Catatan Kurir: Pastikan posisi dus ditaruh datar agar mayo tidak tumpah ya kak.`
                               </button>
                             )}
 
-                            <button
-                              type="button"
-                              onClick={() => handleDeleteOrder(ord.id)}
-                              className="cursor-pointer text-gray-400 hover:text-red-500 p-1.5 text-xs"
-                              title="Hapus riwayat pesanan ini"
-                            >
-                              🗑️
-                            </button>
+                            {activeRole === 'owner' && (
+                              <button
+                                type="button"
+                                onClick={() => handleDeleteOrder(ord.id)}
+                                className="cursor-pointer text-gray-400 hover:text-red-500 p-1.5 text-xs"
+                                title="Hapus riwayat pesanan ini"
+                              >
+                                🗑️
+                              </button>
+                            )}
                           </div>
                         </div>
 
@@ -3870,6 +4018,114 @@ Catatan Kurir: Pastikan posisi dus ditaruh datar agar mayo tidak tumpah ya kak.`
       {/* TAB 2: PENGATURAN TOKO & KEAMANAN */}
       {activeTab === 'settings' && (
         <div className="space-y-8">
+          {/* SECTION 1: IDENTITAS USAHA & WHITE-LABEL BRAND (Prioritas 3) */}
+          <div className="bg-white rounded-[24px] p-6 lg:p-8 border-2 border-[#111111] shadow-[4px_4px_0_#111111] space-y-6">
+            <div>
+              <div className="inline-flex items-center gap-2 bg-[#FFD700] text-[#111111] px-3 py-0.5 rounded-full font-sans text-[11px] font-bold uppercase tracking-wider mb-2">
+                🏷️ Identitas Toko & White-Label
+              </div>
+              <h2 className="font-hand font-bold text-[30px] text-[#111111] leading-none">
+                Identitas Brand & Format Struk Kasir
+              </h2>
+              <p className="font-sans text-xs text-[#5C3D2E]/70 mt-1">
+                Kustomisasi nama usaha, slogan, nomor WhatsApp, dan format struk kasir agar cocok untuk usaha gorengan, kafe, resto, atau bakery Anda.
+              </p>
+            </div>
+
+            <form onSubmit={handleSaveBrandIdentity} className="space-y-4">
+              <div className="grid sm:grid-cols-2 gap-4">
+                {/* Nama Usaha */}
+                <div>
+                  <label className="block font-sans text-xs font-bold text-[#111111] mb-1">
+                    Nama Brand / Toko / Usaha *
+                  </label>
+                  <input
+                    type="text"
+                    required
+                    value={localConfig.brandName || ''}
+                    onChange={(e) => setLocalConfig({ ...localConfig, brandName: e.target.value })}
+                    placeholder="Contoh: Dulang Indonesia / Kopi Senja / Resto Barokah"
+                    className="w-full rounded-[14px] border-2 border-[#111111] px-4 py-2.5 font-sans font-bold text-sm bg-white focus:outline-none focus:border-[#FFD700]"
+                  />
+                </div>
+
+                {/* Tipe Bisnis */}
+                <div>
+                  <label className="block font-sans text-xs font-bold text-[#111111] mb-1">
+                    Tipe Bidang Usaha Kuliner
+                  </label>
+                  <select
+                    value={localConfig.businessType || 'gorengan'}
+                    onChange={(e) => setLocalConfig({ ...localConfig, businessType: e.target.value as any })}
+                    className="w-full rounded-[14px] border-2 border-[#111111] px-4 py-2.5 font-sans font-bold text-sm bg-white focus:outline-none focus:border-[#FFD700]"
+                  >
+                    <option value="gorengan">🥟 Gorengan & Risoles / Camilan</option>
+                    <option value="cafe">☕ Kafe / Coffee Shop & Minuman</option>
+                    <option value="resto">🍽️ Restoran / Rumah Makan / Warung</option>
+                    <option value="bakery">🍞 Bakery / Toko Roti & Kue</option>
+                    <option value="umum">📦 Usaha Kuliner & Dagang Umum</option>
+                  </select>
+                </div>
+
+                {/* Slogan */}
+                <div>
+                  <label className="block font-sans text-xs font-bold text-[#111111] mb-1">
+                    Slogan / Tagline Brand
+                  </label>
+                  <input
+                    type="text"
+                    value={localConfig.brandTagline || ''}
+                    onChange={(e) => setLocalConfig({ ...localConfig, brandTagline: e.target.value })}
+                    placeholder="Contoh: Dibuat dengan wajan panas & tulisan tangan"
+                    className="w-full rounded-[14px] border-2 border-[#111111] px-4 py-2.5 font-sans text-sm bg-white focus:outline-none focus:border-[#FFD700]"
+                  />
+                </div>
+
+                {/* WhatsApp Utama */}
+                <div>
+                  <label className="block font-sans text-xs font-bold text-[#111111] mb-1">
+                    Nomor WhatsApp Utama Usaha *
+                  </label>
+                  <input
+                    type="text"
+                    required
+                    value={localConfig.brandPhone || ''}
+                    onChange={(e) => setLocalConfig({ ...localConfig, brandPhone: e.target.value })}
+                    placeholder="087703397035"
+                    className="w-full rounded-[14px] border-2 border-[#111111] px-4 py-2.5 font-mono font-bold text-sm bg-white focus:outline-none focus:border-[#FFD700]"
+                  />
+                </div>
+              </div>
+
+              {/* Catatan Kaki Struk Kasir */}
+              <div>
+                <label className="block font-sans text-xs font-bold text-[#111111] mb-1">
+                  Catatan Kaki Struk Kasir (Footer Note pada Struk Thermal & Invoice)
+                </label>
+                <textarea
+                  rows={2}
+                  value={localConfig.receiptFooterNote || ''}
+                  onChange={(e) => setLocalConfig({ ...localConfig, receiptFooterNote: e.target.value })}
+                  placeholder="Matur suwun sanget sampun jajan! Hangatkan kembali bila perlu yaa 🙏✨"
+                  className="w-full rounded-[14px] border-2 border-[#111111] p-3 font-sans text-xs bg-white focus:outline-none focus:border-[#FFD700] resize-none"
+                />
+                <p className="font-sans text-[11px] text-[#5C3D2E]/70 mt-1">
+                  Teks ini otomatis tercetak di bagian paling bawah struk printer thermal 58mm/80mm dan invoice resmi A4.
+                </p>
+              </div>
+
+              {/* Tombol Simpan */}
+              <div className="flex justify-end pt-2">
+                <button
+                  type="submit"
+                  className="cursor-pointer bg-[#111111] text-[#FFD700] rounded-full px-6 py-2.5 font-sans font-bold text-xs border-2 border-[#111111] shadow-[2px_2px_0_#FFD700] hover:brightness-110 active:translate-x-0.5 active:translate-y-0.5 transition"
+                >
+                  Simpan Identitas Usaha ✓
+                </button>
+              </div>
+            </form>
+          </div>
+
           {/* SECTION ZERO: STATUS OPERASIONAL DAPUR & POP-UP TUTUP */}
           <div className="bg-white rounded-[24px] p-6 lg:p-8 border-2 border-[#111111] shadow-[4px_4px_0_#111111] space-y-6">
             <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-4">
@@ -4526,6 +4782,95 @@ Catatan Kurir: Pastikan posisi dus ditaruh datar agar mayo tidak tumpah ya kak.`
                   Simpan & Hash Password Baru 🔐
                 </button>
               </div>
+            </div>
+          </form>
+
+          {/* SECTION C-STAFF: PENGATURAN MULTI-PIN KARYAWAN (Kasir & Dapur) */}
+          <form
+            onSubmit={handleSaveStaffPins}
+            className="bg-white rounded-[24px] p-6 lg:p-8 border-2 border-[#111111] shadow-[4px_4px_0_#111111] space-y-6"
+          >
+            <div>
+              <div className="inline-flex items-center gap-2 bg-[#FFD700] text-[#111111] px-3 py-0.5 rounded-full font-sans text-[11px] font-bold uppercase tracking-wider mb-2">
+                👥 Multi-PIN Hak Akses Staff
+              </div>
+              <h2 className="font-hand font-bold text-[30px] text-[#111111] leading-none">
+                PIN Kasir Stand & Kru Dapur (KDS)
+              </h2>
+              <p className="font-sans text-xs text-[#5C3D2E]/70 mt-1">
+                Atur PIN khusus untuk karyawan tanpa memberikan akses ke laba bersih harian, HPP resep rahasia, atau tombol hapus pesanan.
+              </p>
+            </div>
+
+            <div className="grid sm:grid-cols-2 gap-6">
+              {/* PIN Kasir */}
+              <div className="bg-[#FFF8E7] rounded-[20px] p-5 border-2 border-[#111111]/20 space-y-3">
+                <div className="flex items-center justify-between">
+                  <div className="flex items-center gap-2 font-hand font-bold text-lg text-[#111111]">
+                    <span>🛒</span> PIN Kasir Stand
+                  </div>
+                  <span className="text-[10px] font-sans font-bold bg-[#FFD700] text-[#111111] px-2 py-0.5 rounded-full border border-[#111111]/20">
+                    Kasir POS
+                  </span>
+                </div>
+                <p className="font-sans text-xs text-[#5C3D2E]/80">
+                  Kasir hanya bisa input antrean, cetak struk nota, dan update status pesanan. Laporan kas keuangan & resep disembunyikan.
+                </p>
+                <div>
+                  <label className="block font-sans text-[11px] font-bold uppercase text-[#5C3D2E]/80 mb-1">
+                    PIN Kasir Baru (Min. 3 Digit):
+                  </label>
+                  <input
+                    type="text"
+                    value={localConfig.cashierPin || ''}
+                    onChange={(e) => setLocalConfig({ ...localConfig, cashierPin: e.target.value })}
+                    placeholder="1234"
+                    className="w-full rounded-[12px] border-2 border-[#111111] px-4 py-2 font-mono font-bold text-base bg-white focus:outline-none focus:border-[#FFD700]"
+                  />
+                </div>
+                <div className="text-[11px] font-sans text-[#5C3D2E]/70">
+                  Default sistem: <strong className="font-mono">1234</strong>
+                </div>
+              </div>
+
+              {/* PIN Dapur */}
+              <div className="bg-[#FFF8E7] rounded-[20px] p-5 border-2 border-[#111111]/20 space-y-3">
+                <div className="flex items-center justify-between">
+                  <div className="flex items-center gap-2 font-hand font-bold text-lg text-[#111111]">
+                    <span>🍳</span> PIN Layar Dapur (KDS)
+                  </div>
+                  <span className="text-[10px] font-sans font-bold bg-[#111111] text-[#FFD700] px-2 py-0.5 rounded-full border border-[#FFD700]/40">
+                    KDS Only
+                  </span>
+                </div>
+                <p className="font-sans text-xs text-[#5C3D2E]/80">
+                  Kru dapur hanya melihat antrean masak Kitchen Display System tanpa menu kasir dan tanpa laporan buku kas.
+                </p>
+                <div>
+                  <label className="block font-sans text-[11px] font-bold uppercase text-[#5C3D2E]/80 mb-1">
+                    PIN Dapur Baru (Min. 3 Digit):
+                  </label>
+                  <input
+                    type="text"
+                    value={localConfig.kitchenPin || ''}
+                    onChange={(e) => setLocalConfig({ ...localConfig, kitchenPin: e.target.value })}
+                    placeholder="0000"
+                    className="w-full rounded-[12px] border-2 border-[#111111] px-4 py-2 font-mono font-bold text-base bg-white focus:outline-none focus:border-[#FFD700]"
+                  />
+                </div>
+                <div className="text-[11px] font-sans text-[#5C3D2E]/70">
+                  Default sistem: <strong className="font-mono">0000</strong>
+                </div>
+              </div>
+            </div>
+
+            <div className="flex justify-end pt-2">
+              <button
+                type="submit"
+                className="cursor-pointer bg-[#111111] text-[#FFD700] rounded-full px-6 py-2.5 font-sans font-bold text-xs border-2 border-[#111111] shadow-[2px_2px_0_#FFD700] hover:brightness-110 active:translate-x-0.5 active:translate-y-0.5 transition"
+              >
+                Simpan PIN Kasir & Dapur ✓
+              </button>
             </div>
           </form>
 
@@ -6344,10 +6689,10 @@ Catatan Kurir: Pastikan posisi dus ditaruh datar agar mayo tidak tumpah ya kak.`
                 }`}
               >
                 <div className="text-center pb-2 border-b border-dashed border-gray-400">
-                  <div className="font-bold text-sm">DAPUR DULANG INDONESIA</div>
-                  <div className="text-[10px] text-gray-600">Dibuat dengan wajan panas & tulisan tangan</div>
-                  <div className="text-[10px] text-gray-500">Pasar Payan • Sidoarjo, Jawa Timur</div>
-                  <div className="text-[10px] text-gray-500">WA: 0877-0339-7035</div>
+                  <div className="font-bold text-sm">{(storeConfig.brandName || 'DAPUR DULANG INDONESIA').toUpperCase()}</div>
+                  <div className="text-[10px] text-gray-600">{storeConfig.brandTagline || 'Dibuat dengan wajan panas & tulisan tangan'}</div>
+                  <div className="text-[10px] text-gray-500">{storeConfig.pickupAddressNote || 'Sedati • Sidoarjo, Jawa Timur'}</div>
+                  <div className="text-[10px] text-gray-500">WA: {storeConfig.brandPhone || '0877-0339-7035'}</div>
                 </div>
 
                 <div className="py-2 border-b border-dashed border-gray-400 text-[11px] space-y-0.5">
@@ -6426,9 +6771,7 @@ Catatan Kurir: Pastikan posisi dus ditaruh datar agar mayo tidak tumpah ya kak.`
 
                 {/* Footer Quote */}
                 <div className="text-center pt-2 text-[10px] text-gray-600 space-y-0.5">
-                  <div>Matur suwun sanget sampun rawuh! 🙏</div>
-                  <div>Simpan nota niki & scan barcode dus</div>
-                  <div>kanggo traktiran pesanan berikutnya! ✨</div>
+                  <div>{storeConfig.receiptFooterNote || 'Matur suwun sanget sampun jajan! Hangatkan kembali bila perlu yaa 🙏✨'}</div>
                 </div>
               </div>
             </div>
@@ -6509,6 +6852,197 @@ Catatan Kurir: Pastikan posisi dus ditaruh datar agar mayo tidak tumpah ya kak.`
         storeConfig={storeConfig}
         onShowToast={onShowToast}
       />
+
+      {/* MODAL GANTI PERAN / SWITCH STAFF ROLE (Priority 2) */}
+      {isSwitchRoleModalOpen && (
+        <div className="fixed inset-0 z-50 bg-black/60 backdrop-blur-xs flex items-center justify-center p-3 sm:p-4 overflow-y-auto">
+          <div className="bg-white rounded-[24px] max-w-md w-full border-2 border-[#111111] shadow-[8px_8px_0_#111111] overflow-hidden animate-in zoom-in-95 duration-200">
+            {/* Modal Header */}
+            <div className="bg-[#111111] text-[#FFD700] px-5 py-4 flex items-center justify-between">
+              <div className="flex items-center gap-2">
+                <span className="text-xl">👥</span>
+                <div>
+                  <h3 className="font-hand font-bold text-xl text-white leading-tight">
+                    Ganti Peran Akses Cockpit
+                  </h3>
+                  <p className="font-sans text-[11px] text-[#FFD700]/90">
+                    Beralih antara Owner, Kasir Stand, dan Kru Dapur
+                  </p>
+                </div>
+              </div>
+              <button
+                type="button"
+                onClick={() => {
+                  setIsSwitchRoleModalOpen(false);
+                  setSwitchRolePinInput('');
+                  setSwitchRoleError('');
+                }}
+                className="cursor-pointer text-white/70 hover:text-white text-lg font-bold"
+              >
+                ✕
+              </button>
+            </div>
+
+            {/* Modal Body */}
+            <div className="p-5 sm:p-6 space-y-4">
+              {/* Active Role Banner */}
+              <div className="bg-[#FFF8E7] rounded-[16px] p-3.5 border border-[#111111]/20 flex items-center justify-between">
+                <div>
+                  <span className="text-[10px] uppercase font-bold text-[#5C3D2E]/70 font-sans block">
+                    Peran Aktif Saat Ini:
+                  </span>
+                  <div className="font-sans font-bold text-sm text-[#111111] flex items-center gap-1.5 mt-0.5">
+                    <span>{activeRole === 'owner' ? '👑' : activeRole === 'cashier' ? '🛒' : '🍳'}</span>
+                    <span>
+                      {activeRole === 'owner'
+                        ? 'Pemilik Usaha (Owner)'
+                        : activeRole === 'cashier'
+                        ? 'Kasir Stand POS'
+                        : 'Kru Dapur (KDS)'}
+                    </span>
+                  </div>
+                </div>
+                <span className="bg-emerald-100 text-emerald-800 text-[10px] font-bold px-2 py-0.5 rounded-full border border-emerald-300">
+                  Aktif
+                </span>
+              </div>
+
+              {/* Roles Description Cards */}
+              <div className="space-y-2 text-xs font-sans">
+                <div
+                  onClick={() => setSwitchRolePinInput('')}
+                  className={`p-3 rounded-[14px] border-2 transition cursor-pointer flex items-start gap-2.5 ${
+                    activeRole === 'owner'
+                      ? 'border-[#FFD700] bg-[#FFFDF4]'
+                      : 'border-[#111111]/15 hover:border-[#111111]/40 bg-white'
+                  }`}
+                >
+                  <span className="text-xl">👑</span>
+                  <div className="flex-1">
+                    <div className="font-bold text-[#111111] flex items-center justify-between">
+                      <span>Owner (Pemilik Usaha)</span>
+                      <span className="text-[10px] text-gray-500 font-mono">PIN Khusus Owner</span>
+                    </div>
+                    <p className="text-[11px] text-[#5C3D2E]/75 mt-0.5">
+                      Akses tak terbatas: Buku kas laba bersih, HPP resep rahasia, audit log, & hapus data.
+                    </p>
+                  </div>
+                </div>
+
+                <div
+                  onClick={() => setSwitchRolePinInput(localConfig.cashierPin || '1234')}
+                  className={`p-3 rounded-[14px] border-2 transition cursor-pointer flex items-start gap-2.5 ${
+                    activeRole === 'cashier'
+                      ? 'border-[#FFD700] bg-[#FFFDF4]'
+                      : 'border-[#111111]/15 hover:border-[#111111]/40 bg-white'
+                  }`}
+                >
+                  <span className="text-xl">🛒</span>
+                  <div className="flex-1">
+                    <div className="font-bold text-[#111111] flex items-center justify-between">
+                      <span>Kasir Stand POS</span>
+                      <span className="text-[10px] text-blue-600 font-mono font-bold">
+                        PIN: {localConfig.cashierPin || '1234'}
+                      </span>
+                    </div>
+                    <p className="text-[11px] text-[#5C3D2E]/75 mt-0.5">
+                      Input order walk-in, cetak struk thermal/invoice, cek stok menu. Laba bersih & hapus order terkunci.
+                    </p>
+                  </div>
+                </div>
+
+                <div
+                  onClick={() => setSwitchRolePinInput(localConfig.kitchenPin || '0000')}
+                  className={`p-3 rounded-[14px] border-2 transition cursor-pointer flex items-start gap-2.5 ${
+                    activeRole === 'kitchen'
+                      ? 'border-[#FFD700] bg-[#FFFDF4]'
+                      : 'border-[#111111]/15 hover:border-[#111111]/40 bg-white'
+                  }`}
+                >
+                  <span className="text-xl">🍳</span>
+                  <div className="flex-1">
+                    <div className="font-bold text-[#111111] flex items-center justify-between">
+                      <span>Kru Dapur (Layar KDS)</span>
+                      <span className="text-[10px] text-blue-600 font-mono font-bold">
+                        PIN: {localConfig.kitchenPin || '0000'}
+                      </span>
+                    </div>
+                    <p className="text-[11px] text-[#5C3D2E]/75 mt-0.5">
+                      Layar monitor antrean goreng tanpa distraksi, murni antrean masak fresh dari wajan.
+                    </p>
+                  </div>
+                </div>
+              </div>
+
+              {/* Form Input PIN */}
+              <form onSubmit={handleSwitchRoleSubmit} className="space-y-3 pt-2 border-t border-[#111111]/10">
+                <div>
+                  <label className="block font-sans text-xs font-bold text-[#111111] mb-1">
+                    Masukkan PIN Peran yang Dituju:
+                  </label>
+                  <input
+                    type="password"
+                    autoFocus
+                    required
+                    value={switchRolePinInput}
+                    onChange={(e) => {
+                      setSwitchRolePinInput(e.target.value);
+                      if (switchRoleError) setSwitchRoleError('');
+                    }}
+                    placeholder="Ketik PIN..."
+                    className="w-full rounded-[14px] border-2 border-[#111111] px-4 py-2.5 font-mono font-bold text-center text-lg bg-white focus:outline-none focus:border-[#FFD700] shadow-sm tracking-widest"
+                  />
+                  {switchRoleError && (
+                    <p className="text-red-600 font-sans text-xs mt-1 font-semibold text-center">
+                      {switchRoleError}
+                    </p>
+                  )}
+                </div>
+
+                {/* Quick Fill Buttons for ease of test / operator use */}
+                <div className="flex items-center justify-center gap-1.5 text-[10px] font-sans">
+                  <span className="text-gray-500">Isi cepat:</span>
+                  <button
+                    type="button"
+                    onClick={() => setSwitchRolePinInput(localConfig.cashierPin || '1234')}
+                    className="cursor-pointer bg-amber-50 hover:bg-amber-100 text-[#5C3D2E] px-2 py-0.5 rounded-full border border-amber-200 font-mono"
+                  >
+                    Kasir ({localConfig.cashierPin || '1234'})
+                  </button>
+                  <button
+                    type="button"
+                    onClick={() => setSwitchRolePinInput(localConfig.kitchenPin || '0000')}
+                    className="cursor-pointer bg-amber-50 hover:bg-amber-100 text-[#5C3D2E] px-2 py-0.5 rounded-full border border-amber-200 font-mono"
+                  >
+                    Dapur ({localConfig.kitchenPin || '0000'})
+                  </button>
+                </div>
+
+                <div className="pt-2 flex items-center justify-end gap-2">
+                  <button
+                    type="button"
+                    onClick={() => {
+                      setIsSwitchRoleModalOpen(false);
+                      setSwitchRolePinInput('');
+                      setSwitchRoleError('');
+                    }}
+                    className="cursor-pointer px-4 py-2 rounded-full font-sans font-bold text-xs text-gray-600 hover:text-black border border-gray-300"
+                  >
+                    Batal
+                  </button>
+                  <button
+                    type="submit"
+                    disabled={isSwitchingRoleLoading}
+                    className="cursor-pointer bg-[#111111] text-[#FFD700] rounded-full px-5 py-2.5 font-sans font-bold text-xs border-2 border-[#111111] shadow-[2px_2px_0_#FFD700] hover:brightness-110 disabled:opacity-50"
+                  >
+                    {isSwitchingRoleLoading ? 'Memverifikasi...' : 'Verifikasi & Ganti Peran ✓'}
+                  </button>
+                </div>
+              </form>
+            </div>
+          </div>
+        </div>
+      )}
 
       {/* MODAL CATAT UANG MUKA (DP) PESANAN */}
       {dpModalOrder && (
@@ -6925,17 +7459,19 @@ Catatan Kurir: Pastikan posisi dus ditaruh datar agar mayo tidak tumpah ya kak.`
                   </button>
                 )}
 
-                <button
-                  type="button"
-                  onClick={() => {
-                    const id = mobileActionOrder.id;
-                    setMobileActionOrder(null);
-                    handleDeleteOrder(id);
-                  }}
-                  className="cursor-pointer flex-1 py-2.5 rounded-full font-sans font-bold text-xs bg-gray-100 hover:bg-red-50 text-red-600 border border-gray-300 hover:border-red-300 transition"
-                >
-                  🗑️ Hapus Pesanan
-                </button>
+                {activeRole === 'owner' && (
+                  <button
+                    type="button"
+                    onClick={() => {
+                      const id = mobileActionOrder.id;
+                      setMobileActionOrder(null);
+                      handleDeleteOrder(id);
+                    }}
+                    className="cursor-pointer flex-1 py-2.5 rounded-full font-sans font-bold text-xs bg-gray-100 hover:bg-red-50 text-red-600 border border-gray-300 hover:border-red-300 transition"
+                  >
+                    🗑️ Hapus Pesanan
+                  </button>
+                )}
               </div>
             </div>
 
@@ -6975,6 +7511,29 @@ Catatan Kurir: Pastikan posisi dus ditaruh datar agar mayo tidak tumpah ya kak.`
 
             {/* Grid of Secondary Management Tools */}
             <div className="grid grid-cols-2 gap-2.5">
+              {/* Quick Switch Role Pill in Drawer */}
+              <div className="col-span-2 bg-[#FFF8E7] p-3 rounded-[16px] border border-[#111111]/20 flex items-center justify-between">
+                <div>
+                  <span className="text-[10px] text-[#5C3D2E]/70 font-bold block uppercase">Peran Aktif:</span>
+                  <span className="font-sans font-bold text-xs text-[#111111]">
+                    {activeRole === 'owner' ? '👑 Owner (Pemilik)' : activeRole === 'cashier' ? '🛒 Kasir Stand POS' : '🍳 Kru Dapur (KDS)'}
+                  </span>
+                </div>
+                <button
+                  type="button"
+                  onClick={() => {
+                    setIsMobileDrawerOpen(false);
+                    setSwitchRolePinInput('');
+                    setSwitchRoleError('');
+                    setIsSwitchRoleModalOpen(true);
+                  }}
+                  className="cursor-pointer bg-[#FFD700] hover:bg-[#FFE033] text-[#111111] px-3 py-1 rounded-full font-sans font-bold text-xs border border-[#111111] shadow-xs active:scale-95"
+                >
+                  Ganti Peran ⇄
+                </button>
+              </div>
+
+              {/* Kelola Menu: All Roles */}
               <button
                 type="button"
                 onClick={() => {
@@ -6992,40 +7551,7 @@ Catatan Kurir: Pastikan posisi dus ditaruh datar agar mayo tidak tumpah ya kak.`
                 <div className="text-[10px] opacity-75">Harga & stok porsi</div>
               </button>
 
-              <button
-                type="button"
-                onClick={() => {
-                  setActiveTab('customers');
-                  setIsMobileDrawerOpen(false);
-                }}
-                className={`p-3 rounded-[16px] border-2 border-[#111111] text-left transition cursor-pointer ${
-                  activeTab === 'customers'
-                    ? 'bg-[#111111] text-[#FFD700] shadow-[2px_2px_0_#FFD700]'
-                    : 'bg-white text-[#111111] shadow-[2px_2px_0_#111111] hover:bg-[#FFF8E7]'
-                }`}
-              >
-                <div className="text-xl mb-1">👥</div>
-                <div className="font-sans font-bold text-xs">Pelanggan Setia</div>
-                <div className="text-[10px] opacity-75">Smart QR & Riwayat</div>
-              </button>
-
-              <button
-                type="button"
-                onClick={() => {
-                  setActiveTab('inventory');
-                  setIsMobileDrawerOpen(false);
-                }}
-                className={`p-3 rounded-[16px] border-2 border-[#111111] text-left transition cursor-pointer ${
-                  activeTab === 'inventory'
-                    ? 'bg-[#111111] text-[#FFD700] shadow-[2px_2px_0_#FFD700]'
-                    : 'bg-white text-[#111111] shadow-[2px_2px_0_#111111] hover:bg-[#FFF8E7]'
-                }`}
-              >
-                <div className="text-xl mb-1">🥩</div>
-                <div className="font-sans font-bold text-xs">Resep & Gudang Bahan</div>
-                <div className="text-[10px] opacity-75">Stok bahan & HPP cuan</div>
-              </button>
-
+              {/* Layar Dapur (KDS): All Roles */}
               <button
                 type="button"
                 onClick={() => {
@@ -7043,116 +7569,177 @@ Catatan Kurir: Pastikan posisi dus ditaruh datar agar mayo tidak tumpah ya kak.`
                 <div className="text-[10px] opacity-75">Antrean goreng real-time</div>
               </button>
 
-              <button
-                type="button"
-                onClick={() => {
-                  setIsSubuhModalOpen(true);
-                  setIsMobileDrawerOpen(false);
-                }}
-                className="p-3 bg-[#FFD700] rounded-[16px] border-2 border-[#111111] shadow-[2px_2px_0_#111111] hover:brightness-105 text-left transition cursor-pointer"
-              >
-                <div className="text-xl mb-1">🌅</div>
-                <div className="font-sans font-bold text-xs text-[#111111]">Kalkulator Subuh</div>
-                <div className="text-[10px] text-[#111111]/80">Belanja pasar & resep</div>
-              </button>
+              {/* Cetak Stiker QR: Owner & Cashier */}
+              {(activeRole === 'owner' || activeRole === 'cashier') && (
+                <button
+                  type="button"
+                  onClick={() => {
+                    setActiveTab('stickers');
+                    setIsMobileDrawerOpen(false);
+                  }}
+                  className={`p-3 rounded-[16px] border-2 border-[#111111] text-left transition cursor-pointer ${
+                    activeTab === 'stickers'
+                      ? 'bg-[#111111] text-[#FFD700] shadow-[2px_2px_0_#FFD700]'
+                      : 'bg-white text-[#111111] shadow-[2px_2px_0_#111111] hover:bg-[#FFF8E7]'
+                  }`}
+                >
+                  <div className="text-xl mb-1">🏷️</div>
+                  <div className="font-sans font-bold text-xs">Cetak Stiker QR</div>
+                  <div className="text-[10px] opacity-75">Stiker dus risoles</div>
+                </button>
+              )}
 
-              <button
-                type="button"
-                onClick={() => {
-                  setIsClosingModalOpen(true);
-                  setIsMobileDrawerOpen(false);
-                }}
-                className="p-3 bg-[#111111] text-[#FFF8E7] rounded-[16px] border-2 border-[#FFD700] shadow-[2px_2px_0_#FFD700] hover:brightness-110 text-left transition cursor-pointer"
-              >
-                <div className="text-xl mb-1">🌙</div>
-                <div className="font-sans font-bold text-xs text-[#FFD700]">Tutup Dapur Malam</div>
-                <div className="text-[10px] text-white/70">Rekap omzet & WA</div>
-              </button>
+              {/* Pelanggan: Owner Only */}
+              {activeRole === 'owner' && (
+                <button
+                  type="button"
+                  onClick={() => {
+                    setActiveTab('customers');
+                    setIsMobileDrawerOpen(false);
+                  }}
+                  className={`p-3 rounded-[16px] border-2 border-[#111111] text-left transition cursor-pointer ${
+                    activeTab === 'customers'
+                      ? 'bg-[#111111] text-[#FFD700] shadow-[2px_2px_0_#FFD700]'
+                      : 'bg-white text-[#111111] shadow-[2px_2px_0_#111111] hover:bg-[#FFF8E7]'
+                  }`}
+                >
+                  <div className="text-xl mb-1">👥</div>
+                  <div className="font-sans font-bold text-xs">Pelanggan Setia</div>
+                  <div className="text-[10px] opacity-75">Smart QR & Riwayat</div>
+                </button>
+              )}
 
-              <button
-                type="button"
-                onClick={() => {
-                  setActiveTab('stickers');
-                  setIsMobileDrawerOpen(false);
-                }}
-                className={`p-3 rounded-[16px] border-2 border-[#111111] text-left transition cursor-pointer ${
-                  activeTab === 'stickers'
-                    ? 'bg-[#111111] text-[#FFD700] shadow-[2px_2px_0_#FFD700]'
-                    : 'bg-white text-[#111111] shadow-[2px_2px_0_#111111] hover:bg-[#FFF8E7]'
-                }`}
-              >
-                <div className="text-xl mb-1">🏷️</div>
-                <div className="font-sans font-bold text-xs">Cetak Stiker QR</div>
-                <div className="text-[10px] opacity-75">Stiker dus risoles</div>
-              </button>
+              {/* Resep & Gudang: Owner Only */}
+              {activeRole === 'owner' && (
+                <button
+                  type="button"
+                  onClick={() => {
+                    setActiveTab('inventory');
+                    setIsMobileDrawerOpen(false);
+                  }}
+                  className={`p-3 rounded-[16px] border-2 border-[#111111] text-left transition cursor-pointer ${
+                    activeTab === 'inventory'
+                      ? 'bg-[#111111] text-[#FFD700] shadow-[2px_2px_0_#FFD700]'
+                      : 'bg-white text-[#111111] shadow-[2px_2px_0_#111111] hover:bg-[#FFF8E7]'
+                  }`}
+                >
+                  <div className="text-xl mb-1">🥩</div>
+                  <div className="font-sans font-bold text-xs">Resep & Gudang Bahan</div>
+                  <div className="text-[10px] opacity-75">Stok bahan & HPP cuan</div>
+                </button>
+              )}
 
-              <button
-                type="button"
-                onClick={() => {
-                  setActiveTab('vouchers');
-                  setIsMobileDrawerOpen(false);
-                }}
-                className={`p-3 rounded-[16px] border-2 border-[#111111] text-left transition cursor-pointer ${
-                  activeTab === 'vouchers'
-                    ? 'bg-[#111111] text-[#FFD700] shadow-[2px_2px_0_#FFD700]'
-                    : 'bg-white text-[#111111] shadow-[2px_2px_0_#111111] hover:bg-[#FFF8E7]'
-                }`}
-              >
-                <div className="text-xl mb-1">🎟️</div>
-                <div className="font-sans font-bold text-xs">Kupon & Voucher</div>
-                <div className="text-[10px] opacity-75">Promo diskon unik</div>
-              </button>
+              {/* Kalkulator Subuh: Owner Only */}
+              {activeRole === 'owner' && (
+                <button
+                  type="button"
+                  onClick={() => {
+                    setIsSubuhModalOpen(true);
+                    setIsMobileDrawerOpen(false);
+                  }}
+                  className="p-3 bg-[#FFD700] rounded-[16px] border-2 border-[#111111] shadow-[2px_2px_0_#111111] hover:brightness-105 text-left transition cursor-pointer"
+                >
+                  <div className="text-xl mb-1">🌅</div>
+                  <div className="font-sans font-bold text-xs text-[#111111]">Kalkulator Subuh</div>
+                  <div className="text-[10px] text-[#111111]/80">Belanja pasar & resep</div>
+                </button>
+              )}
 
-              <button
-                type="button"
-                onClick={() => {
-                  setActiveTab('testimonials');
-                  setIsMobileDrawerOpen(false);
-                }}
-                className={`p-3 rounded-[16px] border-2 border-[#111111] text-left transition cursor-pointer ${
-                  activeTab === 'testimonials'
-                    ? 'bg-[#111111] text-[#FFD700] shadow-[2px_2px_0_#FFD700]'
-                    : 'bg-white text-[#111111] shadow-[2px_2px_0_#111111] hover:bg-[#FFF8E7]'
-                }`}
-              >
-                <div className="text-xl mb-1">💬</div>
-                <div className="font-sans font-bold text-xs">Ulasan Pelanggan</div>
-                <div className="text-[10px] opacity-75">Testimoni depan</div>
-              </button>
+              {/* Tutup Dapur Malam: Owner Only */}
+              {activeRole === 'owner' && (
+                <button
+                  type="button"
+                  onClick={() => {
+                    setIsClosingModalOpen(true);
+                    setIsMobileDrawerOpen(false);
+                  }}
+                  className="p-3 bg-[#111111] text-[#FFF8E7] rounded-[16px] border-2 border-[#FFD700] shadow-[2px_2px_0_#FFD700] hover:brightness-110 text-left transition cursor-pointer"
+                >
+                  <div className="text-xl mb-1">🌙</div>
+                  <div className="font-sans font-bold text-xs text-[#FFD700]">Tutup Dapur Malam</div>
+                  <div className="text-[10px] text-white/70">Rekap omzet & WA</div>
+                </button>
+              )}
 
-              <button
-                type="button"
-                onClick={() => {
-                  setActiveTab('stats');
-                  setIsMobileDrawerOpen(false);
-                }}
-                className={`p-3 rounded-[16px] border-2 border-[#111111] text-left transition cursor-pointer ${
-                  activeTab === 'stats'
-                    ? 'bg-[#111111] text-[#FFD700] shadow-[2px_2px_0_#FFD700]'
-                    : 'bg-white text-[#111111] shadow-[2px_2px_0_#111111] hover:bg-[#FFF8E7]'
-                }`}
-              >
-                <div className="text-xl mb-1">📊</div>
-                <div className="font-sans font-bold text-xs">Statistik Tren</div>
-                <div className="text-[10px] opacity-75">Grafik penjualan</div>
-              </button>
+              {/* Voucher: Owner Only */}
+              {activeRole === 'owner' && (
+                <button
+                  type="button"
+                  onClick={() => {
+                    setActiveTab('vouchers');
+                    setIsMobileDrawerOpen(false);
+                  }}
+                  className={`p-3 rounded-[16px] border-2 border-[#111111] text-left transition cursor-pointer ${
+                    activeTab === 'vouchers'
+                      ? 'bg-[#111111] text-[#FFD700] shadow-[2px_2px_0_#FFD700]'
+                      : 'bg-white text-[#111111] shadow-[2px_2px_0_#111111] hover:bg-[#FFF8E7]'
+                  }`}
+                >
+                  <div className="text-xl mb-1">🎟️</div>
+                  <div className="font-sans font-bold text-xs">Kupon & Voucher</div>
+                  <div className="text-[10px] opacity-75">Promo diskon unik</div>
+                </button>
+              )}
 
-              <button
-                type="button"
-                onClick={() => {
-                  setActiveTab('settings');
-                  setIsMobileDrawerOpen(false);
-                }}
-                className={`p-3 rounded-[16px] border-2 border-[#111111] text-left transition cursor-pointer ${
-                  activeTab === 'settings'
-                    ? 'bg-[#111111] text-[#FFD700] shadow-[2px_2px_0_#FFD700]'
-                    : 'bg-white text-[#111111] shadow-[2px_2px_0_#111111] hover:bg-[#FFF8E7]'
-                }`}
-              >
-                <div className="text-xl mb-1">🔐</div>
-                <div className="font-sans font-bold text-xs">Keamanan & PIN</div>
-                <div className="text-[10px] opacity-75">Backup & Kurir</div>
-              </button>
+              {/* Ulasan Testimoni: Owner Only */}
+              {activeRole === 'owner' && (
+                <button
+                  type="button"
+                  onClick={() => {
+                    setActiveTab('testimonials');
+                    setIsMobileDrawerOpen(false);
+                  }}
+                  className={`p-3 rounded-[16px] border-2 border-[#111111] text-left transition cursor-pointer ${
+                    activeTab === 'testimonials'
+                      ? 'bg-[#111111] text-[#FFD700] shadow-[2px_2px_0_#FFD700]'
+                      : 'bg-white text-[#111111] shadow-[2px_2px_0_#111111] hover:bg-[#FFF8E7]'
+                  }`}
+                >
+                  <div className="text-xl mb-1">💬</div>
+                  <div className="font-sans font-bold text-xs">Ulasan Pelanggan</div>
+                  <div className="text-[10px] opacity-75">Testimoni depan</div>
+                </button>
+              )}
+
+              {/* Statistik Tren: Owner Only */}
+              {activeRole === 'owner' && (
+                <button
+                  type="button"
+                  onClick={() => {
+                    setActiveTab('stats');
+                    setIsMobileDrawerOpen(false);
+                  }}
+                  className={`p-3 rounded-[16px] border-2 border-[#111111] text-left transition cursor-pointer ${
+                    activeTab === 'stats'
+                      ? 'bg-[#111111] text-[#FFD700] shadow-[2px_2px_0_#FFD700]'
+                      : 'bg-white text-[#111111] shadow-[2px_2px_0_#111111] hover:bg-[#FFF8E7]'
+                  }`}
+                >
+                  <div className="text-xl mb-1">📊</div>
+                  <div className="font-sans font-bold text-xs">Statistik Tren</div>
+                  <div className="text-[10px] opacity-75">Grafik penjualan</div>
+                </button>
+              )}
+
+              {/* Keamanan & PIN: Owner Only */}
+              {activeRole === 'owner' && (
+                <button
+                  type="button"
+                  onClick={() => {
+                    setActiveTab('settings');
+                    setIsMobileDrawerOpen(false);
+                  }}
+                  className={`p-3 rounded-[16px] border-2 border-[#111111] text-left transition cursor-pointer ${
+                    activeTab === 'settings'
+                      ? 'bg-[#111111] text-[#FFD700] shadow-[2px_2px_0_#FFD700]'
+                      : 'bg-white text-[#111111] shadow-[2px_2px_0_#111111] hover:bg-[#FFF8E7]'
+                  }`}
+                >
+                  <div className="text-xl mb-1">🔐</div>
+                  <div className="font-sans font-bold text-xs">Keamanan & PIN</div>
+                  <div className="text-[10px] opacity-75">Identitas, Brand & PIN</div>
+                </button>
+              )}
             </div>
           </div>
         </div>
@@ -7161,26 +7748,28 @@ Catatan Kurir: Pastikan posisi dus ditaruh datar agar mayo tidak tumpah ya kak.`
       {/* KITCHEN COCKPIT BOTTOM NAVIGATION BAR (FIXED AT BOTTOM FOR MOBILE & APKS) */}
       <div className="fixed bottom-0 left-0 right-0 z-40 bg-[#111111] text-[#FFF8E7] border-t-2 border-[#FFD700] px-2 py-1.5 sm:px-6 shadow-[0_-4px_16px_rgba(0,0,0,0.35)]">
         <div className="max-w-md mx-auto flex items-center justify-around">
-          {/* Tab 1: Kasir & Antrean */}
-          <button
-            type="button"
-            onClick={() => setActiveTab('orders')}
-            className={`cursor-pointer flex flex-col items-center gap-0.5 py-1 px-2.5 rounded-xl transition ${
-              activeTab === 'orders' ? 'text-[#FFD700] font-bold scale-105' : 'text-white/70 hover:text-white'
-            }`}
-          >
-            <div className="relative text-xl">
-              <span>🛒</span>
-              {orders.filter((o) => o.status === 'menunggu').length > 0 && (
-                <span className="absolute -top-1 -right-2.5 bg-red-500 text-white text-[9px] font-bold px-1.5 py-0.2 rounded-full animate-pulse">
-                  {orders.filter((o) => o.status === 'menunggu').length}
-                </span>
-              )}
-            </div>
-            <span className="text-[10px] sm:text-[11px] font-sans">Kasir</span>
-          </button>
+          {/* Tab 1: Kasir & Antrean (Owner & Cashier) */}
+          {(activeRole === 'owner' || activeRole === 'cashier') && (
+            <button
+              type="button"
+              onClick={() => setActiveTab('orders')}
+              className={`cursor-pointer flex flex-col items-center gap-0.5 py-1 px-2.5 rounded-xl transition ${
+                activeTab === 'orders' ? 'text-[#FFD700] font-bold scale-105' : 'text-white/70 hover:text-white'
+              }`}
+            >
+              <div className="relative text-xl">
+                <span>🛒</span>
+                {orders.filter((o) => o.status === 'menunggu').length > 0 && (
+                  <span className="absolute -top-1 -right-2.5 bg-red-500 text-white text-[9px] font-bold px-1.5 py-0.2 rounded-full animate-pulse">
+                    {orders.filter((o) => o.status === 'menunggu').length}
+                  </span>
+                )}
+              </div>
+              <span className="text-[10px] sm:text-[11px] font-sans">Kasir</span>
+            </button>
+          )}
 
-          {/* Tab 2: Layar Dapur (KDS) */}
+          {/* Tab 2: Layar Dapur (KDS) (All Roles) */}
           <button
             type="button"
             onClick={() => setActiveTab('kds')}
@@ -7194,7 +7783,7 @@ Catatan Kurir: Pastikan posisi dus ditaruh datar agar mayo tidak tumpah ya kak.`
             <span className="text-[10px] sm:text-[11px] font-sans">Dapur</span>
           </button>
 
-          {/* Tab 3: Stok & Menu */}
+          {/* Tab 3: Stok & Menu (All Roles) */}
           <button
             type="button"
             onClick={() => setActiveTab('menu')}
@@ -7208,31 +7797,65 @@ Catatan Kurir: Pastikan posisi dus ditaruh datar agar mayo tidak tumpah ya kak.`
             <span className="text-[10px] sm:text-[11px] font-sans">Menu</span>
           </button>
 
-          {/* Tab 4: Kas Harian */}
-          <button
-            type="button"
-            onClick={() => setActiveTab('expenses')}
-            className={`cursor-pointer flex flex-col items-center gap-0.5 py-1 px-2.5 rounded-xl transition ${
-              activeTab === 'expenses' ? 'text-[#FFD700] font-bold scale-105' : 'text-white/70 hover:text-white'
-            }`}
-          >
-            <div className="text-xl">
-              <span>💰</span>
-            </div>
-            <span className="text-[10px] sm:text-[11px] font-sans">Kas</span>
-          </button>
+          {/* Tab 4: Kas Harian (Owner Only) / Cetak Stiker (Cashier) */}
+          {activeRole === 'owner' && (
+            <button
+              type="button"
+              onClick={() => setActiveTab('expenses')}
+              className={`cursor-pointer flex flex-col items-center gap-0.5 py-1 px-2.5 rounded-xl transition ${
+                activeTab === 'expenses' ? 'text-[#FFD700] font-bold scale-105' : 'text-white/70 hover:text-white'
+              }`}
+            >
+              <div className="text-xl">
+                <span>💰</span>
+              </div>
+              <span className="text-[10px] sm:text-[11px] font-sans">Kas</span>
+            </button>
+          )}
 
-          {/* Tab 5: Menu Dapur Lainnya (Drawer Toggle) */}
-          <button
-            type="button"
-            onClick={() => setIsMobileDrawerOpen(true)}
-            className="cursor-pointer flex flex-col items-center gap-0.5 py-1 px-2.5 rounded-xl text-white/70 hover:text-[#FFD700] transition"
-          >
-            <div className="text-xl">
-              <span>⚡</span>
-            </div>
-            <span className="text-[10px] sm:text-[11px] font-sans">Lainnya</span>
-          </button>
+          {activeRole === 'cashier' && (
+            <button
+              type="button"
+              onClick={() => setActiveTab('stickers')}
+              className={`cursor-pointer flex flex-col items-center gap-0.5 py-1 px-2.5 rounded-xl transition ${
+                activeTab === 'stickers' ? 'text-[#FFD700] font-bold scale-105' : 'text-white/70 hover:text-white'
+              }`}
+            >
+              <div className="text-xl">
+                <span>🏷️</span>
+              </div>
+              <span className="text-[10px] sm:text-[11px] font-sans">Stiker</span>
+            </button>
+          )}
+
+          {/* Tab 5: Menu Dapur Lainnya (Drawer Toggle for Owner & Cashier) or Quick Switch for Kitchen */}
+          {activeRole === 'kitchen' ? (
+            <button
+              type="button"
+              onClick={() => {
+                setSwitchRolePinInput('');
+                setSwitchRoleError('');
+                setIsSwitchRoleModalOpen(true);
+              }}
+              className="cursor-pointer flex flex-col items-center gap-0.5 py-1 px-2.5 rounded-xl text-white/70 hover:text-[#FFD700] transition"
+            >
+              <div className="text-xl">
+                <span>🔄</span>
+              </div>
+              <span className="text-[10px] sm:text-[11px] font-sans">Ganti</span>
+            </button>
+          ) : (
+            <button
+              type="button"
+              onClick={() => setIsMobileDrawerOpen(true)}
+              className="cursor-pointer flex flex-col items-center gap-0.5 py-1 px-2.5 rounded-xl text-white/70 hover:text-[#FFD700] transition"
+            >
+              <div className="text-xl">
+                <span>⚡</span>
+              </div>
+              <span className="text-[10px] sm:text-[11px] font-sans">Lainnya</span>
+            </button>
+          )}
         </div>
       </div>
     </div>

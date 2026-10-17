@@ -17,51 +17,53 @@ export const InvoiceA4Modal: React.FC<InvoiceA4ModalProps> = ({
 }) => {
   if (!order) return null;
 
-  const invoiceNumber = `INV/DULANG/${order.created_at.slice(0, 10).replace(/-/g, '')}/${order.id.replace('ORD-', '')}`;
-  const formattedDate = new Date(order.created_at).toLocaleDateString('id-ID', {
-    day: 'numeric',
-    month: 'long',
-    year: 'numeric',
-  });
-
-  const subtotalItems = order.items.reduce((sum, it) => sum + (it.harga * it.qty), 0);
-  const shippingCost = order.shipping_cost || 0;
-  const isLunas = order.status === 'lunas';
-  const isDP = order.status === 'dp';
-  const dpAmount = order.dp_amount || 0;
-  const remainingAmount = order.remaining_amount !== undefined ? order.remaining_amount : (isLunas ? 0 : order.total_price);
-
-  const handlePrint = () => {
-    window.print();
-  };
-
-  const handleShareWA = () => {
-    let msg = `*📄 INVOICE RESMI DULANG INDONESIA*\n`;
-    msg += `No: ${invoiceNumber}\n`;
-    msg += `Tanggal: ${formattedDate}\n`;
-    msg += `Kepada: Kak ${order.customer_name}\n`;
-    msg += `Jadwal Kirim: ${order.delivery_schedule || 'Hari Ini (Fresh Panas)'}\n`;
-    msg += `--------------------------------------\n`;
-    order.items.forEach((it, idx) => {
-      msg += `${idx + 1}. ${it.qty}x ${it.nama} (Rp ${(it.qty * it.harga).toLocaleString('id-ID')})\n`;
+    const brandName = (storeConfig.brandName || 'Dulang Indonesia').toUpperCase();
+    const invoicePrefix = (storeConfig.brandName || 'DULANG').toUpperCase().replace(/[^A-Z0-9]/g, '');
+    const invoiceNumber = `INV/${invoicePrefix}/${order.created_at.slice(0, 10).replace(/-/g, '')}/${order.id.replace('ORD-', '')}`;
+    const formattedDate = new Date(order.created_at).toLocaleDateString('id-ID', {
+      day: 'numeric',
+      month: 'long',
+      year: 'numeric',
     });
-    if (shippingCost > 0) {
-      msg += `Ongkir Kurir: Rp ${shippingCost.toLocaleString('id-ID')}\n`;
-    }
-    msg += `--------------------------------------\n`;
-    msg += `*TOTAL: Rp ${order.total_price.toLocaleString('id-ID')}*\n`;
 
-    if (isDP) {
-      msg += `🟡 *DP Diterima:* Rp ${dpAmount.toLocaleString('id-ID')}\n`;
-      msg += `*SISA TAGIHAN:* Rp ${remainingAmount.toLocaleString('id-ID')}\n`;
-      msg += `Status: *UANG MUKA (DP) DITERIMA*\n`;
-    } else if (isLunas) {
-      msg += `Status: *✓ LUNAS (${(order.payment_method || 'TUNAI').toUpperCase()})*\n`;
-    } else {
-      msg += `Status: *MENUNGGU PEMBAYARAN*\n`;
-    }
+    const subtotalItems = order.items.reduce((sum, it) => sum + (it.harga * it.qty), 0);
+    const shippingCost = order.shipping_cost || 0;
+    const isLunas = order.status === 'lunas';
+    const isDP = order.status === 'dp';
+    const dpAmount = order.dp_amount || 0;
+    const remainingAmount = order.remaining_amount !== undefined ? order.remaining_amount : (isLunas ? 0 : order.total_price);
 
-    msg += `\nTerima kasih atas kepercayaannya pada Dapur Dulang Indonesia! 🙏✨`;
+    const handlePrint = () => {
+      window.print();
+    };
+
+    const handleShareWA = () => {
+      let msg = `*📄 INVOICE RESMI ${brandName}*\n`;
+      msg += `No: ${invoiceNumber}\n`;
+      msg += `Tanggal: ${formattedDate}\n`;
+      msg += `Kepada: Kak ${order.customer_name}\n`;
+      msg += `Jadwal Kirim: ${order.delivery_schedule || 'Hari Ini (Fresh Panas)'}\n`;
+      msg += `--------------------------------------\n`;
+      order.items.forEach((it, idx) => {
+        msg += `${idx + 1}. ${it.qty}x ${it.nama} (Rp ${(it.qty * it.harga).toLocaleString('id-ID')})\n`;
+      });
+      if (shippingCost > 0) {
+        msg += `Ongkir Kurir: Rp ${shippingCost.toLocaleString('id-ID')}\n`;
+      }
+      msg += `--------------------------------------\n`;
+      msg += `*TOTAL: Rp ${order.total_price.toLocaleString('id-ID')}*\n`;
+
+      if (isDP) {
+        msg += `🟡 *DP Diterima:* Rp ${dpAmount.toLocaleString('id-ID')}\n`;
+        msg += `*SISA TAGIHAN:* Rp ${remainingAmount.toLocaleString('id-ID')}\n`;
+        msg += `Status: *UANG MUKA (DP) DITERIMA*\n`;
+      } else if (isLunas) {
+        msg += `Status: *✓ LUNAS (${(order.payment_method || 'TUNAI').toUpperCase()})*\n`;
+      } else {
+        msg += `Status: *MENUNGGU PEMBAYARAN*\n`;
+      }
+
+      msg += `\nTerima kasih atas kepercayaannya pada ${storeConfig.brandName || 'Dapur Dulang Indonesia'}! 🙏✨`;
 
     const waNum = (order.customer_wa || '').replace(/\D/g, '');
     const url = waNum ? `https://wa.me/${waNum}?text=${encodeURIComponent(msg)}` : `https://wa.me/?text=${encodeURIComponent(msg)}`;
@@ -124,16 +126,18 @@ export const InvoiceA4Modal: React.FC<InvoiceA4ModalProps> = ({
             <div className="flex flex-col sm:flex-row justify-between items-start sm:items-center border-b-2 border-[#111111] pb-6 gap-4">
               <div>
                 <div className="flex items-center gap-2">
-                  <span className="text-2xl sm:text-3xl">🥟</span>
+                  <span className="text-2xl sm:text-3xl">
+                    {storeConfig.businessType === 'cafe' ? '☕' : storeConfig.businessType === 'bakery' ? '🍞' : storeConfig.businessType === 'resto' ? '🍽️' : '🥟'}
+                  </span>
                   <h1 className="font-hand font-extrabold text-2xl sm:text-3xl text-[#111111] tracking-wide">
-                    DULANG INDONESIA
+                    {(storeConfig.brandName || 'DULANG INDONESIA').toUpperCase()}
                   </h1>
                 </div>
                 <p className="text-xs text-gray-600 mt-1 font-medium">
-                  Spesialis Risoles Lumer, Snack Box Hajatan & Katering Sidoarjo
+                  {storeConfig.brandTagline || 'Spesialis Risoles Lumer, Snack Box Hajatan & Katering Sidoarjo'}
                 </p>
                 <p className="text-[11px] text-gray-500 mt-0.5">
-                  {storeConfig.pickupAddressNote || 'Sedati - Kabupaten Sidoarjo, Jawa Timur'} • WA: {BRAND.whatsapp}
+                  {storeConfig.pickupAddressNote || 'Sedati - Kabupaten Sidoarjo, Jawa Timur'} • WA: {storeConfig.brandPhone || BRAND.whatsapp}
                 </p>
               </div>
 
@@ -313,13 +317,13 @@ export const InvoiceA4Modal: React.FC<InvoiceA4ModalProps> = ({
               <div className="text-center">
                 <p className="text-gray-500 mb-14">Hormat Kami,</p>
                 <div className="border-b border-gray-400 w-44 mx-auto" />
-                <p className="text-gray-800 mt-1 font-bold">DAPUR DULANG INDONESIA</p>
+                <p className="text-gray-800 mt-1 font-bold">{(storeConfig.brandName || 'DAPUR DULANG INDONESIA').toUpperCase()}</p>
               </div>
             </div>
 
             {/* Footer Note */}
             <div className="mt-8 pt-4 border-t border-dashed border-gray-300 text-center text-[10px] text-gray-500">
-              Terima kasih atas pesanan Anda. Risoles Dulang dibuat hangat dengan bahan pilihan & higienis. 🙏✨
+              {storeConfig.receiptFooterNote || 'Terima kasih atas pesanan Anda. Dibuat hangat dengan bahan pilihan & higienis. 🙏✨'}
             </div>
           </div>
         </div>

@@ -52,15 +52,19 @@ export const OwnerLoginModal: React.FC<OwnerLoginModalProps> = ({
     setIsSubmitting(true);
 
     try {
-      // 1. Verify against hashed PIN or secure env
-      const isPinMatch = await storageService.verifyOwnerPin(clean);
+      // 1. Check if matches environment code or any registered PIN
       const isEnvMatch = Boolean(validEnvCode && clean.toLowerCase() === validEnvCode.toLowerCase());
+      const pinResult = await storageService.verifyAnyPin(clean);
 
-      if (isPinMatch || isEnvMatch) {
+      if (isEnvMatch || pinResult.success) {
+        const assignedRole: 'owner' | 'cashier' | 'kitchen' = isEnvMatch ? 'owner' : pinResult.role;
+        const roleLabel = isEnvMatch ? '👑 Pemilik Usaha (Owner)' : pinResult.label;
+
         // Reset rate limiter on successful authentication
         resetLoginAttempts();
-        logSecurityEvent('LOGIN_SUCCESS', 'Pemilik dapur berhasil login ke dashboard.', 'INFO');
+        logSecurityEvent('LOGIN_SUCCESS', `Staff berhasil login sebagai ${roleLabel}.`, 'INFO');
         storageService.setOwnerAuthenticated(true);
+        storageService.setStaffRole(assignedRole);
         setError(null);
         setCode('');
         onSuccess();
@@ -85,11 +89,11 @@ export const OwnerLoginModal: React.FC<OwnerLoginModalProps> = ({
         } else {
           logSecurityEvent(
             'LOGIN_FAILED',
-            `Percobaan login pemilik gagal (${updatedLock.attempts}/5 percobaan).`,
+            `Percobaan login gagal (${updatedLock.attempts}/5 percobaan).`,
             'WARN'
           );
           setError(
-            `Kode salah rek! (${updatedLock.attempts}/5 percobaan). Tanya pengelola dapur dulu yaa 😅`
+            `PIN tidak cocok! (${updatedLock.attempts}/5 percobaan). Masukkan PIN Owner, Kasir (1234), atau Dapur (0000) 😅`
           );
         }
 
@@ -119,11 +123,11 @@ export const OwnerLoginModal: React.FC<OwnerLoginModalProps> = ({
 
         <div className="flex justify-between items-start mt-2">
           <div>
-            <h3 className="font-hand font-bold text-[30px] leading-none text-[#111111]">
-              mode pemilik?
+            <h3 className="font-hand font-bold text-[28px] sm:text-[30px] leading-none text-[#111111]">
+              Akses Cockpit Dapur
             </h3>
-            <p className="font-sans text-[12px] text-[#5C3D2E]/70 mt-1">
-              khusus ibu dapur & pengelola sejak 2020
+            <p className="font-sans text-[11px] sm:text-[12px] text-[#5C3D2E]/75 mt-1">
+              👑 Owner • 🛒 Kasir Stand • 🍳 Kru Dapur (KDS)
             </p>
           </div>
           <button
@@ -190,8 +194,13 @@ export const OwnerLoginModal: React.FC<OwnerLoginModalProps> = ({
           </button>
         </form>
 
-        <div className="mt-4 text-center font-sans text-[11px] text-[#5C3D2E]/60">
-          💡 Dilindungi enkripsi SHA-256 & Rate Limiting anti brute-force
+        <div className="mt-4 pt-3 border-t border-[#111111]/10 space-y-1.5 text-center font-sans text-[11px] text-[#5C3D2E]/70">
+          <div className="font-bold text-[#111111]">💡 PIN Default Karyawan:</div>
+          <div className="flex flex-wrap justify-center items-center gap-1.5 text-[10px]">
+            <span className="bg-white border border-[#111111]/20 px-2 py-0.5 rounded-full">🛒 Kasir: <strong>1234</strong></span>
+            <span className="bg-white border border-[#111111]/20 px-2 py-0.5 rounded-full">🍳 Dapur: <strong>0000</strong></span>
+            <span className="bg-[#FFD700]/30 border border-[#111111]/20 px-2 py-0.5 rounded-full font-bold">👑 Owner (PIN Khusus)</span>
+          </div>
         </div>
       </div>
     </div>

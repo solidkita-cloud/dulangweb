@@ -17,6 +17,7 @@ import {
   PantryIngredient,
   MenuRecipe,
   KitchenCookingStatus,
+  StaffRole,
 } from '../types';
 import {
   DEFAULT_MENUS,
@@ -733,6 +734,71 @@ ${lines.join('\n')}
   async verifyOwnerPin(inputPin: string): Promise<boolean> {
     const stored = this.getOwnerPin();
     return verifyPassword(inputPin, stored);
+  },
+
+  // --- STAFF ROLE & MULTI-PIN ACCESS CONTROL ---
+  getStaffRole(): StaffRole {
+    try {
+      const saved = localStorage.getItem('dulang_staff_role');
+      if (saved === 'owner' || saved === 'cashier' || saved === 'kitchen') {
+        return saved;
+      }
+    } catch (e) {
+      console.warn('Failed to read staff role:', e);
+    }
+    return 'owner';
+  },
+
+  setStaffRole(role: StaffRole): void {
+    try {
+      localStorage.setItem('dulang_staff_role', role);
+      if (typeof window !== 'undefined') {
+        window.dispatchEvent(new CustomEvent('dulang_staff_role_updated', { detail: { role } }));
+      }
+    } catch (e) {
+      console.error('Failed to set staff role:', e);
+    }
+  },
+
+  getCashierPin(): string {
+    const cfg = this.getStoreConfig();
+    return cfg.cashierPin || '1234';
+  },
+
+  getKitchenPin(): string {
+    const cfg = this.getStoreConfig();
+    return cfg.kitchenPin || '0000';
+  },
+
+  verifyCashierPin(inputPin: string): boolean {
+    const clean = inputPin.trim();
+    return clean === this.getCashierPin();
+  },
+
+  verifyKitchenPin(inputPin: string): boolean {
+    const clean = inputPin.trim();
+    return clean === this.getKitchenPin();
+  },
+
+  async verifyAnyPin(inputPin: string): Promise<{ success: boolean; role: StaffRole; label: string }> {
+    const clean = inputPin.trim();
+    // 1. Check Owner PIN
+    const isOwner = await this.verifyOwnerPin(clean);
+    if (isOwner) {
+      return { success: true, role: 'owner', label: '👑 Pemilik Usaha (Owner)' };
+    }
+
+    // 2. Check Cashier PIN
+    if (this.verifyCashierPin(clean)) {
+      return { success: true, role: 'cashier', label: '🛒 Kasir Stand' };
+    }
+
+    // 3. Check Kitchen PIN
+    if (this.verifyKitchenPin(clean)) {
+      return { success: true, role: 'kitchen', label: '🍳 Kru Dapur (KDS)' };
+    }
+
+    return { success: false, role: 'cashier', label: '' };
   },
 
   // --- STORE CONFIG (HERO IMAGE, SCHEDULE, ETC) ---

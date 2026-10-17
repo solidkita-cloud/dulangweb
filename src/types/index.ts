@@ -72,12 +72,22 @@ export interface ScheduleItem {
   rot?: string;
 }
 
+export type StaffRole = 'owner' | 'cashier' | 'kitchen';
+
 export interface StoreConfig {
   heroImage: string;
   heroHeadlineSub?: string;
   jamBukaTeks: string;
   schedules: ScheduleItem[];
   ownerPin: string;
+  cashierPin?: string;       // Default: '1234'
+  kitchenPin?: string;       // Default: '0000'
+  brandName?: string;        // Default: 'Dulang Indonesia'
+  brandTagline?: string;     // Default: 'Dibuat dengan wajan panas & tulisan tangan'
+  brandLogo?: string;        // Default: '/dulang-logo.png'
+  brandPhone?: string;       // Default: '087703397035'
+  businessType?: 'gorengan' | 'cafe' | 'resto' | 'bakery' | 'umum';
+  receiptFooterNote?: string; // Default: 'Matur suwun sanget sampun jajan! Hangatkan kembali bila perlu yaa 🙏✨'
   isStoreClosed?: boolean;
   closedReason?: string;
   activeKloter?: string;
