@@ -13,6 +13,7 @@ export interface MenuItem {
   stokHarian?: number | null;
   sisaStok?: number | null;
   variantType?: 'matang' | 'frozen';
+  servingType?: 'matang_only' | 'frozen_only' | 'both';
 }
 
 export interface Customer {
@@ -77,6 +78,7 @@ export type StaffRole = 'owner' | 'cashier' | 'kitchen';
 
 export interface StoreConfig {
   heroImage: string;
+  heroImages?: string[];
   heroHeadlineSub?: string;
   jamBukaTeks: string;
   schedules: ScheduleItem[];

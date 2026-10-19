@@ -37,6 +37,28 @@ export const LandingView: React.FC<LandingViewProps> = ({
   const [menuTab, setMenuTab] = useState<'today' | 'tomorrow'>('today');
   const [selectedCategory, setSelectedCategory] = useState<MenuCategory>('all');
   const [isTestimonialsOpen, setIsTestimonialsOpen] = useState(false);
+
+  // --- HERO SLIDESHOW STATE ---
+  const heroPhotoList: string[] = React.useMemo(() => {
+    const list: string[] = [];
+    if (storeConfig.heroImages && storeConfig.heroImages.length > 0) {
+      list.push(...storeConfig.heroImages.filter(Boolean));
+    } else if (storeConfig.heroImage && storeConfig.heroImage !== '/dulang-logo.png') {
+      list.push(storeConfig.heroImage);
+    }
+    return list;
+  }, [storeConfig.heroImages, storeConfig.heroImage]);
+
+  const [activeHeroIdx, setActiveHeroIdx] = useState(0);
+
+  useEffect(() => {
+    if (heroPhotoList.length <= 1) return;
+    const timer = setInterval(() => {
+      setActiveHeroIdx((prev) => (prev + 1) % heroPhotoList.length);
+    }, 3800);
+    return () => clearInterval(timer);
+  }, [heroPhotoList.length]);
+
   const [testimonials] = useState<CustomerTestimonial[]>(() =>
     storageService.getTestimonials().filter((t) => t.is_active)
   );
@@ -438,12 +460,36 @@ export const LandingView: React.FC<LandingViewProps> = ({
               <div className="rounded-[18px] sm:rounded-[20px] overflow-hidden bg-[#FFEEC2] aspect-[4/3] relative grid place-items-center border border-[#111111]/10">
                 <div className="absolute inset-0 bg-[radial-gradient(ellipse_at_30%_20%,#FFF8E7_0%,#FFE6A0_45%,#FFD36B_100%)]" />
 
-                {storeConfig.heroImage && storeConfig.heroImage !== '/dulang-logo.png' ? (
-                  <img
-                    src={storeConfig.heroImage}
-                    alt="Foto Utama Dulang"
-                    className="w-full h-full object-cover relative z-10"
-                  />
+                {heroPhotoList.length > 0 ? (
+                  <>
+                    {heroPhotoList.map((photoUrl, pIdx) => (
+                      <img
+                        key={pIdx}
+                        src={photoUrl}
+                        alt={`Foto Utama Dulang ${pIdx + 1}`}
+                        className={`w-full h-full object-cover absolute inset-0 z-10 transition-opacity duration-700 ease-in-out ${
+                          activeHeroIdx === pIdx ? 'opacity-100 scale-100' : 'opacity-0 scale-105 pointer-events-none'
+                        }`}
+                      />
+                    ))}
+
+                    {/* Dot Indicators if more than 1 photo */}
+                    {heroPhotoList.length > 1 && (
+                      <div className="absolute top-2.5 right-2.5 z-25 flex items-center gap-1.5 bg-black/50 backdrop-blur-xs px-2.5 py-1 rounded-full border border-white/20">
+                        {heroPhotoList.map((_, dotIdx) => (
+                          <button
+                            key={dotIdx}
+                            type="button"
+                            onClick={() => setActiveHeroIdx(dotIdx)}
+                            className={`rounded-full transition-all cursor-pointer ${
+                              activeHeroIdx === dotIdx ? 'w-4 h-1.5 bg-[#FFD700]' : 'w-1.5 h-1.5 bg-white/60 hover:bg-white'
+                            }`}
+                            title={`Foto ${dotIdx + 1}`}
+                          />
+                        ))}
+                      </div>
+                    )}
+                  </>
                 ) : (
                   <div className="relative z-10 flex flex-col items-center">
                     <div className="w-[110px] h-[110px] sm:w-[124px] sm:h-[124px] bg-[#111111] rounded-full grid place-items-center rotate-[-6deg] shadow-lg border-2 border-[#111111]">

@@ -220,6 +220,7 @@ export const OwnerDashboardView: React.FC<OwnerDashboardViewProps> = ({
   const [newDeskripsi, setNewDeskripsi] = useState('');
   const [newFoto, setNewFoto] = useState('');
   const [newStokHarian, setNewStokHarian] = useState<number | ''>('');
+  const [newServingType, setNewServingType] = useState<'matang_only' | 'frozen_only' | 'both'>('matang_only');
 
   // --- EDIT MENU STATE ---
   const [editingItem, setEditingItem] = useState<MenuItem | null>(null);
@@ -1171,6 +1172,8 @@ Catatan Kurir: Pastikan posisi dus ditaruh datar agar mayo tidak tumpah ya kak.`
       tersedia: true,
       stokHarian: stockQty,
       sisaStok: stockQty,
+      servingType: newServingType,
+      variantType: newServingType === 'frozen_only' ? 'frozen' : 'matang',
     };
 
     const updated = [...menus, newItem];
@@ -1182,6 +1185,7 @@ Catatan Kurir: Pastikan posisi dus ditaruh datar agar mayo tidak tumpah ya kak.`
     setNewDeskripsi('');
     setNewFoto('');
     setNewStokHarian('');
+    setNewServingType('matang_only');
     setIsAddingMenu(false);
     onShowToast(`Menu baru "${newItem.nama}" siap disajikan! ✨`);
   };
@@ -1977,6 +1981,34 @@ Catatan Kurir: Pastikan posisi dus ditaruh datar agar mayo tidak tumpah ya kak.`
                     </div>
                   </div>
 
+                  {/* Bentuk Penyajian */}
+                  <div className="bg-[#FFFDF4] p-3 rounded-[16px] border border-[#111111]/20">
+                    <label className="block font-sans text-[11px] font-bold uppercase text-[#5C3D2E] mb-1.5">
+                      🍽️ Bentuk Penyajian Produk
+                    </label>
+                    <div className="grid grid-cols-3 gap-2">
+                      {[
+                        { id: 'matang_only' as const, label: '🍳 Hanya Matang', desc: 'Goreng fresh' },
+                        { id: 'frozen_only' as const, label: '❄️ Hanya Frozen', desc: 'Kemasan beku' },
+                        { id: 'both' as const, label: '🔄 Bisa Keduanya', desc: 'Pembeli bebas pilih' },
+                      ].map((item) => (
+                        <button
+                          key={item.id}
+                          type="button"
+                          onClick={() => setNewServingType(item.id)}
+                          className={`cursor-pointer p-2 rounded-[12px] text-center border-2 transition ${
+                            newServingType === item.id
+                              ? 'bg-[#111111] text-[#FFD700] border-[#111111] shadow-xs'
+                              : 'bg-white text-[#111111] border-[#111111]/20 hover:border-[#111111]'
+                          }`}
+                        >
+                          <div className="font-bold text-xs">{item.label}</div>
+                          <div className="text-[10px] opacity-75 mt-0.5">{item.desc}</div>
+                        </button>
+                      ))}
+                    </div>
+                  </div>
+
                   <div>
                     <label className="block font-sans text-[11px] font-bold uppercase text-[#5C3D2E]/70 mb-1">
                       Deskripsi Menu
@@ -2162,6 +2194,43 @@ Catatan Kurir: Pastikan posisi dus ditaruh datar agar mayo tidak tumpah ya kak.`
                         onChange={(e) => setEditingItem({ ...editingItem, harga: Number(e.target.value) })}
                         className="w-full rounded-full border-2 border-[#111111] px-4 py-2 font-sans font-bold text-sm focus:outline-none focus:border-[#FFD700]"
                       />
+                    </div>
+                  </div>
+
+                  {/* Bentuk Penyajian di Edit Menu */}
+                  <div className="bg-[#FFFDF4] p-3 rounded-[16px] border border-[#111111]/20">
+                    <label className="block font-sans text-[11px] font-bold uppercase text-[#5C3D2E] mb-1.5">
+                      🍽️ Bentuk Penyajian Produk
+                    </label>
+                    <div className="grid grid-cols-3 gap-2">
+                      {[
+                        { id: 'matang_only' as const, label: '🍳 Hanya Matang', desc: 'Goreng fresh' },
+                        { id: 'frozen_only' as const, label: '❄️ Hanya Frozen', desc: 'Kemasan beku' },
+                        { id: 'both' as const, label: '🔄 Bisa Keduanya', desc: 'Pembeli bebas pilih' },
+                      ].map((item) => {
+                        const curServing = editingItem.servingType || (editingItem.variantType === 'frozen' || editingItem.nama.toLowerCase().includes('frozen') ? 'frozen_only' : 'matang_only');
+                        return (
+                          <button
+                            key={item.id}
+                            type="button"
+                            onClick={() =>
+                              setEditingItem({
+                                ...editingItem,
+                                servingType: item.id,
+                                variantType: item.id === 'frozen_only' ? 'frozen' : 'matang',
+                              })
+                            }
+                            className={`cursor-pointer p-2 rounded-[12px] text-center border-2 transition ${
+                              curServing === item.id
+                                ? 'bg-[#111111] text-[#FFD700] border-[#111111] shadow-xs'
+                                : 'bg-white text-[#111111] border-[#111111]/20 hover:border-[#111111]'
+                            }`}
+                          >
+                            <div className="font-bold text-xs">{item.label}</div>
+                            <div className="text-[10px] opacity-75 mt-0.5">{item.desc}</div>
+                          </button>
+                        );
+                      })}
                     </div>
                   </div>
 
@@ -4828,114 +4897,176 @@ Catatan Kurir: Pastikan posisi dus ditaruh datar agar mayo tidak tumpah ya kak.`
             </form>
           </div>
 
-          {/* SECTION A: GANTI FOTO UTAMA */}
+          {/* SECTION A: GANTI FOTO UTAMA & SLIDESHOW */}
           <div className="bg-white rounded-[24px] p-6 lg:p-8 border-2 border-[#111111] shadow-[4px_4px_0_#111111] space-y-6">
             <div>
               <div className="inline-flex items-center gap-2 bg-[#FFD700] text-[#111111] px-3 py-0.5 rounded-full font-sans text-[11px] font-bold uppercase tracking-wider mb-2">
-                📸 Foto Banner Utama
+                📸 Foto Banner Utama & Slideshow
               </div>
               <h2 className="font-hand font-bold text-[30px] text-[#111111] leading-none">
-                Ganti Foto Utama Toko
+                Foto Utama Web & Slideshow
               </h2>
               <p className="font-sans text-xs text-[#5C3D2E]/70 mt-1">
-                Foto ini yang tampil di kartu polaroid utama bagian atas halaman depan pembeli.
+                Foto ini yang tampil di kartu polaroid utama bagian atas halaman depan pembeli. Bisa unggah 1 foto atau beberapa foto (otomatis jadi slideshow halus bergantian).
               </p>
             </div>
 
-            <div className="grid md:grid-cols-[260px_1fr] gap-6 items-center">
-              {/* Preview */}
-              <div className="bg-[#FFF8E7] rounded-[20px] p-4 border-2 border-[#111111] polaroid-shadow text-center">
-                <div className="aspect-[4/3] rounded-[14px] bg-[#FFEEC2] overflow-hidden border border-[#111111]/20 grid place-items-center relative">
-                  {localConfig.heroImage && localConfig.heroImage !== '/dulang-logo.png' ? (
-                    <img
-                      src={localConfig.heroImage}
-                      alt="Hero Preview"
-                      className="w-full h-full object-cover"
-                    />
-                  ) : (
-                    <div className="flex flex-col items-center">
-                      <div className="w-16 h-16 bg-[#111111] rounded-full grid place-items-center shadow-md">
-                        <img src="/dulang-logo.png" alt="Logo" className="w-12 h-12 object-contain" />
-                      </div>
-                      <span className="font-hand text-xs font-bold mt-2">Logo Dulang Asli</span>
-                    </div>
-                  )}
-                </div>
-                <div className="mt-2 font-hand font-bold text-sm text-[#5C3D2E]">
-                  Preview Tampilan di Halaman Depan
-                </div>
-              </div>
+            {(() => {
+              const currentList: string[] = (localConfig.heroImages && localConfig.heroImages.length > 0)
+                ? localConfig.heroImages
+                : (localConfig.heroImage && localConfig.heroImage !== '/dulang-logo.png')
+                ? [localConfig.heroImage]
+                : [];
 
-              {/* Actions */}
-              <div className="space-y-4">
-                <div className="flex flex-wrap items-center gap-3">
-                  <label className="cursor-pointer bg-[#FFD700] text-[#111111] hover:brightness-105 border-2 border-[#111111] px-5 py-2.5 rounded-full font-sans text-xs font-bold shadow-[2px_2px_0_#111111] transition">
-                    📁 Unggah Foto Baru dari HP / Laptop
-                    <input
-                      type="file"
-                      accept="image/*"
-                      className="hidden"
-                      onChange={(e) => {
-                        const file = e.target.files?.[0];
-                        if (file) {
-                          triggerImageCrop(file, 'Atur Sisi Foto Banner Utama Toko', (url) => {
-                            const updated = { ...localConfig, heroImage: url };
+              return (
+                <div className="space-y-4">
+                  <div className="bg-[#FFF8E7] rounded-[20px] p-4 border-2 border-[#111111] polaroid-shadow space-y-3">
+                    <div className="flex items-center justify-between">
+                      <span className="font-sans font-bold text-xs uppercase tracking-wider text-[#111111]">
+                        Galeri Foto Aktif ({currentList.length} Foto)
+                      </span>
+                      {currentList.length > 1 && (
+                        <span className="text-[11px] font-bold text-emerald-800 bg-emerald-100 px-2.5 py-0.5 rounded-full border border-emerald-300">
+                          ✨ Mode Slideshow Otomatis Aktif
+                        </span>
+                      )}
+                    </div>
+
+                    <div className="grid grid-cols-2 sm:grid-cols-4 gap-3">
+                      {currentList.map((photoUrl, pIdx) => (
+                        <div key={pIdx} className="relative aspect-[4/3] rounded-[14px] overflow-hidden bg-white border-2 border-[#111111] shadow-xs group">
+                          <img src={photoUrl} alt={`Foto ${pIdx + 1}`} className="w-full h-full object-cover" />
+                          <div className="absolute top-1.5 left-1.5 bg-black/70 text-[#FFD700] text-[10px] font-bold px-1.5 py-0.2 rounded-md">
+                            #{pIdx + 1}
+                          </div>
+                          <button
+                            type="button"
+                            onClick={() => {
+                              const nextList = currentList.filter((_, i) => i !== pIdx);
+                              const updated = {
+                                ...localConfig,
+                                heroImages: nextList,
+                                heroImage: nextList[0] || '/dulang-logo.png',
+                              };
+                              setLocalConfig(updated);
+                              onUpdateStoreConfig(updated);
+                              storageService.saveStoreConfig(updated);
+                              onShowToast('Foto berhasil dihapus dari slideshow!');
+                            }}
+                            className="cursor-pointer absolute top-1.5 right-1.5 w-6 h-6 rounded-full bg-red-600 text-white font-bold text-xs flex items-center justify-center shadow-md hover:bg-red-700 transition"
+                            title="Hapus foto ini"
+                          >
+                            ✕
+                          </button>
+                        </div>
+                      ))}
+
+                      {currentList.length === 0 && (
+                        <div className="col-span-full py-8 text-center bg-white rounded-[14px] border-2 border-dashed border-[#111111]/20">
+                          <div className="w-16 h-16 bg-[#111111] rounded-full grid place-items-center mx-auto shadow-sm">
+                            <img src="/dulang-logo.png" alt="Logo" className="w-12 h-12 object-contain" />
+                          </div>
+                          <div className="font-hand font-bold text-sm text-[#111111] mt-2">
+                            Masih Menggunakan Logo Dulang Default
+                          </div>
+                          <p className="text-[11px] text-[#5C3D2E]/70 mt-0.5">
+                            Belum ada foto yang diunggah. Silakan klik tombol di bawah untuk menambah foto risoles menggoda.
+                          </p>
+                        </div>
+                      )}
+                    </div>
+
+                    {/* Action buttons */}
+                    <div className="flex flex-wrap items-center gap-2.5 pt-2 border-t border-[#111111]/10">
+                      <label className="cursor-pointer bg-[#FFD700] text-[#111111] hover:brightness-105 border-2 border-[#111111] px-4 py-2 rounded-full font-sans text-xs font-bold shadow-[2px_2px_0_#111111] transition flex items-center gap-1.5">
+                        <span>📁</span>
+                        <span>{currentList.length > 0 ? '+ Tambah Foto ke Slideshow' : 'Unggah Foto Pertama'}</span>
+                        <input
+                          type="file"
+                          accept="image/*"
+                          className="hidden"
+                          onChange={(e) => {
+                            const file = e.target.files?.[0];
+                            if (file) {
+                              triggerImageCrop(file, 'Atur Sisi Foto Banner Utama Toko', (url) => {
+                                const nextList = [...currentList, url];
+                                const updated = {
+                                  ...localConfig,
+                                  heroImages: nextList,
+                                  heroImage: nextList[0] || url,
+                                };
+                                setLocalConfig(updated);
+                                onUpdateStoreConfig(updated);
+                                storageService.saveStoreConfig(updated);
+                                onShowToast('Foto berhasil ditambahkan ke slideshow! 📸');
+                              });
+                              e.target.value = '';
+                            }
+                          }}
+                        />
+                      </label>
+
+                      {currentList.length > 0 && (
+                        <button
+                          type="button"
+                          onClick={() => {
+                            const updated = {
+                              ...localConfig,
+                              heroImages: [],
+                              heroImage: '/dulang-logo.png',
+                            };
                             setLocalConfig(updated);
                             onUpdateStoreConfig(updated);
                             storageService.saveStoreConfig(updated);
-                            onShowToast('Foto utama berhasil diganti! 📸');
-                          });
-                          e.target.value = '';
-                        }
-                      }}
-                    />
-                  </label>
-
-                  <button
-                    type="button"
-                    onClick={() => {
-                      const updated = { ...localConfig, heroImage: '/dulang-logo.png' };
-                      setLocalConfig(updated);
-                      onUpdateStoreConfig(updated);
-                      storageService.saveStoreConfig(updated);
-                      onShowToast('Kembali ke Logo Dulang asli!');
-                    }}
-                    className="cursor-pointer bg-white text-[#5C3D2E] hover:text-[#111111] border border-[#111111]/30 px-4 py-2 rounded-full font-sans text-xs font-bold transition"
-                  >
-                    Reset ke Logo Asli
-                  </button>
-                </div>
-
-                <div>
-                  <label className="block font-sans text-[11px] font-bold uppercase text-[#5C3D2E]/70 mb-1">
-                    Atau tempel Link / URL Gambar:
-                  </label>
-                  <div className="flex gap-2">
-                    <input
-                      type="text"
-                      value={localConfig.heroImage}
-                      onChange={(e) => setLocalConfig({ ...localConfig, heroImage: e.target.value })}
-                      placeholder="https://... atau /dulang-logo.png"
-                      className="flex-1 rounded-full border-2 border-[#111111] px-4 py-2 font-sans text-xs focus:outline-none focus:border-[#FFD700]"
-                    />
-                    <button
-                      type="button"
-                      onClick={() => {
-                        onUpdateStoreConfig(localConfig);
-                        storageService.saveStoreConfig(localConfig);
-                        onShowToast('Foto utama disimpan! ✓');
-                      }}
-                      className="cursor-pointer bg-[#111111] text-white px-5 py-2 rounded-full font-sans text-xs font-bold border-2 border-[#111111]"
-                    >
-                      Terapkan
-                    </button>
+                            onShowToast('Kembali ke Logo Dulang asli!');
+                          }}
+                          className="cursor-pointer bg-white text-[#5C3D2E] hover:text-[#111111] border border-[#111111]/30 px-3.5 py-2 rounded-full font-sans text-xs font-bold transition"
+                        >
+                          Reset ke Logo Asli
+                        </button>
+                      )}
+                    </div>
                   </div>
-                  <p className="font-sans text-[11px] text-[#5C3D2E]/60 mt-1">
-                    💡 <i>Tips teknis:</i> Tim Dulang Indonesia juga bisa langsung menaruh file foto di folder <code className="bg-amber-100 px-1 py-0.5 rounded font-mono text-[10px]">public/</code> project dengan nama apa saja.
-                  </p>
+
+                  {/* Paste URL directly */}
+                  <div className="p-3.5 bg-white rounded-[16px] border border-[#111111]/20 space-y-2">
+                    <label className="block font-sans text-[11px] font-bold uppercase text-[#5C3D2E]/70">
+                      Atau Tempel Link URL Foto Baru:
+                    </label>
+                    <div className="flex gap-2">
+                      <input
+                        id="new-hero-url-input"
+                        type="text"
+                        placeholder="https://... tempel URL gambar di sini"
+                        className="flex-1 rounded-full border-2 border-[#111111] px-4 py-1.5 font-sans text-xs focus:outline-none focus:border-[#FFD700]"
+                      />
+                      <button
+                        type="button"
+                        onClick={() => {
+                          const input = document.getElementById('new-hero-url-input') as HTMLInputElement | null;
+                          if (!input || !input.value.trim()) return;
+                          const url = input.value.trim();
+                          const nextList = [...currentList, url];
+                          const updated = {
+                            ...localConfig,
+                            heroImages: nextList,
+                            heroImage: nextList[0] || url,
+                          };
+                          setLocalConfig(updated);
+                          onUpdateStoreConfig(updated);
+                          storageService.saveStoreConfig(updated);
+                          input.value = '';
+                          onShowToast('Foto URL berhasil ditambahkan ke slideshow! ✓');
+                        }}
+                        className="cursor-pointer bg-[#111111] text-[#FFD700] px-4 py-1.5 rounded-full font-sans text-xs font-bold border-2 border-[#111111]"
+                      >
+                        + Tambahkan
+                      </button>
+                    </div>
+                  </div>
                 </div>
-              </div>
-            </div>
+              );
+            })()}
           </div>
 
           {/* SECTION B: GANTI JAM BUKA & JADWAL */}

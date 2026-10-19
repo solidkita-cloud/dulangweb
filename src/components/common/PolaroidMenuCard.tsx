@@ -20,9 +20,20 @@ export const PolaroidMenuCard: React.FC<PolaroidMenuCardProps> = ({
   const [selectedOpsi, setSelectedOpsi] = useState<string>(
     item.opsi && item.opsi.length > 0 ? item.opsi[0] : ''
   );
-  const [selectedVariant, setSelectedVariant] = useState<'matang' | 'frozen'>(
-    item.variantType || 'matang'
-  );
+  const effectiveServingType: 'matang_only' | 'frozen_only' | 'both' = (() => {
+    if (item.servingType) return item.servingType;
+    const name = item.nama.toLowerCase();
+    if (item.variantType === 'frozen' || name.includes('frozen') || name.includes('beku')) {
+      return 'frozen_only';
+    }
+    return 'matang_only';
+  })();
+
+  const [selectedVariant, setSelectedVariant] = useState<'matang' | 'frozen'>(() => {
+    if (effectiveServingType === 'frozen_only') return 'frozen';
+    if (effectiveServingType === 'matang_only') return 'matang';
+    return item.variantType || 'matang';
+  });
 
   const hasStockLimit = !isTomorrow && item.sisaStok !== null && item.sisaStok !== undefined;
   const isOutOfStock = hasStockLimit && (item.sisaStok as number) <= 0;
@@ -32,6 +43,9 @@ export const PolaroidMenuCard: React.FC<PolaroidMenuCardProps> = ({
   const handleOpenSheet = () => {
     if (!isAvailable) return;
     setOrderQty(1);
+    if (effectiveServingType === 'frozen_only') setSelectedVariant('frozen');
+    else if (effectiveServingType === 'matang_only') setSelectedVariant('matang');
+    else setSelectedVariant(item.variantType || 'matang');
     setIsSheetOpen(true);
   };
 
@@ -232,49 +246,67 @@ export const PolaroidMenuCard: React.FC<PolaroidMenuCardProps> = ({
               </div>
             )}
 
-            {/* Pilihan Penyajian: Goreng Hangat vs Frozen Food */}
-            <div className="bg-[#FFFDF4] p-3.5 rounded-[16px] border border-[#111111]/15 space-y-2">
-              <label className="font-sans font-bold text-xs uppercase tracking-wider text-[#111111] block">
-                🍽️ Mau Disajikan Bagaimana?
-              </label>
-              <div className="grid grid-cols-2 gap-2">
-                <button
-                  type="button"
-                  onClick={() => setSelectedVariant('matang')}
-                  className={`cursor-pointer p-2.5 rounded-[14px] text-left transition border-2 ${
-                    selectedVariant === 'matang'
-                      ? 'bg-amber-100/90 border-[#111111] shadow-xs'
-                      : 'bg-white border-[#111111]/20 hover:border-[#111111]'
-                  }`}
-                >
-                  <div className="font-bold text-xs text-[#111111] flex items-center gap-1.5">
-                    <span>🍳</span>
-                    <span>Goreng Matang</span>
-                  </div>
-                  <span className="text-[10px] text-[#5C3D2E]/80 block mt-0.5">
-                    Hangat renyah, siap santap
-                  </span>
-                </button>
+            {/* Pilihan / Keterangan Penyajian (Matang Saja / Frozen Saja / Bisa Keduanya) */}
+            {effectiveServingType === 'both' ? (
+              <div className="bg-[#FFFDF4] p-3.5 rounded-[16px] border border-[#111111]/15 space-y-2">
+                <label className="font-sans font-bold text-xs uppercase tracking-wider text-[#111111] block">
+                  🍽️ Mau Disajikan Bagaimana?
+                </label>
+                <div className="grid grid-cols-2 gap-2">
+                  <button
+                    type="button"
+                    onClick={() => setSelectedVariant('matang')}
+                    className={`cursor-pointer p-2.5 rounded-[14px] text-left transition border-2 ${
+                      selectedVariant === 'matang'
+                        ? 'bg-amber-100/90 border-[#111111] shadow-xs'
+                        : 'bg-white border-[#111111]/20 hover:border-[#111111]'
+                    }`}
+                  >
+                    <div className="font-bold text-xs text-[#111111] flex items-center gap-1.5">
+                      <span>🍳</span>
+                      <span>Goreng Matang</span>
+                    </div>
+                    <span className="text-[10px] text-[#5C3D2E]/80 block mt-0.5">
+                      Hangat renyah, siap santap
+                    </span>
+                  </button>
 
-                <button
-                  type="button"
-                  onClick={() => setSelectedVariant('frozen')}
-                  className={`cursor-pointer p-2.5 rounded-[14px] text-left transition border-2 ${
-                    selectedVariant === 'frozen'
-                      ? 'bg-sky-100/90 border-sky-800 shadow-xs'
-                      : 'bg-white border-[#111111]/20 hover:border-[#111111]'
-                  }`}
-                >
-                  <div className="font-bold text-xs text-sky-950 flex items-center gap-1.5">
-                    <span>❄️</span>
-                    <span>Frozen Food</span>
-                  </div>
-                  <span className="text-[10px] text-sky-800 block mt-0.5">
-                    Beku kedap udara (3 mgg)
-                  </span>
-                </button>
+                  <button
+                    type="button"
+                    onClick={() => setSelectedVariant('frozen')}
+                    className={`cursor-pointer p-2.5 rounded-[14px] text-left transition border-2 ${
+                      selectedVariant === 'frozen'
+                        ? 'bg-sky-100/90 border-sky-800 shadow-xs'
+                        : 'bg-white border-[#111111]/20 hover:border-[#111111]'
+                    }`}
+                  >
+                    <div className="font-bold text-xs text-sky-950 flex items-center gap-1.5">
+                      <span>❄️</span>
+                      <span>Frozen Food</span>
+                    </div>
+                    <span className="text-[10px] text-sky-800 block mt-0.5">
+                      Beku kedap udara (3 mgg)
+                    </span>
+                  </button>
+                </div>
               </div>
-            </div>
+            ) : effectiveServingType === 'frozen_only' ? (
+              <div className="bg-sky-50 border border-sky-200 rounded-[14px] p-2.5 flex items-center gap-2.5 text-xs text-sky-950">
+                <span className="text-xl">❄️</span>
+                <div>
+                  <span className="font-bold block text-[11px]">Kemasan Frozen Food Beku</span>
+                  <span className="text-[10px] text-sky-800">Dikemas beku higienis, siap digoreng hangat di rumah kapan saja.</span>
+                </div>
+              </div>
+            ) : (
+              <div className="bg-amber-50/70 border border-amber-200/80 rounded-[14px] p-2.5 flex items-center gap-2 text-xs text-[#5C3D2E]">
+                <span className="text-xl">🍳</span>
+                <div>
+                  <span className="font-bold text-[#111111] block text-[11px]">Goreng Matang Dadakan</span>
+                  <span className="text-[10px] text-[#5C3D2E]/80">Digoreng hangat dari wajan panas 180°, siap santap renyah.</span>
+                </div>
+              </div>
+            )}
 
             {/* Stepper Jumlah Porsi */}
             <div className="flex items-center justify-between pt-1">
