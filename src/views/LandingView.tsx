@@ -5,10 +5,20 @@ import { PolaroidMenuCard } from '../components/common/PolaroidMenuCard';
 import { CuteQRCard } from '../components/common/CuteQRCard';
 import { storageService } from '../services/storageService';
 
+export type MenuCategory = 'all' | 'risol' | 'gorengan' | 'manis' | 'frozen';
+
+export const MENU_CATEGORIES: { id: MenuCategory; label: string; icon: string }[] = [
+  { id: 'all', label: 'Semua Menu', icon: '✨' },
+  { id: 'risol', label: 'Risoles Favorit', icon: '🔥' },
+  { id: 'gorengan', label: 'Gorengan Gurih', icon: '🥟' },
+  { id: 'manis', label: 'Manis & Roti', icon: '🍌' },
+  { id: 'frozen', label: 'Frozen Pack', icon: '❄️' },
+];
+
 interface LandingViewProps {
   menus: MenuItem[];
   storeConfig?: StoreConfig;
-  onAddToCart: (item: MenuItem, pilihanOpsi?: string, variantType?: 'matang' | 'frozen') => void;
+  onAddToCart: (item: MenuItem, pilihanOpsi?: string, variantType?: 'matang' | 'frozen', qty?: number) => void;
   getCartQty: (itemId: string) => number;
   onNavigateToScan: (qrId: string) => void;
   onOpenOwnerLogin?: () => void;
@@ -25,6 +35,7 @@ export const LandingView: React.FC<LandingViewProps> = ({
   onOpenClosedNotice,
 }) => {
   const [menuTab, setMenuTab] = useState<'today' | 'tomorrow'>('today');
+  const [selectedCategory, setSelectedCategory] = useState<MenuCategory>('all');
   const [isTestimonialsOpen, setIsTestimonialsOpen] = useState(false);
   const [testimonials] = useState<CustomerTestimonial[]>(() =>
     storageService.getTestimonials().filter((t) => t.is_active)
@@ -353,23 +364,23 @@ export const LandingView: React.FC<LandingViewProps> = ({
       )}
 
       {/* HERO SECTION - Brand Book Locked */}
-      <section className="mt-6 lg:mt-14 relative">
-        <div className="grid lg:grid-cols-[1.15fr_0.85fr] gap-8 lg:gap-12 items-start">
+      <section className="mt-4 sm:mt-6 lg:mt-14 relative">
+        <div className="grid lg:grid-cols-[1.15fr_0.85fr] gap-6 lg:gap-12 items-start">
           {/* Left Column: Big Black Card */}
           <div className="relative">
-            <div className="bg-[#111111] text-[#FFF8E7] rounded-[28px] p-7 lg:p-10 pb-10 lg:pb-28 rotate-[-1.2deg] polaroid-shadow border-2 border-[#111111] relative overflow-hidden">
+            <div className="bg-[#111111] text-[#FFF8E7] rounded-[24px] sm:rounded-[28px] p-5 sm:p-7 lg:p-10 pb-8 sm:pb-10 lg:pb-28 sm:rotate-[-1.2deg] polaroid-shadow border-2 border-[#111111] relative overflow-hidden">
               {/* Hot Pill */}
-              <div className="inline-flex items-center gap-2 bg-[#FFD700] text-[#111111] rounded-full px-4 py-1.5 text-[11px] font-bold tracking-widest uppercase font-sans mb-6 rotate-[1deg] border border-[#111111]">
+              <div className="inline-flex items-center gap-2 bg-[#FFD700] text-[#111111] rounded-full px-3.5 sm:px-4 py-1.5 text-[10px] sm:text-[11px] font-bold tracking-widest uppercase font-sans mb-4 sm:mb-6 sm:rotate-[1deg] border border-[#111111]">
                 <span className="w-1.5 h-1.5 bg-[#111111] rounded-full animate-pulse" />
                 {LOCKED_COPY.pillHot}
               </div>
 
               {/* Locked H1 Headline */}
               <h1 className="leading-[0.95] tracking-tight">
-                <span className="font-hand font-bold text-[44px] lg:text-[64px] block text-white">
+                <span className="font-hand font-bold text-[36px] sm:text-[44px] lg:text-[64px] block text-white">
                   Sudah makan?
                 </span>
-                <span className="font-sans font-bold text-[28px] lg:text-[40px] leading-[1.08] block mt-2 text-[#FFF8E7]">
+                <span className="font-sans font-bold text-[24px] sm:text-[28px] lg:text-[40px] leading-[1.08] block mt-1.5 sm:mt-2 text-[#FFF8E7]">
                   Jangan biarkan
                   <br />
                   tubuhmu kelaparan
@@ -377,22 +388,22 @@ export const LandingView: React.FC<LandingViewProps> = ({
               </h1>
 
               {/* Best Seller Sub-badge */}
-              <div className="mt-6 flex items-start gap-3">
-                <div className="bg-[#FFD700] text-[#111111] px-4 py-2 rounded-[14px] rotate-[-1deg] font-hand font-bold text-[22px] leading-none border border-[#111111]">
+              <div className="mt-5 sm:mt-6 flex flex-wrap sm:flex-nowrap items-start gap-2.5 sm:gap-3">
+                <div className="bg-[#FFD700] text-[#111111] px-3.5 sm:px-4 py-1.5 sm:py-2 rounded-[12px] sm:rounded-[14px] sm:rotate-[-1deg] font-hand font-bold text-[19px] sm:text-[22px] leading-none border border-[#111111]">
                   RISOLES MAYO LUMER
                 </div>
-                <div className="font-hand text-[#FFF8E7]/70 text-[15px] leading-tight pt-1 whitespace-pre-line">
+                <div className="font-hand text-[#FFF8E7]/70 text-[14px] sm:text-[15px] leading-tight pt-1 whitespace-pre-line">
                   {storeConfig.heroHeadlineSub || 'digoreng jam 10 pagi\nhabis jam 8 malem'}
                 </div>
               </div>
 
               {/* Paragraph with safe max-width so it never collides with sticky note */}
-              <p className="font-sans text-[14px] leading-[1.6] text-[#FFF8E7]/80 mt-6 max-w-full sm:max-w-[340px] xl:max-w-[390px]">
+              <p className="font-sans text-[13px] sm:text-[14px] leading-[1.6] text-[#FFF8E7]/80 mt-5 sm:mt-6 max-w-full sm:max-w-[340px] xl:max-w-[390px]">
                 {LOCKED_COPY.heroSub}
               </p>
 
               {/* Decorative Pills */}
-              <div className="mt-6 flex gap-2">
+              <div className="mt-5 sm:mt-6 flex gap-2">
                 <div className="h-[3px] w-12 bg-[#FFD700] rounded-full" />
                 <div className="h-[3px] w-6 bg-[#FFF8E7]/30 rounded-full" />
                 <div className="h-[3px] w-6 bg-[#FFF8E7]/20 rounded-full" />
@@ -400,18 +411,18 @@ export const LandingView: React.FC<LandingViewProps> = ({
             </div>
 
             {/* Floating Sticky Note: "tunggu agak dingin dulu..." */}
-            <div className="relative lg:absolute lg:-bottom-8 lg:-right-4 xl:-right-6 mt-4 lg:mt-0 z-20 flex justify-start lg:justify-end">
-              <div className="relative bg-white rounded-[16px] p-5 w-full sm:w-[310px] rotate-[1.5deg] polaroid-shadow border-2 border-[#111111]">
+            <div className="relative lg:absolute lg:-bottom-8 lg:-right-4 xl:-right-6 mt-3 sm:mt-4 lg:mt-0 z-20 flex justify-start lg:justify-end">
+              <div className="relative bg-white rounded-[16px] p-4 sm:p-5 w-full sm:w-[310px] sm:rotate-[1.5deg] polaroid-shadow border-2 border-[#111111]">
 
                 {/* Yellow Tape */}
                 <div className="tape absolute -top-3 left-1/2 -translate-x-1/2 w-[88px] h-[22px] rotate-[-3deg] rounded-[2px] border border-[#111111]/20" />
 
-                <div className="font-hand text-[19px] leading-[1.3] text-[#111111]">
+                <div className="font-hand text-[17px] sm:text-[19px] leading-[1.3] text-[#111111]">
                   <div className="text-[#5C3D2E] font-bold">ps: makannya jangan buru-buru ya</div>
                   <div className="mt-1 font-bold text-[#111111]">
                     {LOCKED_COPY.psWajib}
                   </div>
-                  <div className="mt-3 text-[12px] text-[#5C3D2E]/60 font-sans">
+                  <div className="mt-2.5 sm:mt-3 text-[11px] sm:text-[12px] text-[#5C3D2E]/60 font-sans">
                     — dari dapur Dulang ♡
                   </div>
                 </div>
@@ -423,8 +434,8 @@ export const LandingView: React.FC<LandingViewProps> = ({
 
           {/* Right Column: Hero Visual Frame + Callout */}
           <div className="relative lg:pt-2">
-            <div className="relative rounded-[28px] bg-white p-4 rotate-[1deg] polaroid-shadow border-2 border-[#111111]">
-              <div className="rounded-[20px] overflow-hidden bg-[#FFEEC2] aspect-[4/3] relative grid place-items-center border border-[#111111]/10">
+            <div className="relative rounded-[24px] sm:rounded-[28px] bg-white p-3.5 sm:p-4 sm:rotate-[1deg] polaroid-shadow border-2 border-[#111111]">
+              <div className="rounded-[18px] sm:rounded-[20px] overflow-hidden bg-[#FFEEC2] aspect-[4/3] relative grid place-items-center border border-[#111111]/10">
                 <div className="absolute inset-0 bg-[radial-gradient(ellipse_at_30%_20%,#FFF8E7_0%,#FFE6A0_45%,#FFD36B_100%)]" />
 
                 {storeConfig.heroImage && storeConfig.heroImage !== '/dulang-logo.png' ? (
@@ -435,37 +446,37 @@ export const LandingView: React.FC<LandingViewProps> = ({
                   />
                 ) : (
                   <div className="relative z-10 flex flex-col items-center">
-                    <div className="w-[124px] h-[124px] bg-[#111111] rounded-full grid place-items-center rotate-[-6deg] shadow-lg border-2 border-[#111111]">
+                    <div className="w-[110px] h-[110px] sm:w-[124px] sm:h-[124px] bg-[#111111] rounded-full grid place-items-center rotate-[-6deg] shadow-lg border-2 border-[#111111]">
                       <img
                         src="/dulang-logo.png"
                         alt="risoles"
-                        className="w-[90px] h-[90px] object-contain"
+                        className="w-[80px] h-[80px] sm:w-[90px] sm:h-[90px] object-contain"
                       />
                     </div>
-                    <div className="mt-4 bg-white/95 backdrop-blur-sm px-4 py-1.5 rounded-full font-hand font-bold text-[17px] text-[#111111] rotate-[-2deg] border border-[#111111] shadow-sm">
+                    <div className="mt-3 sm:mt-4 bg-white/95 backdrop-blur-sm px-3.5 sm:px-4 py-1.5 rounded-full font-hand font-bold text-[15px] sm:text-[17px] text-[#111111] rotate-[-2deg] border border-[#111111] shadow-sm">
                       angetnya masih ngebul ☁️
                     </div>
                   </div>
                 )}
 
-                <div className="absolute bottom-3 left-4 font-hand font-bold text-[13px] text-[#5C3D2E] bg-white/90 px-2.5 py-0.5 rounded-full rotate-[-4deg] z-20 border border-[#111111]/10 shadow-sm">
+                <div className="absolute bottom-2.5 sm:bottom-3 left-3 sm:left-4 font-hand font-bold text-[12px] sm:text-[13px] text-[#5C3D2E] bg-white/90 px-2.5 py-0.5 rounded-full rotate-[-4deg] z-20 border border-[#111111]/10 shadow-sm">
                   wajan panas 180° • minyak selalu baru
                 </div>
               </div>
 
-              <div className="pt-3 px-2 flex justify-between items-center font-sans text-[11px] text-[#5C3D2E]/70 font-semibold">
+              <div className="pt-2.5 sm:pt-3 px-2 flex justify-between items-center font-sans text-[11px] text-[#5C3D2E]/70 font-semibold">
                 <span>Dapur Dulang Sidoarjo</span>
                 <span className="font-bold text-[#111111]">Sejak 2020</span>
               </div>
             </div>
 
-            {/* Side Callout Note - Repositioned to top-left corner so it NEVER covers the hero photo */}
-            <div className="mt-5 lg:mt-0 lg:absolute lg:-top-14 lg:-left-8 xl:-left-12 relative z-30 pointer-events-none sm:pointer-events-auto">
-              <div className="relative bg-[#FFD700] border-2 border-[#111111] rounded-[16px] px-4 py-3 rotate-[-3deg] shadow-[4px_4px_0_#111111] max-w-[215px]">
+            {/* Side Callout Note - Repositioned to top-left corner */}
+            <div className="mt-4 sm:mt-5 lg:mt-0 lg:absolute lg:-top-14 lg:-left-8 xl:-left-12 relative z-30 pointer-events-none sm:pointer-events-auto">
+              <div className="relative bg-[#FFD700] border-2 border-[#111111] rounded-[16px] px-3.5 sm:px-4 py-2.5 sm:py-3 sm:rotate-[-3deg] shadow-[3px_3px_0_#111111] sm:shadow-[4px_4px_0_#111111] max-w-[215px]">
                 {/* Cute masking tape accent */}
                 <div className="tape absolute -top-2.5 left-6 w-[52px] h-[14px] bg-white/70 rotate-[-5deg] rounded-[1px] border border-[#111111]/20 z-10" />
 
-                <div className="font-hand font-bold text-[18px] leading-[1.2] text-[#111111]">
+                <div className="font-hand font-bold text-[17px] sm:text-[18px] leading-[1.2] text-[#111111]">
                   ini beneran lumer ↳
                   <br />
                   bisa nglelehin hati
@@ -482,35 +493,41 @@ export const LandingView: React.FC<LandingViewProps> = ({
       </section>
 
       {/* SCHEDULE & ROUTINE SECTION */}
-      <section className="mt-20 lg:mt-24">
-        <div className="flex flex-wrap items-baseline gap-3">
-          <h2 className="font-hand font-bold text-[36px] lg:text-[46px] leading-none text-[#111111]">
+      <section className="mt-12 sm:mt-20 lg:mt-24">
+        <div className="flex flex-wrap items-baseline gap-2 sm:gap-3">
+          <h2 className="font-hand font-bold text-[28px] sm:text-[36px] lg:text-[46px] leading-none text-[#111111]">
             tempat ngumpul, bukan cuma jualan
           </h2>
-          <span className="font-sans text-[12px] px-3.5 py-1 rounded-full bg-white border border-[#111111]/15 font-semibold text-[#5C3D2E]">
+          <span className="font-sans text-[11px] sm:text-[12px] px-3 sm:px-3.5 py-1 rounded-full bg-white border border-[#111111]/15 font-semibold text-[#5C3D2E]">
             sejak 2020 • {storeConfig.jamBukaTeks || 'masih pake wajan yang sama'}
           </span>
         </div>
 
-        <div className="mt-8 grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-4">
+        <div className="mt-6 sm:mt-8 grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-3.5 sm:gap-4">
           {(storeConfig.schedules && storeConfig.schedules.length > 0
             ? storeConfig.schedules
             : DEFAULT_STORE_CONFIG.schedules
           ).map((item, idx) => {
-            const rot = item.rot || ['-1.2deg', '1.2deg', '-0.8deg', '1deg'][idx % 4];
             return (
               <div
                 key={idx}
-                className="bg-white rounded-[20px] p-5 polaroid-shadow border-2 border-[#111111]/10"
-                style={{ transform: `rotate(${rot})` }}
+                className={`bg-white rounded-[18px] sm:rounded-[20px] p-4 sm:p-5 polaroid-shadow border-2 border-[#111111]/10 ${
+                  idx % 4 === 0
+                    ? 'sm:-rotate-1'
+                    : idx % 4 === 1
+                    ? 'sm:rotate-1'
+                    : idx % 4 === 2
+                    ? 'sm:-rotate-1'
+                    : 'sm:rotate-1'
+                }`}
               >
-                <div className="inline-flex bg-[#111111] text-[#FFD700] px-3 py-1 rounded-full text-[12px] font-bold font-sans tracking-widest border border-[#111111]">
+                <div className="inline-flex bg-[#111111] text-[#FFD700] px-3 py-1 rounded-full text-[11px] sm:text-[12px] font-bold font-sans tracking-widest border border-[#111111]">
                   {item.jam}
                 </div>
-                <p className="mt-3.5 font-sans text-[13px] leading-[1.6] text-[#5C3D2E]">
+                <p className="mt-3 font-sans text-[12px] sm:text-[13px] leading-[1.6] text-[#5C3D2E]">
                   {item.teks}
                 </p>
-                <div className="mt-4 h-[2px] w-10 bg-[#FFD700] rounded-full" />
+                <div className="mt-3.5 sm:mt-4 h-[2px] w-10 bg-[#FFD700] rounded-full" />
               </div>
             );
           })}
@@ -612,22 +629,137 @@ export const LandingView: React.FC<LandingViewProps> = ({
           </div>
         )}
 
-        {/* Menu Grid */}
-        <div className="grid sm:grid-cols-2 lg:grid-cols-3 gap-6 lg:gap-8 pt-2">
-          {(menuTab === 'today'
-            ? menus
-            : menus.filter((m) => m.tersediaBesok !== false)
-          ).map((item, idx) => (
-            <PolaroidMenuCard
-              key={item.id}
-              item={item}
-              index={idx}
-              onAddToCart={onAddToCart}
-              cartQty={getCartQty(item.id)}
-              isTomorrow={menuTab === 'tomorrow'}
-            />
-          ))}
+        {/* Category Filter Pills (Horizontal Scroll on Mobile) */}
+        <div className="flex items-center gap-2 overflow-x-auto pb-1 pt-1 no-scrollbar -mx-1 px-1">
+          {MENU_CATEGORIES.map((cat) => {
+            const isSelected = selectedCategory === cat.id;
+            const activeMenusList = menuTab === 'today' ? menus : menus.filter((m) => m.tersediaBesok !== false);
+            const count = activeMenusList.filter((item) => {
+              if (cat.id === 'all') return true;
+              const name = item.nama.toLowerCase();
+              const isFrozen = item.variantType === 'frozen' || name.includes('frozen') || name.includes('beku');
+              if (cat.id === 'frozen') return isFrozen;
+              if (cat.id === 'risol') return name.includes('risol') && !isFrozen;
+              if (cat.id === 'gorengan') {
+                return (
+                  (name.includes('lumpia') ||
+                    name.includes('tahu') ||
+                    name.includes('ote') ||
+                    name.includes('bakwan') ||
+                    name.includes('tempe') ||
+                    name.includes('pastel') ||
+                    name.includes('sosis solo') ||
+                    name.includes('cireng')) &&
+                  !isFrozen
+                );
+              }
+              if (cat.id === 'manis') {
+                return (
+                  name.includes('pisang') ||
+                  name.includes('coklat') ||
+                  name.includes('kebab') ||
+                  name.includes('burger') ||
+                  name.includes('roti') ||
+                  name.includes('manis')
+                );
+              }
+              return true;
+            }).length;
+
+            return (
+              <button
+                key={cat.id}
+                type="button"
+                onClick={() => setSelectedCategory(cat.id)}
+                className={`cursor-pointer whitespace-nowrap px-3.5 sm:px-4 py-2 rounded-full font-sans font-bold text-xs transition-all flex items-center gap-1.5 shrink-0 ${
+                  isSelected
+                    ? 'bg-[#111111] text-[#FFD700] shadow-[2px_2px_0_#FFD700] border-2 border-[#111111]'
+                    : 'bg-white hover:bg-amber-50 text-[#111111] border-2 border-[#111111]/15 hover:border-[#111111]/40'
+                }`}
+              >
+                <span>{cat.icon}</span>
+                <span>{cat.label}</span>
+                <span
+                  className={`text-[10px] px-1.5 py-0.2 rounded-full font-mono ${
+                    isSelected ? 'bg-[#FFD700] text-[#111111]' : 'bg-gray-100 text-gray-600'
+                  }`}
+                >
+                  {count}
+                </span>
+              </button>
+            );
+          })}
         </div>
+
+        {/* Menu Grid - 2 Kolom di Mobile, 3 di Tablet, 4 di Desktop */}
+        {(() => {
+          const activeMenusList = menuTab === 'today' ? menus : menus.filter((m) => m.tersediaBesok !== false);
+          const filteredMenus = activeMenusList.filter((item) => {
+            if (selectedCategory === 'all') return true;
+            const name = item.nama.toLowerCase();
+            const isFrozen = item.variantType === 'frozen' || name.includes('frozen') || name.includes('beku');
+            if (selectedCategory === 'frozen') return isFrozen;
+            if (selectedCategory === 'risol') return name.includes('risol') && !isFrozen;
+            if (selectedCategory === 'gorengan') {
+              return (
+                (name.includes('lumpia') ||
+                  name.includes('tahu') ||
+                  name.includes('ote') ||
+                  name.includes('bakwan') ||
+                  name.includes('tempe') ||
+                  name.includes('pastel') ||
+                  name.includes('sosis solo') ||
+                  name.includes('cireng')) &&
+                !isFrozen
+              );
+            }
+            if (selectedCategory === 'manis') {
+              return (
+                name.includes('pisang') ||
+                name.includes('coklat') ||
+                name.includes('kebab') ||
+                name.includes('burger') ||
+                name.includes('roti') ||
+                name.includes('manis')
+              );
+            }
+            return true;
+          });
+
+          if (filteredMenus.length === 0) {
+            return (
+              <div className="text-center py-12 bg-white rounded-[22px] border-2 border-dashed border-[#111111]/20 p-6 space-y-2">
+                <div className="text-4xl">🥟</div>
+                <div className="font-bold text-sm text-[#111111]">Belum ada menu di kategori ini</div>
+                <p className="text-xs text-[#5C3D2E]/70 max-w-sm mx-auto">
+                  Silakan pilih kategori lain atau tampilkan seluruh menu andalan Dapur Dulang.
+                </p>
+                <button
+                  type="button"
+                  onClick={() => setSelectedCategory('all')}
+                  className="mt-2 cursor-pointer bg-[#111111] text-[#FFD700] px-4 py-2 rounded-full font-bold text-xs shadow-xs"
+                >
+                  Lihat Semua Menu
+                </button>
+              </div>
+            );
+          }
+
+          return (
+            <div className="grid grid-cols-2 sm:grid-cols-3 lg:grid-cols-4 gap-3 sm:gap-4 lg:gap-5 pt-1">
+              {filteredMenus.map((item, idx) => (
+                <PolaroidMenuCard
+                  key={item.id}
+                  item={item}
+                  index={idx}
+                  onAddToCart={onAddToCart}
+                  cartQty={getCartQty(item.id)}
+                  isTomorrow={menuTab === 'tomorrow'}
+                />
+              ))}
+            </div>
+          );
+        })()}
       </section>
 
       {/* PAKET SNACK BOX / HAJATAN / ARISAN BUILDER SECTION (Opsi A - Accordion Collapsible) */}

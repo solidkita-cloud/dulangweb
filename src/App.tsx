@@ -153,7 +153,13 @@ export function App() {
     }, 2800);
   };
 
-  const handleAddToCart = (item: MenuItem, pilihanOpsi?: string, variantType: 'matang' | 'frozen' = 'matang') => {
+  const handleAddToCart = (
+    item: MenuItem,
+    pilihanOpsi?: string,
+    variantType: 'matang' | 'frozen' = 'matang',
+    qty: number = 1
+  ) => {
+    const addQty = Math.max(1, qty);
     setCart((prev) => {
       const existing = prev.find(
         (c) =>
@@ -166,15 +172,15 @@ export function App() {
           c.item.id === item.id &&
           (c.pilihanOpsi || '') === (pilihanOpsi || '') &&
           (c.variantType || 'matang') === variantType
-            ? { ...c, qty: c.qty + 1 }
+            ? { ...c, qty: c.qty + addQty }
             : c
         );
       }
-      return [...prev, { item, qty: 1, pilihanOpsi, variantType }];
+      return [...prev, { item, qty: addQty, pilihanOpsi, variantType }];
     });
     const opsiText = pilihanOpsi ? ` (${pilihanOpsi})` : '';
     const variantText = variantType === 'frozen' ? ' [Frozen ❄️]' : ' [Goreng 🍳]';
-    showToast(`1 porsi ${item.nama}${opsiText}${variantText} masuk ke dulang 🥟`);
+    showToast(`${addQty} porsi ${item.nama}${opsiText}${variantText} masuk ke dulang 🥟`);
   };
 
   const handleUpdateCartQty = (

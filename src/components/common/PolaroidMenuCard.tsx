@@ -1,199 +1,324 @@
-import React from 'react';
+import React, { useState } from 'react';
 import { MenuItem } from '../../types';
 
 interface PolaroidMenuCardProps {
   item: MenuItem;
   index: number;
-  onAddToCart: (item: MenuItem, pilihanOpsi?: string, variantType?: 'matang' | 'frozen') => void;
+  onAddToCart: (item: MenuItem, pilihanOpsi?: string, variantType?: 'matang' | 'frozen', qty?: number) => void;
   cartQty?: number;
   isTomorrow?: boolean;
 }
 
 export const PolaroidMenuCard: React.FC<PolaroidMenuCardProps> = ({
   item,
-  index,
   onAddToCart,
   cartQty = 0,
   isTomorrow = false,
 }) => {
-  const rotationDegrees = [-1, 0.8, -0.6][index % 3];
+  const [isSheetOpen, setIsSheetOpen] = useState(false);
+  const [orderQty, setOrderQty] = useState(1);
+  const [selectedOpsi, setSelectedOpsi] = useState<string>(
+    item.opsi && item.opsi.length > 0 ? item.opsi[0] : ''
+  );
+  const [selectedVariant, setSelectedVariant] = useState<'matang' | 'frozen'>(
+    item.variantType || 'matang'
+  );
+
   const hasStockLimit = !isTomorrow && item.sisaStok !== null && item.sisaStok !== undefined;
   const isOutOfStock = hasStockLimit && (item.sisaStok as number) <= 0;
   const isAvailable = isTomorrow ? item.tersediaBesok !== false : (item.tersedia && !isOutOfStock);
   const isLowStock = hasStockLimit && (item.sisaStok as number) > 0 && (item.sisaStok as number) <= 5;
-  const [selectedOpsi, setSelectedOpsi] = React.useState<string>(
-    item.opsi && item.opsi.length > 0 ? item.opsi[0] : ''
-  );
-  const [selectedVariant, setSelectedVariant] = React.useState<'matang' | 'frozen'>('matang');
+
+  const handleOpenSheet = () => {
+    if (!isAvailable) return;
+    setOrderQty(1);
+    setIsSheetOpen(true);
+  };
+
+  const handleConfirmOrder = () => {
+    onAddToCart(item, selectedOpsi || undefined, selectedVariant, orderQty);
+    setIsSheetOpen(false);
+    setOrderQty(1);
+  };
 
   return (
-    <div
-      className="group relative bg-white rounded-[20px] p-4 pb-5 polaroid-shadow border-2 border-[#111111]/10 transition-transform duration-200 hover:-translate-y-1"
-      style={{ transform: `rotate(${rotationDegrees}deg)` }}
-    >
-      {/* Top Tape Accent */}
-      <div className="tape absolute -top-3 left-8 w-[56px] h-[16px] bg-[#FFD700] rotate-[-6deg] rounded-[2px] border border-[#111111]/15 z-10" />
+    <>
+      {/* KARTU MENU ETALASE (Grid 2 Kolom di HP, Rapi & Proporsional) */}
+      <div
+        onClick={handleOpenSheet}
+        className={`group relative bg-white rounded-[20px] sm:rounded-[22px] p-2.5 sm:p-3.5 border border-[#111111]/15 sm:border-2 sm:border-[#111111] shadow-[2px_2px_0_#111111] hover:shadow-[3px_3px_0_#FFD700] transition-all duration-200 flex flex-col justify-between ${
+          isAvailable
+            ? 'cursor-pointer active:scale-[0.98]'
+            : 'opacity-70 cursor-not-allowed'
+        }`}
+      >
+        <div>
+          {/* Foto Menu Kotak 1:1 Bersih */}
+          <div className="relative aspect-square w-full rounded-[14px] sm:rounded-[16px] overflow-hidden bg-gradient-to-br from-amber-50 to-orange-50/50 border border-[#111111]/10">
+            {item.foto ? (
+              <img
+                src={item.foto}
+                alt={item.nama}
+                className="w-full h-full object-cover group-hover:scale-105 transition-transform duration-300"
+                loading="lazy"
+              />
+            ) : (
+              <div className="w-full h-full grid place-items-center text-4xl sm:text-5xl select-none">
+                🥟
+              </div>
+            )}
 
-      {/* Status Badges */}
-      {!isAvailable ? (
-        <div className="absolute top-4 right-4 z-20 bg-[#111111] text-[#FFD700] text-[11px] font-bold px-3 py-1 rounded-full font-sans tracking-widest rotate-[4deg] border border-[#FFD700] shadow-md">
-          {isTomorrow ? 'KUOTA BESOK PENUH' : 'HABIS HARI INI'}
-        </div>
-      ) : isLowStock ? (
-        <div className="absolute top-4 right-4 z-20 bg-red-600 text-white text-[10px] font-bold px-2.5 py-1 rounded-full font-sans tracking-wider rotate-[3deg] border-2 border-[#111111] shadow-md animate-pulse">
-          🔥 Sisa {item.sisaStok} porsi!
-        </div>
-      ) : isTomorrow ? (
-        <div className="absolute top-4 right-4 z-20 bg-[#FFD700] text-[#111111] text-[10px] font-bold px-2.5 py-0.5 rounded-full font-sans tracking-wider rotate-[3deg] border border-[#111111] shadow-xs">
-          📅 SLOT BESOK BUKA
-        </div>
-      ) : item.kloterBadge ? (
-        <div className="absolute top-4 right-4 z-20 bg-[#111111] text-[#FFD700] text-[10px] font-bold px-2.5 py-0.5 rounded-full font-sans tracking-wider rotate-[3deg] border border-[#FFD700] shadow-xs">
-          {item.kloterBadge}
-        </div>
-      ) : hasStockLimit && (item.sisaStok as number) > 5 ? (
-        <div className="absolute top-4 right-4 z-20 bg-[#FFF3C7] text-[#5C3D2E] text-[10px] font-bold px-2 py-0.5 rounded-full font-sans tracking-wider rotate-[2deg] border border-[#5C3D2E]/30">
-          Sisa {item.sisaStok} porsi
-        </div>
-      ) : null}
-
-      {/* Food Photo / Placeholder Area */}
-      <div className="aspect-[4/3] rounded-[16px] bg-[#FFF3C7] overflow-hidden relative grid place-items-center border border-[#111111]/10">
-        {item.foto ? (
-          <img
-            src={item.foto}
-            alt={item.nama}
-            className="w-full h-full object-cover group-hover:scale-105 transition-transform duration-300"
-          />
-        ) : (
-          <div className="relative text-center p-4">
-            <div className="w-14 h-14 mx-auto rounded-full bg-[#111111] grid place-items-center mb-2 shadow-sm">
-              <span className="text-[24px]">🥟</span>
+            {/* Badge Kiri Atas: Status Ketersediaan */}
+            <div className="absolute top-1.5 left-1.5 z-10">
+              {!isAvailable ? (
+                <span className="bg-[#111111] text-white text-[9px] sm:text-[10px] font-bold px-2 py-0.5 rounded-full shadow-xs">
+                  {isTomorrow ? 'Penuh' : 'Habis'}
+                </span>
+              ) : isTomorrow ? (
+                <span className="bg-[#FFD700] text-[#111111] text-[9px] sm:text-[10px] font-bold px-2 py-0.5 rounded-full shadow-xs border border-[#111111]/30">
+                  📅 Besok
+                </span>
+              ) : (
+                <span className="bg-emerald-600 text-white text-[9px] sm:text-[10px] font-bold px-2 py-0.5 rounded-full shadow-xs flex items-center gap-1">
+                  <span className="w-1.5 h-1.5 rounded-full bg-white animate-pulse" />
+                  Ready
+                </span>
+              )}
             </div>
-            <div className="font-hand font-bold text-[22px] leading-none text-[#111111]">
+
+            {/* Badge Kanan Atas: Stok / Social Proof */}
+            <div className="absolute top-1.5 right-1.5 z-10">
+              {isLowStock ? (
+                <span className="bg-red-600 text-white text-[9px] sm:text-[10px] font-bold px-1.5 py-0.5 rounded-md shadow-xs animate-pulse">
+                  🔥 Sisa {item.sisaStok}
+                </span>
+              ) : (
+                <span className="bg-black/60 backdrop-blur-xs text-[#FFD700] text-[9px] sm:text-[10px] font-bold px-1.5 py-0.5 rounded-md shadow-xs flex items-center gap-0.5">
+                  <span>⭐</span>
+                  <span>4.9</span>
+                </span>
+              )}
+            </div>
+
+            {/* Badge Kuantitas di Keranjang (Jika sudah dipilih) */}
+            {cartQty > 0 && (
+              <div className="absolute bottom-1.5 right-1.5 z-10 bg-[#FFD700] text-[#111111] px-2 py-0.5 rounded-full font-sans font-bold text-[10px] sm:text-[11px] border border-[#111111] shadow-xs animate-in zoom-in-75">
+                ✓ {cartQty}
+              </div>
+            )}
+          </div>
+
+          {/* Info Menu */}
+          <div className="mt-2 space-y-0.5">
+            <h3 className="font-bold text-[13px] sm:text-[15px] text-[#111111] leading-snug line-clamp-1">
               {item.nama}
-            </div>
-            <div className="font-sans text-[11px] text-[#5C3D2E]/60 mt-1">
-              digoreng dadakan di wajan panas
-            </div>
+            </h3>
+            <p className="font-sans text-[11px] text-[#5C3D2E]/70 line-clamp-1">
+              {item.deskripsi || 'Gorengan renyah anget khas Dulang'}
+            </p>
           </div>
-        )}
-
-        {/* Price Tag Badge */}
-        <div className="absolute bottom-2.5 left-2.5 bg-white/95 backdrop-blur-sm px-3 py-1 rounded-full font-hand font-bold text-[16px] text-[#111111] shadow-[2px_2px_0_#111111] border border-[#111111]">
-          Rp {item.harga.toLocaleString('id-ID')}
         </div>
 
-        {/* Cart Quantity Badge if selected */}
-        {cartQty > 0 && (
-          <div className="absolute bottom-2.5 right-2.5 bg-[#FFD700] text-[#111111] px-2.5 py-0.5 rounded-full font-sans font-bold text-[12px] shadow-sm border border-[#111111]">
-            ✓ {cartQty} di dulang
+        {/* Baris Harga & Tombol Tambah */}
+        <div className="mt-2.5 pt-1.5 border-t border-[#111111]/10 flex items-center justify-between gap-1">
+          <div className="font-mono font-bold text-xs sm:text-[13px] text-[#111111]">
+            Rp {item.harga.toLocaleString('id-ID')}
           </div>
-        )}
+
+          <button
+            type="button"
+            disabled={!isAvailable}
+            onClick={(e) => {
+              e.stopPropagation();
+              handleOpenSheet();
+            }}
+            className={`cursor-pointer rounded-full font-sans font-bold text-xs transition flex items-center justify-center active:scale-90 ${
+              isAvailable
+                ? cartQty > 0
+                  ? 'bg-[#FFD700] hover:bg-[#FFE033] text-[#111111] px-2.5 py-1 border border-[#111111] shadow-xs'
+                  : 'w-7 h-7 sm:w-8 sm:h-8 bg-[#111111] hover:bg-black text-[#FFD700] shadow-xs'
+                : 'w-7 h-7 bg-gray-200 text-gray-400 cursor-not-allowed'
+            }`}
+            title={isAvailable ? 'Atur dan pesan menu ini' : 'Stok habis'}
+          >
+            {cartQty > 0 ? `+ Tambah` : `+`}
+          </button>
+        </div>
       </div>
 
-      {/* Card Body */}
-      <div className="pt-4 px-1">
-        <h3 className="font-hand font-bold text-[24px] leading-tight text-[#111111]">
-          {item.nama}
-        </h3>
-        <p className="font-sans text-[13px] leading-[1.5] text-[#5C3D2E]/80 mt-1.5 min-h-[42px]">
-          {item.deskripsi}
-        </p>
+      {/* SLIDE-UP ORDER BOTTOM SHEET (DRAWER PEMESANAN DETAIL) */}
+      {isSheetOpen && (
+        <div
+          onClick={() => setIsSheetOpen(false)}
+          className="fixed inset-0 z-50 flex items-end sm:items-center justify-center bg-black/60 backdrop-blur-xs p-0 sm:p-4 animate-in fade-in duration-200"
+        >
+          <div
+            onClick={(e) => e.stopPropagation()}
+            className="bg-white rounded-t-[28px] sm:rounded-[24px] border-2 border-[#111111] shadow-[0_20px_50px_rgba(0,0,0,0.3)] w-full max-w-md max-h-[90vh] overflow-y-auto p-5 sm:p-6 space-y-4 animate-in slide-in-from-bottom-4 duration-200"
+          >
+            {/* Mobile Drag Pill */}
+            <div className="w-12 h-1.5 bg-gray-300 rounded-full mx-auto mb-1 sm:hidden" />
 
-        {/* Pilihan Opsi Pelengkap (Optional) */}
-        {item.opsi && item.opsi.length > 0 && (
-          <div className="mt-2 pt-2 border-t border-[#111111]/10">
-            <div className="flex items-center justify-between mb-1.5">
-              <span className="font-sans font-bold text-[11px] text-[#5C3D2E]/80">
-                Pilihan Rasa / Saus:
-              </span>
-              <span className="font-sans text-[10px] bg-[#FFD700]/30 text-[#111111] px-1.5 py-0.5 rounded-full font-bold">
-                opsional
-              </span>
+            {/* Header: Foto Preview & Tombol Tutup */}
+            <div className="relative">
+              <div className="aspect-[16/9] w-full rounded-[18px] overflow-hidden bg-amber-50 relative border border-[#111111]/10">
+                {item.foto ? (
+                  <img
+                    src={item.foto}
+                    alt={item.nama}
+                    className="w-full h-full object-cover"
+                  />
+                ) : (
+                  <div className="w-full h-full grid place-items-center text-6xl">
+                    🥟
+                  </div>
+                )}
+                <div className="absolute top-2.5 left-2.5 bg-black/70 backdrop-blur-xs text-[#FFD700] px-2.5 py-0.5 rounded-full text-xs font-bold flex items-center gap-1">
+                  <span>⭐</span>
+                  <span>4.9 • Favorit Sidoarjo</span>
+                </div>
+              </div>
+
+              <button
+                type="button"
+                onClick={() => setIsSheetOpen(false)}
+                className="cursor-pointer absolute top-2 right-2 w-8 h-8 rounded-full bg-white/90 hover:bg-white text-gray-700 hover:text-black flex items-center justify-center font-bold text-sm shadow-md border border-gray-200"
+                title="Tutup"
+              >
+                ✕
+              </button>
             </div>
-            <div className="flex flex-wrap gap-1.5">
-              {item.opsi.map((opt) => (
+
+            {/* Judul & Harga */}
+            <div>
+              <div className="flex items-baseline justify-between gap-2">
+                <h2 className="font-bold text-xl sm:text-2xl text-[#111111] leading-tight">
+                  {item.nama}
+                </h2>
+                <span className="font-mono font-bold text-lg text-[#5C3D2E] whitespace-nowrap">
+                  Rp {item.harga.toLocaleString('id-ID')}
+                </span>
+              </div>
+              <p className="font-sans text-xs text-[#5C3D2E]/80 mt-1 leading-relaxed">
+                {item.deskripsi || 'Digoreng dadakan di wajan panas 180°. Minyak selalu bersih & renyah.'}
+              </p>
+            </div>
+
+            {/* Pilihan Opsi Rasa (Jika Ada) */}
+            {item.opsi && item.opsi.length > 0 && (
+              <div className="bg-[#FFFDF4] p-3.5 rounded-[16px] border border-[#111111]/15 space-y-2">
+                <div className="flex items-center justify-between">
+                  <label className="font-sans font-bold text-xs uppercase tracking-wider text-[#111111]">
+                    🌶️ Pilihan Rasa / Saus
+                  </label>
+                  <span className="text-[10px] text-gray-500 font-semibold">Pilih salah satu</span>
+                </div>
+                <div className="flex flex-wrap gap-2">
+                  {item.opsi.map((opt) => (
+                    <button
+                      key={opt}
+                      type="button"
+                      onClick={() => setSelectedOpsi(opt)}
+                      className={`cursor-pointer px-3.5 py-1.5 rounded-full text-xs font-sans font-bold transition border ${
+                        selectedOpsi === opt
+                          ? 'bg-[#111111] text-[#FFD700] border-[#111111] shadow-xs'
+                          : 'bg-white text-[#111111] border-[#111111]/30 hover:border-[#111111]'
+                      }`}
+                    >
+                      {opt}
+                    </button>
+                  ))}
+                </div>
+              </div>
+            )}
+
+            {/* Pilihan Penyajian: Goreng Hangat vs Frozen Food */}
+            <div className="bg-[#FFFDF4] p-3.5 rounded-[16px] border border-[#111111]/15 space-y-2">
+              <label className="font-sans font-bold text-xs uppercase tracking-wider text-[#111111] block">
+                🍽️ Mau Disajikan Bagaimana?
+              </label>
+              <div className="grid grid-cols-2 gap-2">
                 <button
-                  key={opt}
                   type="button"
-                  onClick={() => setSelectedOpsi(opt)}
-                  className={`text-[11px] font-sans px-2.5 py-1 rounded-full border transition cursor-pointer ${
-                    selectedOpsi === opt
-                      ? 'bg-[#111111] text-[#FFD700] border-[#111111] font-bold shadow-[1px_1px_0_#FFD700]'
-                      : 'bg-[#FFF8E7] text-[#5C3D2E] border-[#111111]/20 hover:border-[#111111]'
+                  onClick={() => setSelectedVariant('matang')}
+                  className={`cursor-pointer p-2.5 rounded-[14px] text-left transition border-2 ${
+                    selectedVariant === 'matang'
+                      ? 'bg-amber-100/90 border-[#111111] shadow-xs'
+                      : 'bg-white border-[#111111]/20 hover:border-[#111111]'
                   }`}
                 >
-                  {opt}
+                  <div className="font-bold text-xs text-[#111111] flex items-center gap-1.5">
+                    <span>🍳</span>
+                    <span>Goreng Matang</span>
+                  </div>
+                  <span className="text-[10px] text-[#5C3D2E]/80 block mt-0.5">
+                    Hangat renyah, siap santap
+                  </span>
                 </button>
-              ))}
+
+                <button
+                  type="button"
+                  onClick={() => setSelectedVariant('frozen')}
+                  className={`cursor-pointer p-2.5 rounded-[14px] text-left transition border-2 ${
+                    selectedVariant === 'frozen'
+                      ? 'bg-sky-100/90 border-sky-800 shadow-xs'
+                      : 'bg-white border-[#111111]/20 hover:border-[#111111]'
+                  }`}
+                >
+                  <div className="font-bold text-xs text-sky-950 flex items-center gap-1.5">
+                    <span>❄️</span>
+                    <span>Frozen Food</span>
+                  </div>
+                  <span className="text-[10px] text-sky-800 block mt-0.5">
+                    Beku kedap udara (3 mgg)
+                  </span>
+                </button>
+              </div>
+            </div>
+
+            {/* Stepper Jumlah Porsi */}
+            <div className="flex items-center justify-between pt-1">
+              <span className="font-sans font-bold text-xs text-[#111111] uppercase tracking-wider">
+                Jumlah Porsi:
+              </span>
+              <div className="flex items-center gap-3 bg-[#FFF8E7] px-3 py-1.5 rounded-full border border-amber-300">
+                <button
+                  type="button"
+                  onClick={() => setOrderQty(Math.max(1, orderQty - 1))}
+                  className="cursor-pointer w-7 h-7 rounded-full bg-white hover:bg-gray-100 border border-[#111111] font-bold text-sm flex items-center justify-center active:scale-95"
+                >
+                  −
+                </button>
+                <span className="font-mono font-bold text-sm text-[#111111] min-w-[24px] text-center">
+                  {orderQty}
+                </span>
+                <button
+                  type="button"
+                  onClick={() => setOrderQty(orderQty + 1)}
+                  className="cursor-pointer w-7 h-7 rounded-full bg-[#111111] hover:bg-black text-[#FFD700] border border-[#111111] font-bold text-sm flex items-center justify-center active:scale-95"
+                >
+                  +
+                </button>
+              </div>
+            </div>
+
+            {/* Tombol Konfirmasi CTA */}
+            <div className="pt-2">
+              <button
+                type="button"
+                onClick={handleConfirmOrder}
+                className="w-full cursor-pointer bg-[#111111] hover:bg-black text-[#FFD700] rounded-full py-3.5 font-sans font-bold text-sm border-2 border-[#111111] shadow-[3px_3px_0_#FFD700] hover:brightness-105 active:translate-y-0.5 transition-all flex items-center justify-between px-6"
+              >
+                <span>+ Masukin ke Dulang</span>
+                <span className="font-mono font-bold">
+                  Rp {(item.harga * orderQty).toLocaleString('id-ID')}
+                </span>
+              </button>
             </div>
           </div>
-        )}
-
-        {/* Pilihan Sajian: Goreng Matang vs Frozen Food (DULANG-2 Feature) */}
-        <div className="mt-3 pt-2.5 border-t border-dashed border-[#111111]/15">
-          <div className="flex items-center justify-between mb-1.5">
-            <span className="font-sans font-bold text-[11px] text-[#111111]">
-              Penyajian:
-            </span>
-            <span className="font-hand font-bold text-[13px] text-[#5C3D2E]">
-              {selectedVariant === 'frozen' ? '❄️ Stok Freezer Awet' : '🔥 Hangat Siap Makan'}
-            </span>
-          </div>
-          <div className="grid grid-cols-2 gap-1.5 p-1 bg-[#FFF8E7] rounded-xl border border-[#111111]/15">
-            <button
-              type="button"
-              onClick={() => setSelectedVariant('matang')}
-              className={`cursor-pointer py-1.5 px-2 rounded-lg text-[11px] font-sans font-bold transition flex items-center justify-center gap-1 ${
-                selectedVariant === 'matang'
-                  ? 'bg-[#111111] text-[#FFD700] shadow-sm'
-                  : 'text-[#111111]/70 hover:text-[#111111]'
-              }`}
-            >
-              <span>🍳</span>
-              <span>Goreng Matang</span>
-            </button>
-            <button
-              type="button"
-              onClick={() => setSelectedVariant('frozen')}
-              className={`cursor-pointer py-1.5 px-2 rounded-lg text-[11px] font-sans font-bold transition flex items-center justify-center gap-1 ${
-                selectedVariant === 'frozen'
-                  ? 'bg-sky-600 text-white shadow-sm'
-                  : 'text-[#111111]/70 hover:text-sky-700'
-              }`}
-            >
-              <span>❄️</span>
-              <span>Frozen Food</span>
-            </button>
-          </div>
-          {selectedVariant === 'frozen' && (
-            <p className="font-sans text-[10px] text-sky-800 bg-sky-50 p-1.5 rounded-lg border border-sky-200 mt-1.5 leading-tight">
-              🧊 Dikemas mentah beku kedap udara. Tahan hingga 3 minggu di freezer.
-            </p>
-          )}
         </div>
-
-        {/* Add to Cart CTA */}
-        <button
-          type="button"
-          disabled={!isAvailable}
-          onClick={() => onAddToCart(item, selectedOpsi || undefined, selectedVariant)}
-          className={`mt-3.5 w-full cursor-pointer rounded-full py-2.5 font-sans font-bold text-[13px] tracking-wide transition-all border-2 ${
-            isAvailable
-              ? 'bg-[#111111] text-[#FFD700] border-[#111111] hover:bg-[#222222] shadow-[3px_3px_0_#FFD700] active:translate-y-0.5'
-              : 'bg-gray-200 text-gray-400 border-gray-300 cursor-not-allowed'
-          }`}
-        >
-          {isAvailable
-            ? isTomorrow
-              ? `+ Booking ${selectedVariant === 'frozen' ? 'Frozen' : 'Matang'} Besok 📅`
-              : `+ Masukin Dulang (${selectedVariant === 'frozen' ? 'Frozen ❄️' : 'Goreng 🍳'})`
-            : isTomorrow
-            ? 'Kuota Besok Penuh 😅'
-            : 'Lagi habis dulu ya 😅'}
-        </button>
-      </div>
-    </div>
+      )}
+    </>
   );
 };
+
