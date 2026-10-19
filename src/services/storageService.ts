@@ -1782,9 +1782,15 @@ _Dapur Dulang Indonesia - Risoles & Katering Sidoarjo_`;
       const menuCounts: Record<string, number> = {};
       const optionCounts: Record<string, number> = {};
       let totalSpent = 0;
+      let latestOrderAt: string | undefined = undefined;
 
       custOrders.forEach((o) => {
         totalSpent += o.total_price || 0;
+        if (o.created_at) {
+          if (!latestOrderAt || new Date(o.created_at).getTime() > new Date(latestOrderAt).getTime()) {
+            latestOrderAt = o.created_at;
+          }
+        }
         o.items.forEach((it) => {
           menuCounts[it.nama] = (menuCounts[it.nama] || 0) + it.qty;
           if (it.pilihanOpsi) {
@@ -1798,12 +1804,14 @@ _Dapur Dulang Indonesia - Risoles & Katering Sidoarjo_`;
 
       if (custIdx >= 0) {
         const cust = customers[custIdx];
+        const effectiveLastOrder = latestOrderAt || (order.status === 'lunas' ? order.created_at : cust.last_order_at);
         const updatedCust: Customer = {
           ...cust,
           total_orders: Math.max(cust.total_orders, custOrders.length),
           total_spent: totalSpent,
           favorite_menu: topMenu || cust.favorite_menu,
           favorite_option: topOption || cust.favorite_option,
+          last_order_at: effectiveLastOrder,
           status: custOrders.length >= 5 ? 'Sultan Dulang' : custOrders.length >= 2 ? 'Setia' : 'Baru',
         };
         const updatedList = [...customers];
@@ -1811,6 +1819,11 @@ _Dapur Dulang Indonesia - Risoles & Katering Sidoarjo_`;
         localStorage.setItem(STORAGE_KEYS.CUSTOMERS, JSON.stringify(updatedList));
         if (typeof window !== 'undefined') {
           window.dispatchEvent(new Event('dulang_customers_updated'));
+        }
+
+        const client = getSupabaseClient();
+        if (client) {
+          client.from('customers').upsert(updatedCust).then(() => {}, () => {});
         }
       }
     } catch (e) {

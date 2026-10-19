@@ -898,8 +898,41 @@ Catatan Kurir: Pastikan posisi dus ditaruh datar agar mayo tidak tumpah ya kak.`
     onShowToast(`Draft sapaan untuk Kak ${c.name} dibuka di WhatsApp! Tanggal disapa tercatat. 📱✨`);
   };
 
+  const getCustomerLastOrderDate = (c: Customer): string | undefined => {
+    if (c.last_order_at) return c.last_order_at;
+    const cleanQr = c.qr_code_id ? c.qr_code_id.toUpperCase() : '';
+    const cleanWa = c.wa ? c.wa.replace(/\D/g, '') : '';
+    const cleanName = c.name.trim().toLowerCase();
+    const custOrders = orders.filter(
+      (o) =>
+        (cleanQr && o.customer_qr_id && o.customer_qr_id.toUpperCase() === cleanQr) ||
+        (cleanWa && o.customer_wa && o.customer_wa.replace(/\D/g, '') === cleanWa) ||
+        (o.customer_name.trim().toLowerCase() === cleanName)
+    );
+    if (custOrders.length > 0) {
+      const sorted = [...custOrders].sort(
+        (a, b) => new Date(b.created_at).getTime() - new Date(a.created_at).getTime()
+      );
+      return sorted[0].created_at;
+    }
+    return c.last_scan_at || c.consent_at || undefined;
+  };
+
+  const formatRelativeTime = (dateStr?: string): string => {
+    if (!dateStr) return '-';
+    const d = new Date(dateStr);
+    if (isNaN(d.getTime())) return '-';
+    const diffMs = Date.now() - d.getTime();
+    const diffDays = Math.floor(diffMs / (1000 * 60 * 60 * 24));
+    if (diffDays <= 0) return 'Hari ini';
+    if (diffDays === 1) return 'Kemarin';
+    if (diffDays < 7) return `${diffDays} hr lalu`;
+    if (diffDays < 30) return `${Math.floor(diffDays / 7)} mgg lalu`;
+    return d.toLocaleDateString('id-ID', { day: 'numeric', month: 'short' });
+  };
+
   const isDormantCust = (c: Customer) => {
-    const lastActiveStr = c.last_scan_at || c.consent_at || c.first_scan_at;
+    const lastActiveStr = c.last_order_at || c.last_scan_at || c.consent_at || c.first_scan_at;
     if (!lastActiveStr) return false;
     const lastActiveDate = new Date(lastActiveStr);
     if (isNaN(lastActiveDate.getTime())) return false;
@@ -1827,21 +1860,21 @@ Catatan Kurir: Pastikan posisi dus ditaruh datar agar mayo tidak tumpah ya kak.`
 
       {/* TAB 1: KELOLA MENU */}
       {activeTab === 'menu' && (
-        <div className="space-y-6">
-          <div className="flex flex-wrap justify-between items-center gap-4">
+        <div className="space-y-4 sm:space-y-6">
+          <div className="flex flex-wrap justify-between items-center gap-3">
             <div>
-              <h2 className="font-hand font-bold text-[28px] text-[#111111]">
+              <h2 className="font-hand font-bold text-[24px] sm:text-[28px] text-[#111111] leading-none">
                 Daftar Menu Dapur
               </h2>
-              <p className="font-sans text-xs text-[#5C3D2E]/70">
-                Ubah nama, harga, deskripsi, foto produk, dan status ketersediaan menu.
+              <p className="font-sans text-[11px] sm:text-xs text-[#5C3D2E]/70 mt-1">
+                Total {menus.length} menu aktif. Di HP sentuh menu untuk edit harga, stok & ketersediaan.
               </p>
             </div>
             <div className="flex flex-wrap items-center gap-2">
               <button
                 type="button"
                 onClick={handleRefillAllStock}
-                className="cursor-pointer bg-[#FFF8E7] hover:bg-[#FFEEC2] text-[#5C3D2E] rounded-full px-4 py-2 font-sans font-bold text-[12px] border-2 border-amber-400 hover:border-[#111111] transition flex items-center gap-1.5"
+                className="cursor-pointer bg-[#FFF8E7] hover:bg-[#FFEEC2] text-[#5C3D2E] rounded-full px-3 sm:px-4 py-1.5 sm:py-2 font-sans font-bold text-[11px] sm:text-[12px] border-2 border-amber-400 hover:border-[#111111] transition flex items-center gap-1.5 shadow-xs"
                 title="Isi ulang sisa stok porsi seluruh menu ke kuota harian masing-masing"
               >
                 <span>🌅</span> Refill Kuota Pagi
@@ -1858,341 +1891,584 @@ Catatan Kurir: Pastikan posisi dus ditaruh datar agar mayo tidak tumpah ya kak.`
                     onShowToast('8 Menu utama Dulang berhasil dimuat ulang!');
                   }
                 }}
-                className="cursor-pointer bg-white text-[#5C3D2E] rounded-full px-4 py-2 font-sans font-bold text-[12px] border-2 border-[#111111]/30 hover:border-[#111111] transition"
+                className="cursor-pointer bg-white text-[#5C3D2E] rounded-full px-3 sm:px-4 py-1.5 sm:py-2 font-sans font-bold text-[11px] sm:text-[12px] border-2 border-[#111111]/30 hover:border-[#111111] transition"
               >
-                🔄 Muat 8 Menu Standar
+                🔄 Muat 8 Standar
               </button>
               <button
                 type="button"
                 onClick={() => {
-                  setIsAddingMenu(!isAddingMenu);
+                  setIsAddingMenu(true);
                   setEditingItem(null);
                 }}
-                className="cursor-pointer bg-[#FFD700] text-[#111111] rounded-full px-5 py-2 font-sans font-bold text-[13px] border-2 border-[#111111] shadow-[2px_2px_0_#111111] hover:brightness-105"
+                className="cursor-pointer bg-[#FFD700] text-[#111111] rounded-full px-4 sm:px-5 py-1.5 sm:py-2 font-sans font-bold text-xs sm:text-[13px] border-2 border-[#111111] shadow-[2px_2px_0_#111111] hover:brightness-105"
               >
-                {isAddingMenu ? 'Batal Tambah' : '+ Tambah Menu Baru'}
+                + Tambah Menu Baru
               </button>
             </div>
           </div>
 
-          {/* Form Tambah Menu Baru */}
+          {/* Modal / Bottom Sheet: Tambah Menu Baru */}
           {isAddingMenu && (
-            <form
-              onSubmit={handleAddNewMenu}
-              className="bg-white rounded-[20px] p-6 border-2 border-[#111111] shadow-[4px_4px_0_#111111] space-y-4"
+            <div
+              onClick={() => setIsAddingMenu(false)}
+              className="fixed inset-0 z-50 flex items-end sm:items-center justify-center bg-black/60 backdrop-blur-xs p-0 sm:p-4"
             >
-              <div className="font-hand font-bold text-[24px] text-[#111111]">
-                Resep Baru Masuk Dapur
+              <div
+                onClick={(e) => e.stopPropagation()}
+                className="bg-white rounded-t-[28px] sm:rounded-[24px] border-2 border-[#111111] shadow-[6px_6px_0_#FFD700] w-full max-w-2xl max-h-[92vh] overflow-y-auto p-5 sm:p-6 space-y-4 animate-in slide-in-from-bottom-4 duration-200"
+              >
+                <div className="w-12 h-1.5 bg-gray-300 rounded-full mx-auto mb-1 sm:hidden" />
+                <div className="flex justify-between items-center pb-2 border-b border-[#111111]/10">
+                  <div className="font-hand font-bold text-[24px] text-[#111111]">
+                    Resep Baru Masuk Dapur 🥟
+                  </div>
+                  <button
+                    type="button"
+                    onClick={() => setIsAddingMenu(false)}
+                    className="cursor-pointer text-sm font-bold text-gray-500 hover:text-black w-8 h-8 rounded-full bg-gray-100 flex items-center justify-center"
+                  >
+                    ✕
+                  </button>
+                </div>
+
+                <form onSubmit={handleAddNewMenu} className="space-y-4">
+                  <div className="grid sm:grid-cols-3 gap-4">
+                    <div>
+                      <label className="block font-sans text-[11px] font-bold uppercase text-[#5C3D2E]/70 mb-1">
+                        Nama Menu *
+                      </label>
+                      <input
+                        type="text"
+                        required
+                        value={newNama}
+                        onChange={(e) => setNewNama(e.target.value)}
+                        placeholder="misal: Risoles Ragout Keju Pedas"
+                        className="w-full rounded-full border-2 border-[#111111] px-4 py-2 font-sans text-sm focus:outline-none focus:border-[#FFD700]"
+                      />
+                    </div>
+                    <div>
+                      <label className="block font-sans text-[11px] font-bold uppercase text-[#5C3D2E]/70 mb-1">
+                        Harga Jual (Rp) *
+                      </label>
+                      <input
+                        type="number"
+                        required
+                        value={newHarga}
+                        onChange={(e) => setNewHarga(Number(e.target.value))}
+                        className="w-full rounded-full border-2 border-[#111111] px-4 py-2 font-sans font-bold text-sm focus:outline-none focus:border-[#FFD700]"
+                      />
+                    </div>
+                    <div>
+                      <label className="block font-sans text-[11px] font-bold uppercase text-[#5C3D2E]/70 mb-1">
+                        Kuota Stok Goreng Harian
+                      </label>
+                      <input
+                        type="number"
+                        min="1"
+                        value={newStokHarian}
+                        onChange={(e) => setNewStokHarian(e.target.value === '' ? '' : Number(e.target.value))}
+                        placeholder="Contoh: 50 (Kosong = unlim)"
+                        className="w-full rounded-full border-2 border-[#111111] px-4 py-2 font-sans font-bold text-sm focus:outline-none focus:border-[#FFD700]"
+                      />
+                      <span className="text-[10px] text-[#5C3D2E]/60 mt-0.5 block">
+                        Bila habis, otomatis berstatus Habis
+                      </span>
+                    </div>
+                  </div>
+
+                  <div>
+                    <label className="block font-sans text-[11px] font-bold uppercase text-[#5C3D2E]/70 mb-1">
+                      Deskripsi Menu
+                    </label>
+                    <textarea
+                      rows={2}
+                      value={newDeskripsi}
+                      onChange={(e) => setNewDeskripsi(e.target.value)}
+                      placeholder="Ceritakan rasa gurih, isian lumer, atau cara makannya..."
+                      className="w-full rounded-[14px] border-2 border-[#111111] px-4 py-2 font-sans text-sm focus:outline-none focus:border-[#FFD700] resize-none"
+                    />
+                  </div>
+
+                  {/* Foto Menu Input & Upload */}
+                  <div className="bg-[#FFF8E7] rounded-[16px] p-4 border border-[#FFD700] space-y-3">
+                    <label className="block font-sans text-[11px] font-bold uppercase text-[#111111]">
+                      Foto Menu (Opsional)
+                    </label>
+                    <div className="flex flex-col sm:flex-row items-center gap-4">
+                      {newFoto ? (
+                        <img
+                          src={newFoto}
+                          alt="Preview"
+                          className="w-20 h-20 rounded-[12px] object-cover border-2 border-[#111111] shadow-sm shrink-0"
+                        />
+                      ) : (
+                        <div className="w-20 h-20 rounded-[12px] bg-white border-2 border-dashed border-[#111111]/30 grid place-items-center text-2xl shrink-0">
+                          🥟
+                        </div>
+                      )}
+
+                      <div className="flex-1 w-full space-y-2">
+                        <div className="flex items-center gap-2">
+                          <label className="cursor-pointer bg-white hover:bg-gray-50 border-2 border-[#111111] text-[#111111] px-4 py-1.5 rounded-full font-sans text-xs font-bold shadow-sm transition">
+                            📁 Pilih File dari HP / Laptop
+                            <input
+                              type="file"
+                              accept="image/*"
+                              className="hidden"
+                              onChange={(e) => {
+                                const file = e.target.files?.[0];
+                                if (file) {
+                                  triggerImageCrop(file, 'Atur Sisi Foto Menu Baru (1:1)', setNewFoto);
+                                  e.target.value = '';
+                                }
+                              }}
+                            />
+                          </label>
+                          {newFoto && (
+                            <button
+                              type="button"
+                              onClick={() => setNewFoto('')}
+                              className="cursor-pointer text-xs font-bold text-red-600 hover:underline"
+                            >
+                              Hapus Foto
+                            </button>
+                          )}
+                        </div>
+                        <input
+                          type="text"
+                          value={newFoto}
+                          onChange={(e) => setNewFoto(e.target.value)}
+                          placeholder="Atau tempel link gambar (https://...)"
+                          className="w-full rounded-full border border-[#111111]/30 px-3 py-1 font-sans text-xs bg-white"
+                        />
+                      </div>
+                    </div>
+                  </div>
+
+                  <div className="flex gap-2 pt-2">
+                    <button
+                      type="submit"
+                      className="cursor-pointer bg-[#111111] text-[#FFD700] rounded-full px-6 py-2.5 font-sans font-bold text-[13px] border-2 border-[#111111] shadow-[2px_2px_0_#FFD700] hover:brightness-110"
+                    >
+                      Simpan Menu Baru ke Toko ✓
+                    </button>
+                    <button
+                      type="button"
+                      onClick={() => setIsAddingMenu(false)}
+                      className="cursor-pointer px-4 py-2.5 rounded-full font-sans font-bold text-xs text-[#5C3D2E] hover:underline"
+                    >
+                      Batal
+                    </button>
+                  </div>
+                </form>
               </div>
-              <div className="grid sm:grid-cols-3 gap-4">
-                <div>
-                  <label className="block font-sans text-[11px] font-bold uppercase text-[#5C3D2E]/70 mb-1">
-                    Nama Menu *
-                  </label>
-                  <input
-                    type="text"
-                    required
-                    value={newNama}
-                    onChange={(e) => setNewNama(e.target.value)}
-                    placeholder="misal: Risoles Ragout Keju Pedas"
-                    className="w-full rounded-full border-2 border-[#111111] px-4 py-2 font-sans text-sm focus:outline-none focus:border-[#FFD700]"
-                  />
+            </div>
+          )}
+
+          {/* Modal / Bottom Sheet: Edit Menu */}
+          {editingItem && (
+            <div
+              onClick={() => setEditingItem(null)}
+              className="fixed inset-0 z-50 flex items-end sm:items-center justify-center bg-black/60 backdrop-blur-xs p-0 sm:p-4"
+            >
+              <div
+                onClick={(e) => e.stopPropagation()}
+                className="bg-white rounded-t-[28px] sm:rounded-[24px] border-2 border-[#111111] shadow-[6px_6px_0_#FFD700] w-full max-w-2xl max-h-[92vh] overflow-y-auto p-5 sm:p-6 space-y-4 animate-in slide-in-from-bottom-4 duration-200"
+              >
+                <div className="w-12 h-1.5 bg-gray-300 rounded-full mx-auto mb-1 sm:hidden" />
+                <div className="flex justify-between items-center pb-2 border-b border-[#111111]/10">
+                  <div className="font-hand font-bold text-[22px] sm:text-[24px] text-[#111111] flex items-center gap-2">
+                    <span>✏️</span>
+                    <span>Edit Menu: {editingItem.nama}</span>
+                  </div>
+                  <button
+                    type="button"
+                    onClick={() => setEditingItem(null)}
+                    className="cursor-pointer text-sm font-bold text-gray-500 hover:text-black w-8 h-8 rounded-full bg-gray-100 flex items-center justify-center"
+                  >
+                    ✕
+                  </button>
                 </div>
+
+                <form onSubmit={handleSaveEditedMenu} className="space-y-4">
+                  {/* Status Saklar: Hari Ini & Pre-order Besok */}
+                  <div className="grid grid-cols-2 gap-3 bg-[#FFF8E7] p-3 rounded-[16px] border border-[#FFD700]">
+                    <div>
+                      <label className="block font-sans text-[11px] font-bold uppercase text-[#5C3D2E] mb-1">
+                        Ketersediaan Hari Ini
+                      </label>
+                      <button
+                        type="button"
+                        onClick={() =>
+                          setEditingItem({
+                            ...editingItem,
+                            tersedia: !editingItem.tersedia,
+                          })
+                        }
+                        className={`w-full py-2 px-3 rounded-full font-bold text-xs border-2 transition ${
+                          editingItem.tersedia
+                            ? 'bg-emerald-600 text-white border-emerald-700'
+                            : 'bg-red-500 text-white border-red-600'
+                        }`}
+                      >
+                        {editingItem.tersedia ? '🟢 Tersedia' : '🔴 Habis'}
+                      </button>
+                    </div>
+                    <div>
+                      <label className="block font-sans text-[11px] font-bold uppercase text-[#5C3D2E] mb-1">
+                        Pre-Order Besok
+                      </label>
+                      <button
+                        type="button"
+                        onClick={() =>
+                          setEditingItem({
+                            ...editingItem,
+                            tersediaBesok: editingItem.tersediaBesok === false ? true : false,
+                          })
+                        }
+                        className={`w-full py-2 px-3 rounded-full font-bold text-xs border-2 transition ${
+                          editingItem.tersediaBesok !== false
+                            ? 'bg-blue-600 text-white border-blue-700'
+                            : 'bg-gray-200 text-gray-700 border-gray-400'
+                        }`}
+                      >
+                        {editingItem.tersediaBesok !== false ? '📅 Buka' : '🔒 Tutup'}
+                      </button>
+                    </div>
+                  </div>
+
+                  <div className="grid sm:grid-cols-2 gap-4">
+                    <div>
+                      <label className="block font-sans text-[11px] font-bold uppercase text-[#5C3D2E]/70 mb-1">
+                        Nama Menu *
+                      </label>
+                      <input
+                        type="text"
+                        required
+                        value={editingItem.nama}
+                        onChange={(e) => setEditingItem({ ...editingItem, nama: e.target.value })}
+                        className="w-full rounded-full border-2 border-[#111111] px-4 py-2 font-sans text-sm focus:outline-none focus:border-[#FFD700]"
+                      />
+                    </div>
+                    <div>
+                      <label className="block font-sans text-[11px] font-bold uppercase text-[#5C3D2E]/70 mb-1">
+                        Harga Jual (Rp) *
+                      </label>
+                      <input
+                        type="number"
+                        required
+                        value={editingItem.harga}
+                        onChange={(e) => setEditingItem({ ...editingItem, harga: Number(e.target.value) })}
+                        className="w-full rounded-full border-2 border-[#111111] px-4 py-2 font-sans font-bold text-sm focus:outline-none focus:border-[#FFD700]"
+                      />
+                    </div>
+                  </div>
+
+                  {/* Kuota & Sisa Stok Controls */}
+                  <div className="grid sm:grid-cols-2 gap-3 bg-[#FFFDF4] p-3 rounded-[16px] border border-[#111111]/20">
+                    <div>
+                      <label className="block font-sans text-[11px] font-bold uppercase text-[#5C3D2E]/80 mb-1">
+                        Kuota Stok Harian (Porsi)
+                      </label>
+                      <input
+                        type="number"
+                        min="0"
+                        value={editingItem.stokHarian ?? ''}
+                        onChange={(e) =>
+                          setEditingItem({
+                            ...editingItem,
+                            stokHarian: e.target.value === '' ? null : Number(e.target.value),
+                            sisaStok:
+                              editingItem.sisaStok === null || editingItem.sisaStok === undefined
+                                ? e.target.value === '' ? null : Number(e.target.value)
+                                : editingItem.sisaStok,
+                          })
+                        }
+                        placeholder="Kosong = Unlimited"
+                        className="w-full rounded-full border-2 border-[#111111] px-4 py-2 font-sans font-bold text-sm bg-white focus:outline-none focus:border-[#FFD700]"
+                      />
+                    </div>
+                    <div>
+                      <label className="block font-sans text-[11px] font-bold uppercase text-[#5C3D2E]/80 mb-1">
+                        Sisa Stok Hari Ini (Porsi)
+                      </label>
+                      <div className="flex items-center gap-1.5">
+                        <input
+                          type="number"
+                          min="0"
+                          value={editingItem.sisaStok ?? ''}
+                          onChange={(e) => {
+                            const val = e.target.value === '' ? null : Number(e.target.value);
+                            setEditingItem({
+                              ...editingItem,
+                              sisaStok: val,
+                              tersedia: val !== null && val <= 0 ? false : editingItem.tersedia,
+                            });
+                          }}
+                          placeholder="Sisa stok"
+                          className="w-full rounded-full border-2 border-[#111111] px-3.5 py-2 font-sans font-bold text-sm bg-white focus:outline-none focus:border-[#FFD700]"
+                        />
+                        <button
+                          type="button"
+                          onClick={() => {
+                            const cur = editingItem.sisaStok ?? editingItem.stokHarian ?? 0;
+                            const nextVal = Math.max(0, cur - 1);
+                            setEditingItem({
+                              ...editingItem,
+                              sisaStok: nextVal,
+                              tersedia: nextVal > 0,
+                            });
+                          }}
+                          className="cursor-pointer w-8 h-8 rounded-full bg-gray-100 hover:bg-gray-200 border border-[#111111] font-bold text-sm flex items-center justify-center shrink-0"
+                          title="Kurang 1 porsi"
+                        >
+                          -
+                        </button>
+                        <button
+                          type="button"
+                          onClick={() => {
+                            const cur = editingItem.sisaStok ?? 0;
+                            const nextVal = cur + 1;
+                            setEditingItem({
+                              ...editingItem,
+                              sisaStok: nextVal,
+                              tersedia: true,
+                            });
+                          }}
+                          className="cursor-pointer w-8 h-8 rounded-full bg-gray-100 hover:bg-gray-200 border border-[#111111] font-bold text-sm flex items-center justify-center shrink-0"
+                          title="Tambah 1 porsi"
+                        >
+                          +
+                        </button>
+                      </div>
+                      <div className="flex items-center gap-2 mt-1.5">
+                        <button
+                          type="button"
+                          onClick={() => {
+                            if (editingItem.stokHarian) {
+                              setEditingItem({
+                                ...editingItem,
+                                sisaStok: editingItem.stokHarian,
+                                tersedia: true,
+                              });
+                            }
+                          }}
+                          className="cursor-pointer text-[10px] font-bold px-2 py-0.5 rounded-full bg-amber-100 text-amber-900 border border-amber-300 hover:bg-amber-200"
+                        >
+                          🔄 Reset Penuh
+                        </button>
+                        <button
+                          type="button"
+                          onClick={() => {
+                            setEditingItem({
+                              ...editingItem,
+                              sisaStok: 0,
+                              tersedia: false,
+                            });
+                          }}
+                          className="cursor-pointer text-[10px] font-bold px-2 py-0.5 rounded-full bg-red-100 text-red-700 border border-red-300 hover:bg-red-200"
+                        >
+                          Set Habis (0)
+                        </button>
+                      </div>
+                    </div>
+                  </div>
+
+                  <div>
+                    <label className="block font-sans text-[11px] font-bold uppercase text-[#5C3D2E]/70 mb-1">
+                      Deskripsi Menu
+                    </label>
+                    <textarea
+                      rows={2}
+                      value={editingItem.deskripsi}
+                      onChange={(e) => setEditingItem({ ...editingItem, deskripsi: e.target.value })}
+                      className="w-full rounded-[14px] border-2 border-[#111111] px-4 py-2 font-sans text-sm focus:outline-none focus:border-[#FFD700] resize-none"
+                    />
+                  </div>
+
+                  {/* Edit Foto Menu */}
+                  <div className="bg-[#FFF8E7] rounded-[16px] p-4 border border-[#FFD700] space-y-3">
+                    <label className="block font-sans text-[11px] font-bold uppercase text-[#111111]">
+                      Ganti Foto Menu
+                    </label>
+                    <div className="flex flex-col sm:flex-row items-center gap-4">
+                      {editingItem.foto ? (
+                        <img
+                          src={editingItem.foto}
+                          alt={editingItem.nama}
+                          className="w-20 h-20 rounded-[12px] object-cover border-2 border-[#111111] shadow-sm shrink-0"
+                        />
+                      ) : (
+                        <div className="w-20 h-20 rounded-[12px] bg-white border-2 border-dashed border-[#111111]/30 grid place-items-center text-2xl shrink-0">
+                          🥟
+                        </div>
+                      )}
+
+                      <div className="flex-1 w-full space-y-2">
+                        <div className="flex items-center gap-2">
+                          <label className="cursor-pointer bg-white hover:bg-gray-50 border-2 border-[#111111] text-[#111111] px-4 py-1.5 rounded-full font-sans text-xs font-bold shadow-sm transition">
+                            📁 Pilih File Baru dari HP / Laptop
+                            <input
+                              type="file"
+                              accept="image/*"
+                              className="hidden"
+                              onChange={(e) => {
+                                const file = e.target.files?.[0];
+                                if (file && editingItem) {
+                                  triggerImageCrop(file, `Atur Sisi Foto: ${editingItem.nama}`, (url) => {
+                                    setEditingItem((prev) => (prev ? { ...prev, foto: url } : null));
+                                  });
+                                  e.target.value = '';
+                                }
+                              }}
+                            />
+                          </label>
+                          {editingItem.foto && (
+                            <button
+                              type="button"
+                              onClick={() => setEditingItem({ ...editingItem, foto: undefined })}
+                              className="cursor-pointer text-xs font-bold text-red-600 hover:underline"
+                            >
+                              Hapus Foto
+                            </button>
+                          )}
+                        </div>
+                        <input
+                          type="text"
+                          value={editingItem.foto || ''}
+                          onChange={(e) => setEditingItem({ ...editingItem, foto: e.target.value })}
+                          placeholder="Atau tempel link gambar (https://...)"
+                          className="w-full rounded-full border border-[#111111]/30 px-3 py-1 font-sans text-xs bg-white"
+                        />
+                      </div>
+                    </div>
+                  </div>
+
+                  <div className="flex flex-wrap items-center justify-between gap-3 pt-3 border-t border-[#111111]/10">
+                    <div className="flex items-center gap-2">
+                      <button
+                        type="submit"
+                        className="cursor-pointer bg-[#111111] text-[#FFD700] rounded-full px-6 py-2.5 font-sans font-bold text-xs sm:text-[13px] border-2 border-[#111111] shadow-[2px_2px_0_#FFD700] hover:brightness-110"
+                      >
+                        Simpan Perubahan ✓
+                      </button>
+                      <button
+                        type="button"
+                        onClick={() => setEditingItem(null)}
+                        className="cursor-pointer px-4 py-2.5 rounded-full font-sans font-bold text-xs text-[#5C3D2E] hover:underline"
+                      >
+                        Batal
+                      </button>
+                    </div>
+
+                    <button
+                      type="button"
+                      onClick={() => {
+                        handleDeleteItem(editingItem.id);
+                        setEditingItem(null);
+                      }}
+                      className="cursor-pointer text-xs font-bold text-red-600 hover:text-red-800 hover:underline px-2 py-1"
+                    >
+                      🗑️ Hapus Menu Ini
+                    </button>
+                  </div>
+                </form>
+              </div>
+            </div>
+          )}
+
+          {/* MOBILE VIEW: Kotak-kotak (Grid 2 Kolom) Bersih & Ringkas Khusus Layar HP */}
+          <div className="grid grid-cols-2 gap-2.5 sm:hidden">
+            {menus.map((m) => (
+              <div
+                key={m.id}
+                onClick={() => {
+                  setEditingItem({ ...m });
+                  setIsAddingMenu(false);
+                }}
+                className="cursor-pointer bg-white rounded-[18px] p-2.5 border-2 border-[#111111] shadow-[2px_2px_0_#111111] hover:shadow-[3px_3px_0_#FFD700] transition active:scale-[0.98] flex flex-col justify-between"
+              >
                 <div>
-                  <label className="block font-sans text-[11px] font-bold uppercase text-[#5C3D2E]/70 mb-1">
-                    Harga Jual (Rp) *
-                  </label>
-                  <input
-                    type="number"
-                    required
-                    value={newHarga}
-                    onChange={(e) => setNewHarga(Number(e.target.value))}
-                    className="w-full rounded-full border-2 border-[#111111] px-4 py-2 font-sans font-bold text-sm focus:outline-none focus:border-[#FFD700]"
-                  />
+                  {/* Foto Menu Kotak 1:1 */}
+                  <div className="relative aspect-square w-full rounded-[14px] overflow-hidden bg-[#FFF3C7] border border-[#111111]/20">
+                    {m.foto ? (
+                      <img
+                        src={m.foto}
+                        alt={m.nama}
+                        className="w-full h-full object-cover"
+                      />
+                    ) : (
+                      <div className="w-full h-full grid place-items-center text-4xl">
+                        🥟
+                      </div>
+                    )}
+
+                    {/* Floating Status Badge (Pojok Kiri Atas) */}
+                    <button
+                      type="button"
+                      onClick={(e) => {
+                        e.stopPropagation();
+                        handleToggleTersedia(m.id);
+                      }}
+                      className={`absolute top-1.5 left-1.5 px-2 py-0.5 rounded-full text-[10px] font-bold uppercase tracking-wider shadow-xs border transition ${
+                        m.tersedia
+                          ? 'bg-emerald-500 text-white border-emerald-600'
+                          : 'bg-red-500 text-white border-red-600'
+                      }`}
+                      title="Sentuh untuk toggle cepat ketersediaan"
+                    >
+                      {m.tersedia ? '● Ready' : '✕ Habis'}
+                    </button>
+
+                    {/* Floating Stok Badge (Pojok Kanan Atas jika ada kuota) */}
+                    {m.stokHarian !== undefined && m.stokHarian !== null && (
+                      <span
+                        className={`absolute top-1.5 right-1.5 px-1.5 py-0.5 rounded-md text-[10px] font-mono font-bold shadow-xs ${
+                          (m.sisaStok ?? 0) <= 0
+                            ? 'bg-red-600 text-white'
+                            : (m.sisaStok ?? 0) <= 5
+                            ? 'bg-amber-500 text-white animate-pulse'
+                            : 'bg-black/75 backdrop-blur-xs text-white'
+                        }`}
+                      >
+                        {m.sisaStok ?? m.stokHarian} pcs
+                      </span>
+                    )}
+                  </div>
+
+                  {/* Info Ringkas Menu */}
+                  <div className="mt-2 space-y-0.5">
+                    <h3 className="font-bold text-[13px] text-[#111111] leading-snug line-clamp-2">
+                      {m.nama}
+                    </h3>
+                    <div className="font-mono font-bold text-xs text-[#5C3D2E]">
+                      Rp {m.harga.toLocaleString('id-ID')}
+                    </div>
+                  </div>
                 </div>
-                <div>
-                  <label className="block font-sans text-[11px] font-bold uppercase text-[#5C3D2E]/70 mb-1">
-                    Kuota Stok Goreng Harian
-                  </label>
-                  <input
-                    type="number"
-                    min="1"
-                    value={newStokHarian}
-                    onChange={(e) => setNewStokHarian(e.target.value === '' ? '' : Number(e.target.value))}
-                    placeholder="Contoh: 50 (Kosong = unlim)"
-                    className="w-full rounded-full border-2 border-[#111111] px-4 py-2 font-sans font-bold text-sm focus:outline-none focus:border-[#FFD700]"
-                  />
-                  <span className="text-[10px] text-[#5C3D2E]/60 mt-0.5 block">
-                    Bila habis, otomatis berstatus Habis
+
+                {/* Footer Kartu Mobile: Petunjuk Ketuk & Pre-order Besok */}
+                <div className="mt-2 pt-1.5 border-t border-[#111111]/10 flex items-center justify-between text-[10px] text-[#5C3D2E]/70 font-semibold">
+                  <span className="flex items-center gap-1 text-[#111111]">
+                    <span>✏️</span> Atur
+                  </span>
+                  <span
+                    className={`text-[9px] px-1.5 py-0.5 rounded border ${
+                      m.tersediaBesok !== false
+                        ? 'bg-blue-50 text-blue-900 border-blue-300'
+                        : 'bg-gray-100 text-gray-500 border-gray-300'
+                    }`}
+                  >
+                    {m.tersediaBesok !== false ? 'Besok Buka' : 'Besok Tutup'}
                   </span>
                 </div>
               </div>
+            ))}
+          </div>
 
-              <div>
-                <label className="block font-sans text-[11px] font-bold uppercase text-[#5C3D2E]/70 mb-1">
-                  Deskripsi Menu
-                </label>
-                <textarea
-                  rows={2}
-                  value={newDeskripsi}
-                  onChange={(e) => setNewDeskripsi(e.target.value)}
-                  placeholder="Ceritakan rasa gurih, isian lumer, atau cara makannya..."
-                  className="w-full rounded-[14px] border-2 border-[#111111] px-4 py-2 font-sans text-sm focus:outline-none focus:border-[#FFD700] resize-none"
-                />
-              </div>
-
-              {/* Foto Menu Input & Upload */}
-              <div className="bg-[#FFF8E7] rounded-[16px] p-4 border border-[#FFD700] space-y-3">
-                <label className="block font-sans text-[11px] font-bold uppercase text-[#111111]">
-                  Foto Menu (Opsional)
-                </label>
-                <div className="flex flex-col sm:flex-row items-center gap-4">
-                  {newFoto ? (
-                    <img
-                      src={newFoto}
-                      alt="Preview"
-                      className="w-20 h-20 rounded-[12px] object-cover border-2 border-[#111111] shadow-sm shrink-0"
-                    />
-                  ) : (
-                    <div className="w-20 h-20 rounded-[12px] bg-white border-2 border-dashed border-[#111111]/30 grid place-items-center text-2xl shrink-0">
-                      🥟
-                    </div>
-                  )}
-
-                  <div className="flex-1 w-full space-y-2">
-                    <div className="flex items-center gap-2">
-                      <label className="cursor-pointer bg-white hover:bg-gray-50 border-2 border-[#111111] text-[#111111] px-4 py-1.5 rounded-full font-sans text-xs font-bold shadow-sm transition">
-                        📁 Pilih File dari HP / Laptop
-                        <input
-                          type="file"
-                          accept="image/*"
-                          className="hidden"
-                          onChange={(e) => {
-                            const file = e.target.files?.[0];
-                            if (file) {
-                              triggerImageCrop(file, 'Atur Sisi Foto Menu Baru (1:1)', setNewFoto);
-                              e.target.value = '';
-                            }
-                          }}
-                        />
-                      </label>
-                      {newFoto && (
-                        <button
-                          type="button"
-                          onClick={() => setNewFoto('')}
-                          className="cursor-pointer text-xs font-bold text-red-600 hover:underline"
-                        >
-                          Hapus Foto
-                        </button>
-                      )}
-                    </div>
-                    <input
-                      type="text"
-                      value={newFoto}
-                      onChange={(e) => setNewFoto(e.target.value)}
-                      placeholder="Atau tempel link gambar (https://...)"
-                      className="w-full rounded-full border border-[#111111]/30 px-3 py-1 font-sans text-xs bg-white"
-                    />
-                  </div>
-                </div>
-              </div>
-
-              <div className="flex gap-2 pt-2">
-                <button
-                  type="submit"
-                  className="cursor-pointer bg-[#111111] text-[#FFD700] rounded-full px-6 py-2.5 font-sans font-bold text-[13px] border-2 border-[#111111] shadow-[2px_2px_0_#FFD700] hover:brightness-110"
-                >
-                  Simpan Menu Baru ke Toko ✓
-                </button>
-                <button
-                  type="button"
-                  onClick={() => setIsAddingMenu(false)}
-                  className="cursor-pointer px-4 py-2.5 rounded-full font-sans font-bold text-xs text-[#5C3D2E] hover:underline"
-                >
-                  Batal
-                </button>
-              </div>
-            </form>
-          )}
-
-          {/* Form Edit Menu Modal / Inline */}
-          {editingItem && (
-            <form
-              onSubmit={handleSaveEditedMenu}
-              className="bg-white rounded-[20px] p-6 border-2 border-[#111111] shadow-[6px_6px_0_#FFD700] space-y-4"
-            >
-              <div className="flex justify-between items-center">
-                <div className="font-hand font-bold text-[24px] text-[#111111]">
-                  ✏️ Edit Menu: {editingItem.nama}
-                </div>
-                <button
-                  type="button"
-                  onClick={() => setEditingItem(null)}
-                  className="cursor-pointer text-sm font-bold text-gray-500 hover:text-black"
-                >
-                  ✕ Tutup
-                </button>
-              </div>
-
-              <div className="grid sm:grid-cols-2 lg:grid-cols-4 gap-4">
-                <div className="lg:col-span-2">
-                  <label className="block font-sans text-[11px] font-bold uppercase text-[#5C3D2E]/70 mb-1">
-                    Nama Menu *
-                  </label>
-                  <input
-                    type="text"
-                    required
-                    value={editingItem.nama}
-                    onChange={(e) => setEditingItem({ ...editingItem, nama: e.target.value })}
-                    className="w-full rounded-full border-2 border-[#111111] px-4 py-2 font-sans text-sm focus:outline-none focus:border-[#FFD700]"
-                  />
-                </div>
-                <div>
-                  <label className="block font-sans text-[11px] font-bold uppercase text-[#5C3D2E]/70 mb-1">
-                    Harga Jual (Rp) *
-                  </label>
-                  <input
-                    type="number"
-                    required
-                    value={editingItem.harga}
-                    onChange={(e) => setEditingItem({ ...editingItem, harga: Number(e.target.value) })}
-                    className="w-full rounded-full border-2 border-[#111111] px-4 py-2 font-sans font-bold text-sm focus:outline-none focus:border-[#FFD700]"
-                  />
-                </div>
-                <div>
-                  <label className="block font-sans text-[11px] font-bold uppercase text-[#5C3D2E]/70 mb-1">
-                    Kuota Stok Harian (Porsi)
-                  </label>
-                  <input
-                    type="number"
-                    min="0"
-                    value={editingItem.stokHarian ?? ''}
-                    onChange={(e) =>
-                      setEditingItem({
-                        ...editingItem,
-                        stokHarian: e.target.value === '' ? null : Number(e.target.value),
-                        sisaStok:
-                          editingItem.sisaStok === null || editingItem.sisaStok === undefined
-                            ? e.target.value === '' ? null : Number(e.target.value)
-                            : editingItem.sisaStok,
-                      })
-                    }
-                    placeholder="Kosong = Unlimited"
-                    className="w-full rounded-full border-2 border-[#111111] px-4 py-2 font-sans font-bold text-sm focus:outline-none focus:border-[#FFD700]"
-                  />
-                </div>
-                <div>
-                  <label className="block font-sans text-[11px] font-bold uppercase text-[#5C3D2E]/70 mb-1">
-                    Sisa Stok Hari Ini (Porsi)
-                  </label>
-                  <input
-                    type="number"
-                    min="0"
-                    value={editingItem.sisaStok ?? ''}
-                    onChange={(e) => {
-                      const val = e.target.value === '' ? null : Number(e.target.value);
-                      setEditingItem({
-                        ...editingItem,
-                        sisaStok: val,
-                        tersedia: val !== null && val <= 0 ? false : editingItem.tersedia,
-                      });
-                    }}
-                    placeholder="Sisa stok saat ini"
-                    className="w-full rounded-full border-2 border-[#111111] px-4 py-2 font-sans font-bold text-sm focus:outline-none focus:border-[#FFD700]"
-                  />
-                </div>
-              </div>
-
-              <div>
-                <label className="block font-sans text-[11px] font-bold uppercase text-[#5C3D2E]/70 mb-1">
-                  Deskripsi Menu
-                </label>
-                <textarea
-                  rows={2}
-                  value={editingItem.deskripsi}
-                  onChange={(e) => setEditingItem({ ...editingItem, deskripsi: e.target.value })}
-                  className="w-full rounded-[14px] border-2 border-[#111111] px-4 py-2 font-sans text-sm focus:outline-none focus:border-[#FFD700] resize-none"
-                />
-              </div>
-
-              {/* Edit Foto Menu */}
-              <div className="bg-[#FFF8E7] rounded-[16px] p-4 border border-[#FFD700] space-y-3">
-                <label className="block font-sans text-[11px] font-bold uppercase text-[#111111]">
-                  Ganti Foto Menu
-                </label>
-                <div className="flex flex-col sm:flex-row items-center gap-4">
-                  {editingItem.foto ? (
-                    <img
-                      src={editingItem.foto}
-                      alt={editingItem.nama}
-                      className="w-20 h-20 rounded-[12px] object-cover border-2 border-[#111111] shadow-sm shrink-0"
-                    />
-                  ) : (
-                    <div className="w-20 h-20 rounded-[12px] bg-white border-2 border-dashed border-[#111111]/30 grid place-items-center text-2xl shrink-0">
-                      🥟
-                    </div>
-                  )}
-
-                  <div className="flex-1 w-full space-y-2">
-                    <div className="flex items-center gap-2">
-                      <label className="cursor-pointer bg-white hover:bg-gray-50 border-2 border-[#111111] text-[#111111] px-4 py-1.5 rounded-full font-sans text-xs font-bold shadow-sm transition">
-                        📁 Pilih File Baru dari HP / Laptop
-                        <input
-                          type="file"
-                          accept="image/*"
-                          className="hidden"
-                          onChange={(e) => {
-                            const file = e.target.files?.[0];
-                            if (file && editingItem) {
-                              triggerImageCrop(file, `Atur Sisi Foto: ${editingItem.nama}`, (url) => {
-                                setEditingItem((prev) => prev ? { ...prev, foto: url } : null);
-                              });
-                              e.target.value = '';
-                            }
-                          }}
-                        />
-                      </label>
-                      {editingItem.foto && (
-                        <button
-                          type="button"
-                          onClick={() => setEditingItem({ ...editingItem, foto: undefined })}
-                          className="cursor-pointer text-xs font-bold text-red-600 hover:underline"
-                        >
-                          Hapus Foto
-                        </button>
-                      )}
-                    </div>
-                    <input
-                      type="text"
-                      value={editingItem.foto || ''}
-                      onChange={(e) => setEditingItem({ ...editingItem, foto: e.target.value })}
-                      placeholder="Atau tempel link gambar (https://...)"
-                      className="w-full rounded-full border border-[#111111]/30 px-3 py-1 font-sans text-xs bg-white"
-                    />
-                  </div>
-                </div>
-              </div>
-
-              <div className="flex items-center gap-3 pt-2">
-                <button
-                  type="submit"
-                  className="cursor-pointer bg-[#111111] text-[#FFD700] rounded-full px-6 py-2.5 font-sans font-bold text-[13px] border-2 border-[#111111] shadow-[2px_2px_0_#FFD700] hover:brightness-110"
-                >
-                  Simpan Perubahan ✓
-                </button>
-                <button
-                  type="button"
-                  onClick={() => setEditingItem(null)}
-                  className="cursor-pointer px-4 py-2.5 rounded-full font-sans font-bold text-xs text-[#5C3D2E] hover:underline"
-                >
-                  Batal
-                </button>
-              </div>
-            </form>
-          )}
-
-          {/* Menus List */}
-          <div className="grid gap-4">
+          {/* DESKTOP / TABLET VIEW: Tampilan List Baris Horizontal Yang Nyaman Diklik Mouse */}
+          <div className="hidden sm:grid gap-4">
             {menus.map((m) => (
               <div
                 key={m.id}
@@ -2603,6 +2879,68 @@ Catatan Kurir: Pastikan posisi dus ditaruh datar agar mayo tidak tumpah ya kak.`
                     />
                   </div>
                 </div>
+
+                {/* 💡 Customer Intelligence Memory Badge (Bila Nama Cocok dgn Pelanggan Terdaftar) */}
+                {(() => {
+                  const match = customers.find(
+                    (c) =>
+                      c.name.trim().toLowerCase() === walkInCustName.trim().toLowerCase() ||
+                      (walkInCustWa.trim() && c.wa && c.wa.replace(/\D/g, '') === walkInCustWa.replace(/\D/g, ''))
+                  );
+                  if (!match || !walkInCustName.trim()) return null;
+                  const lastOrder = getCustomerLastOrderDate(match);
+
+                  return (
+                    <div className="bg-gradient-to-r from-[#FFF8E7] to-[#FFEEC2] border-2 border-[#111111] rounded-[18px] p-3.5 shadow-[2px_2px_0_#111111] flex flex-wrap items-center justify-between gap-3 animate-in fade-in">
+                      <div className="flex items-center gap-3">
+                        <span className="text-2xl animate-bounce">👑</span>
+                        <div>
+                          <div className="flex items-center gap-2">
+                            <span className="font-bold text-xs text-[#111111]">
+                              Pelanggan Dikenali: {match.name}
+                            </span>
+                            <span className="bg-[#111111] text-[#FFD700] text-[10px] font-bold px-2 py-0.5 rounded-full">
+                              {match.status} ({match.total_orders}x order)
+                            </span>
+                          </div>
+                          <div className="text-[11px] text-[#5C3D2E] mt-0.5 flex flex-wrap items-center gap-x-2">
+                            <span>
+                              ❤️ Menu Favorit:{' '}
+                              <strong>{match.favorite_menu || 'Belum ada data'}</strong>
+                              {match.favorite_option ? ` (${match.favorite_option})` : ''}
+                            </span>
+                            <span>•</span>
+                            <span>
+                              Terakhir beli:{' '}
+                              <strong>{formatRelativeTime(lastOrder)}</strong>
+                            </span>
+                          </div>
+                        </div>
+                      </div>
+
+                      {match.favorite_menu && (
+                        <button
+                          type="button"
+                          onClick={() => {
+                            const fav = menus.find(
+                              (m) => m.nama.toLowerCase() === match.favorite_menu.toLowerCase()
+                            );
+                            if (fav) {
+                              setWalkInSelectedMenu(fav.id);
+                              if (match.favorite_option) setWalkInSelectedOpsi(match.favorite_option);
+                              onShowToast(`Menu favorit ${match.name} (${fav.nama}) dipilih! 🥟`);
+                            } else {
+                              onShowToast(`Menu "${match.favorite_menu}" tidak ditemukan di daftar menu aktif.`);
+                            }
+                          }}
+                          className="cursor-pointer bg-[#FFD700] hover:brightness-105 text-[#111111] border-2 border-[#111111] px-3.5 py-1.5 rounded-full font-sans font-bold text-xs flex items-center gap-1.5 shadow-[1px_1px_0_#111111] transition active:scale-95"
+                        >
+                          <span>+ Pilih Menu Favorit</span>
+                        </button>
+                      )}
+                    </div>
+                  );
+                })()}
 
                 {/* Pilih Menu & Tambah Item */}
                 <div className="bg-white rounded-[18px] p-4 border-2 border-[#111111]/20 space-y-3">
@@ -5768,8 +6106,14 @@ Catatan Kurir: Pastikan posisi dus ditaruh datar agar mayo tidak tumpah ya kak.`
                         <td className="py-3 px-4 font-bold text-[#111111] whitespace-nowrap">
                           Rp {(c.total_spent || 0).toLocaleString('id-ID')}
                         </td>
-                        <td className="py-3 px-4 font-bold text-center">
-                          {c.total_orders}x
+                        <td className="py-3 px-4 text-center">
+                          <div className="font-bold text-[#111111]">{c.total_orders}x</div>
+                          <div
+                            className="text-[10px] text-[#5C3D2E]/75 font-semibold whitespace-nowrap mt-0.5"
+                            title={`Terakhir transaksi: ${getCustomerLastOrderDate(c) || '-'}`}
+                          >
+                            {formatRelativeTime(getCustomerLastOrderDate(c))}
+                          </div>
                         </td>
                         <td className="py-3 px-4">
                           <span

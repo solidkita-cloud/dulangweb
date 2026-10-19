@@ -38,6 +38,7 @@ export interface Customer {
   birth_month?: number; // 1-12 (Bulan lahir - TANPA TAHUN demi privasi)
   notes?: string;
   last_greeted_at?: string; // Tanggal terakhir disapa via WA (YYYY-MM-DD)
+  last_order_at?: string; // Tanggal & waktu transaksi terakhir (ISO string)
 }
 
 export interface QRCodeRecord {
