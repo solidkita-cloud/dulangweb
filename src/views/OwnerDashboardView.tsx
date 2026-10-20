@@ -1252,6 +1252,8 @@ Catatan Kurir: Pastikan posisi dus ditaruh datar agar mayo tidak tumpah ya kak.`
       `${cashInfo}\n` +
       `*STATUS: LUNAS* ✓\n` +
       `----------------------------------------\n` +
+      `📍 *Pantau Wajan & Status Gorenganmu:* https://dulangweb.vercel.app/?track=${ord.id}\n` +
+      `----------------------------------------\n` +
       `${footerMsg}\n`
     );
   };
@@ -1303,6 +1305,7 @@ Catatan Kurir: Pastikan posisi dus ditaruh datar agar mayo tidak tumpah ya kak.`
     msg += `• *Cara Bayar:* Silakan scan barcode QRIS yang kami lampirkan di chat ini atau klik link di atas ya Kak 😊\n\n`;
 
     msg += `Jika sudah scan & bayar, mohon kirimkan bukti tangkapan layar (screenshot) ke sini ya kak agar pesanan langsung kami proses hangat-hangat 🔥\n\n`;
+    msg += `📍 *Pantau Wajan & Status Pesananmu Live:* https://dulangweb.vercel.app/?track=${ord.id}\n\n`;
     msg += `Salam hangat dari Tim ${brandDisplayName}! 🙏💛`;
 
     if (phone) {

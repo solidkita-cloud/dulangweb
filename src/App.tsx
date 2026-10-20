@@ -253,6 +253,7 @@ export function App() {
                 setPendingMode('pemilik');
                 setIsOwnerLoginOpen(true);
               }}
+              onShowToast={showToast}
             />
           )}
 

@@ -232,9 +232,10 @@ export const StickyCart: React.FC<StickyCartProps> = ({
 
     message += `\nMohon konfirmasi ketersediaan di dapur ya Tim Dulang! Terima kasih 🙏✨`;
 
+    let orderTrackingId = '';
     // Catat otomatis ke Antrian Kasir Dapur (Status: Menunggu Bayar/Konfirmasi)
     try {
-      storageService.addOrder({
+      const createdOrder = storageService.addOrder({
         customer_name: buyerName.trim() || (recognizedCust ? recognizedCust.name : 'Pelanggan Web WA'),
         customer_wa: buyerPhone.trim() || (recognizedCust ? recognizedCust.wa : undefined),
         customer_qr_id: recognizedCust ? recognizedCust.qr_code_id : undefined,
@@ -265,8 +266,18 @@ export const StickyCart: React.FC<StickyCartProps> = ({
         shipping_cost: shippingCost,
         shipping_district: deliveryMethod === 'delivery' ? selectedDistrict : undefined,
       });
+
+      if (createdOrder?.id) {
+        orderTrackingId = createdOrder.id;
+        localStorage.setItem('dulang_last_order_id', createdOrder.id);
+        localStorage.setItem('dulang_last_cart', JSON.stringify(cart));
+      }
     } catch (e) {
       console.warn('Auto-save order error:', e);
+    }
+
+    if (orderTrackingId) {
+      message += `\n📍 *Pantau Wajan & Status Pesananmu Live:* https://dulangweb.vercel.app/?track=${orderTrackingId}\n`;
     }
 
     if (appliedVoucher) {
@@ -840,6 +851,16 @@ export const StickyCart: React.FC<StickyCartProps> = ({
                     )}
                   </div>
                 )}
+                {/* Tips Hangat Menikmati di Rumah */}
+                <div className="bg-[#FFFDF4] rounded-[18px] p-3.5 border border-[#111111]/15 space-y-1">
+                  <div className="font-sans font-bold text-xs text-[#5C3D2E] flex items-center gap-1.5">
+                    <span>💡</span>
+                    <span>Tips Hangat Dapur Dulang:</span>
+                  </div>
+                  <p className="font-sans text-[11px] text-[#5C3D2E]/85 leading-relaxed">
+                    Kalau mau diangetin di rumah, panaskan di atas teflon api kecil <strong>tanpa minyak</strong> selama 3 menit. Kulitnya renyah lagi & mayonya lumer maksimal!
+                  </p>
+                </div>
               </div>
             </div>
 

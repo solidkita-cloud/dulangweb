@@ -3,6 +3,7 @@ import { MenuItem, StoreConfig, CustomerTestimonial, Customer, SnackBoxType, Sna
 import { BRAND, LOCKED_COPY, DEFAULT_STORE_CONFIG } from '../lib/constants';
 import { PolaroidMenuCard } from '../components/common/PolaroidMenuCard';
 import { CuteQRCard } from '../components/common/CuteQRCard';
+import { MixMatchBoxModal } from '../components/common/MixMatchBoxModal';
 import { storageService } from '../services/storageService';
 
 export type MenuCategory = 'all' | 'risol' | 'gorengan' | 'manis' | 'frozen';
@@ -23,6 +24,7 @@ interface LandingViewProps {
   onNavigateToScan: (qrId: string) => void;
   onOpenOwnerLogin?: () => void;
   onOpenClosedNotice?: () => void;
+  onShowToast?: (msg: string) => void;
 }
 
 export const LandingView: React.FC<LandingViewProps> = ({
@@ -33,10 +35,20 @@ export const LandingView: React.FC<LandingViewProps> = ({
   onNavigateToScan,
   onOpenOwnerLogin,
   onOpenClosedNotice,
+  onShowToast,
 }) => {
   const [menuTab, setMenuTab] = useState<'today' | 'tomorrow'>('today');
   const [selectedCategory, setSelectedCategory] = useState<MenuCategory>('all');
   const [isTestimonialsOpen, setIsTestimonialsOpen] = useState(false);
+  const [isMixMatchOpen, setIsMixMatchOpen] = useState(false);
+  const [lastCart, setLastCart] = useState<any[] | null>(() => {
+    try {
+      const data = localStorage.getItem('dulang_last_cart');
+      return data ? JSON.parse(data) : null;
+    } catch {
+      return null;
+    }
+  });
 
   // --- HERO SLIDESHOW STATE ---
   const heroPhotoList: string[] = React.useMemo(() => {
@@ -735,6 +747,89 @@ export const LandingView: React.FC<LandingViewProps> = ({
               </button>
             );
           })}
+        </div>
+
+        {/* Fitur 1: Pesan Lagi Menu Kemarin (1-Tap Reorder) */}
+        {lastCart && lastCart.length > 0 && (
+          <div className="bg-[#FFFDF4] border-2 border-[#111111] rounded-[20px] p-3 sm:p-4 shadow-[3px_3px_0_#111111] flex flex-col sm:flex-row sm:items-center justify-between gap-2.5 animate-in fade-in">
+            <div className="flex items-center gap-2.5 min-w-0">
+              <div className="w-9 h-9 rounded-full bg-[#FFD700] border border-[#111111] flex items-center justify-center text-lg shrink-0">
+                ⚡
+              </div>
+              <div className="min-w-0">
+                <div className="flex items-center gap-2">
+                  <span className="font-hand font-bold text-base sm:text-lg text-[#111111] leading-none">
+                    Mau pesan lagi menu kemarin?
+                  </span>
+                  <span className="text-[10px] font-bold bg-[#111111] text-[#FFD700] px-2 py-0.2 rounded-full">
+                    1-Klik
+                  </span>
+                </div>
+                <p className="font-sans text-[11px] text-[#5C3D2E]/80 truncate mt-0.5">
+                  {lastCart.map((c: any) => `${c.qty}x ${c.item?.nama || c.nama}`).join(', ')}
+                </p>
+              </div>
+            </div>
+            <div className="flex items-center gap-2 shrink-0">
+              <button
+                type="button"
+                onClick={() => {
+                  lastCart.forEach((c: any) => {
+                    if (c.item) {
+                      onAddToCart(c.item, c.pilihanOpsi, c.variantType, c.qty);
+                    }
+                  });
+                  if (onShowToast) onShowToast('Menu kemarin langsung masuk ke keranjang! Siap di-checkout 🛒✨');
+                }}
+                className="w-full sm:w-auto cursor-pointer bg-[#FFD700] hover:bg-[#FFE033] text-[#111111] border-2 border-[#111111] px-4 py-1.5 sm:py-2 rounded-full font-sans font-bold text-xs shadow-[2px_2px_0_#111111] active:translate-y-0.5 transition flex items-center justify-center gap-1.5"
+              >
+                <span>🛒</span>
+                <span>Pesan Ulang Sekarang</span>
+              </button>
+              <button
+                type="button"
+                onClick={() => {
+                  localStorage.removeItem('dulang_last_cart');
+                  setLastCart(null);
+                }}
+                className="cursor-pointer text-gray-400 hover:text-black p-1 text-xs"
+                title="Tutup saran ini"
+              >
+                ✕
+              </button>
+            </div>
+          </div>
+        )}
+
+        {/* Fitur 3: Bikin Dus Campur Sendiri Banner Card */}
+        <div className="bg-gradient-to-r from-[#FFF8E7] via-[#FFFDF4] to-[#FFEEC2] rounded-[22px] p-4 sm:p-5 border-2 border-[#111111] shadow-[3px_3px_0_#111111] flex flex-col sm:flex-row sm:items-center justify-between gap-3">
+          <div className="flex items-start sm:items-center gap-3">
+            <div className="w-12 h-12 rounded-2xl bg-[#111111] text-[#FFD700] border-2 border-[#111111] flex items-center justify-center text-2xl shrink-0 shadow-xs rotate-[-2deg]">
+              📦
+            </div>
+            <div>
+              <div className="flex items-center gap-2 flex-wrap">
+                <span className="font-hand font-bold text-xl sm:text-2xl text-[#111111] leading-tight">
+                  Bikin Dus Campur Sendiri (Mix & Match)
+                </span>
+                <span className="text-[10px] font-bold bg-[#FFD700] text-[#111111] px-2 py-0.5 rounded-full border border-[#111111]/30">
+                  Favorit Pembeli ⭐
+                </span>
+              </div>
+              <p className="font-sans text-xs text-[#5C3D2E]/80 mt-0.5">
+                Bebas pilih aneka gorengan sesukamu (Isi 6 atau Isi 10) dalam 1 kotak cantik Dulang.
+              </p>
+            </div>
+          </div>
+
+          <button
+            type="button"
+            onClick={() => setIsMixMatchOpen(true)}
+            className="cursor-pointer bg-[#111111] hover:bg-[#222222] text-[#FFD700] hover:brightness-110 border-2 border-[#111111] px-5 py-2.5 rounded-full font-sans font-bold text-xs shadow-[2px_2px_0_#FFD700] active:translate-y-0.5 transition flex items-center justify-center gap-2 shrink-0 self-start sm:self-auto"
+          >
+            <span>✨</span>
+            <span>Racik Dus Sekarang</span>
+          </button>
         </div>
 
         {/* Menu Grid - 2 Kolom di Mobile, 3 di Tablet, 4 di Desktop */}
@@ -1461,6 +1556,15 @@ export const LandingView: React.FC<LandingViewProps> = ({
           )}
         </div>
       </footer>
+
+      {/* Modal Bikin Dus Campur / Mix & Match */}
+      <MixMatchBoxModal
+        isOpen={isMixMatchOpen}
+        onClose={() => setIsMixMatchOpen(false)}
+        menus={menus}
+        onAddBoxToCart={onAddToCart}
+        onShowToast={(msg) => (onShowToast ? onShowToast(msg) : alert(msg))}
+      />
     </div>
   );
 };

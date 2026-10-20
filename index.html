@@ -10,6 +10,12 @@
     <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent" />
     <meta name="apple-mobile-web-app-title" content="Dulang" />
     <link rel="apple-touch-icon" href="/dulang-logo.png" />
+    <script>
+      // Auto-redirect from legacy Netlify domain to Vercel production
+      if (window.location.hostname.includes('netlify.app')) {
+        window.location.replace('https://dulangweb.vercel.app' + window.location.pathname + window.location.search + window.location.hash);
+      }
+    </script>
     <title>Dulang Indonesia — dibuat dengan wajan panas & tulisan tangan</title>
     <!-- Google Fonts: Caveat (Handwritten) & Plus Jakarta Sans (Body) - LOCKED -->
     <link rel="preconnect" href="https://fonts.googleapis.com" />

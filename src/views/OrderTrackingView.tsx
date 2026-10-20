@@ -385,6 +385,17 @@ export const OrderTrackingView: React.FC<OrderTrackingViewProps> = ({
               </div>
             </div>
 
+            {/* Tips Hangat Menikmati di Rumah */}
+            <div className="bg-[#FFF8E7] rounded-[18px] p-4 border border-[#FFD700] space-y-1">
+              <div className="font-sans font-bold text-xs text-[#5C3D2E] flex items-center gap-1.5">
+                <span>💡</span>
+                <span>Tips Dapur: Cara Menghangatkan Risol Dulang di Rumah</span>
+              </div>
+              <p className="font-sans text-[11px] text-[#5C3D2E]/85 leading-relaxed">
+                Panaskan di atas wajan teflon api kecil <strong>tanpa minyak</strong> selama 3-4 menit sambil dibolak-balik perlahan. Kulitnya bakal renyah krispi lagi dan mayonya lumer maksimal seperti baru keluar dari wajan!
+              </p>
+            </div>
+
             {/* Direct WhatsApp Action to Kitchen */}
             <div className="pt-3 flex flex-col sm:flex-row gap-3">
               <a
