@@ -201,6 +201,7 @@ export const OwnerDashboardView: React.FC<OwnerDashboardViewProps> = ({
 
   // --- CUSTOMER INTELLIGENCE / NOTES EDITING ---
   const [editingCustNotes, setEditingCustNotes] = useState<{ id: string; name: string; notes: string; favorite_option?: string } | null>(null);
+  const [viewingCustDetail, setViewingCustDetail] = useState<Customer | null>(null);
 
   const handleCustCityChange = (newCity: string) => {
     setCustCity(newCity);
@@ -676,6 +677,7 @@ export const OwnerDashboardView: React.FC<OwnerDashboardViewProps> = ({
     if (confirm(`Hapus data pelanggan "${name}" dari daftar?`)) {
       storageService.deleteCustomer(id);
       setCustomers(storageService.getCustomers());
+      setViewingCustDetail((prev) => (prev?.id === id ? null : prev));
       onShowToast(`Data "${name}" berhasil dihapus.`);
     }
   };
@@ -1121,6 +1123,13 @@ Catatan Kurir: Pastikan posisi dus ditaruh datar agar mayo tidak tumpah ya kak.`
     );
     storageService.saveCustomers(updated);
     setCustomers(updated);
+    if (viewingCustDetail && viewingCustDetail.id === editingCustNotes.id) {
+      setViewingCustDetail({
+        ...viewingCustDetail,
+        notes: editingCustNotes.notes,
+        favorite_option: editingCustNotes.favorite_option,
+      });
+    }
     setEditingCustNotes(null);
     onShowToast('Catatan selera pelanggan berhasil disimpan! 📝✨');
   };
@@ -5064,6 +5073,61 @@ Catatan Kurir: Pastikan posisi dus ditaruh datar agar mayo tidak tumpah ya kak.`
                       </button>
                     </div>
                   </div>
+
+                  {/* Preset Rekomendasi Foto Risol Siap Pakai */}
+                  <div className="p-3.5 bg-[#FFFDF4] rounded-[16px] border border-[#111111]/20 space-y-2">
+                    <div className="flex items-center justify-between">
+                      <label className="block font-sans text-[11px] font-bold uppercase text-[#5C3D2E]">
+                        ⚡ Rekomendasi Foto Risol Siap Pakai (1-Klik Tambah):
+                      </label>
+                      <span className="text-[10px] text-[#5C3D2E]/70 font-sans hidden sm:inline">
+                        Pilihan foto estetik & menggoda
+                      </span>
+                    </div>
+                    <div className="grid grid-cols-1 sm:grid-cols-3 gap-2">
+                      {[
+                        {
+                          title: '🥟 Risol Mayo Keemasan',
+                          url: 'https://images.unsplash.com/photo-1608039829572-78524f79c4c7?auto=format&fit=crop&w=800&q=80',
+                        },
+                        {
+                          title: '🥐 Pastry Renyah Hangat',
+                          url: 'https://images.unsplash.com/photo-1541592106381-b31e9677c0e5?auto=format&fit=crop&w=800&q=80',
+                        },
+                        {
+                          title: '🥖 Aneka Gorengan Renyah',
+                          url: 'https://images.unsplash.com/photo-1544025162-d76694265947?auto=format&fit=crop&w=800&q=80',
+                        },
+                      ].map((preset, pIdx) => (
+                        <button
+                          key={pIdx}
+                          type="button"
+                          onClick={() => {
+                            if (currentList.includes(preset.url)) {
+                              onShowToast('Foto ini sudah ada di galeri slideshow!');
+                              return;
+                            }
+                            const nextList = [...currentList, preset.url];
+                            const updated = {
+                              ...localConfig,
+                              heroImages: nextList,
+                              heroImage: nextList[0] || preset.url,
+                            };
+                            setLocalConfig(updated);
+                            onUpdateStoreConfig(updated);
+                            storageService.saveStoreConfig(updated);
+                            onShowToast(`Foto "${preset.title}" ditambahkan ke slideshow! 📸`);
+                          }}
+                          className="cursor-pointer bg-white hover:bg-[#FFD700] text-[#111111] p-2.5 rounded-[12px] border border-[#111111]/20 hover:border-[#111111] text-left text-xs font-sans font-semibold transition shadow-xs flex items-center justify-between group"
+                        >
+                          <span className="truncate pr-1">{preset.title}</span>
+                          <span className="text-[10px] font-bold bg-[#111111] text-[#FFD700] px-2 py-0.5 rounded-full shrink-0 group-hover:scale-105 transition">
+                            + Pasang
+                          </span>
+                        </button>
+                      ))}
+                    </div>
+                  </div>
                 </div>
               );
             })()}
@@ -6122,209 +6186,604 @@ Catatan Kurir: Pastikan posisi dus ditaruh datar agar mayo tidak tumpah ya kak.`
             </form>
           )}
 
-          {/* Tabel Daftar Pelanggan */}
-          <div className="bg-white rounded-[20px] border-2 border-[#111111] shadow-[4px_4px_0_#111111] overflow-hidden">
-            <div className="overflow-x-auto">
-              <table className="w-full text-left font-sans text-[13px]">
-                <thead className="bg-[#111111] text-[#FFF8E7] text-[11px] uppercase tracking-wider">
-                  <tr>
-                    <th className="py-3 px-4">ID Stiker</th>
-                    <th className="py-3 px-4">Nama Pelanggan</th>
-                    <th className="py-3 px-4">Nomor WA</th>
-                    <th className="py-3 px-4">Alamat & Wilayah</th>
-                    <th className="py-3 px-4">Selera & Langganan (Si A Sukanya Apa?)</th>
-                    <th className="py-3 px-4">Total Belanja</th>
-                    <th className="py-3 px-4 text-center">Order</th>
-                    <th className="py-3 px-4">Loyalty Tier</th>
-                    <th className="py-3 px-4 text-right">Aksi</th>
-                  </tr>
-                </thead>
-                <tbody className="divide-y divide-[#111111]/10">
-                  {customers
-                    .filter((c) => {
-                      if (customerSegmentFilter === 'sultan') return c.status === 'Sultan Dulang';
-                      if (customerSegmentFilter === 'setia') return c.status === 'Setia';
-                      if (customerSegmentFilter === 'dormant') return isDormantCust(c);
-                      return true;
-                    })
-                    .map((c) => {
-                    const isNewHighlight = highlightedCustId === c.id || highlightedCustId === c.qr_code_id;
-                    return (
-                      <tr
-                        key={c.id}
-                        className={`transition-colors duration-700 ${
-                          isNewHighlight
-                            ? 'bg-[#FFD700]/30 font-semibold ring-2 ring-[#FFD700]'
-                            : 'hover:bg-[#FFF8E7]/50'
-                        }`}
-                      >
-                        <td className="py-3 px-4 font-mono font-bold text-[#111111]">
-                          <div className="flex items-center gap-1.5">
-                            {isNewHighlight && <span className="text-xs animate-ping">✨</span>}
-                            <span>{c.qr_code_id}</span>
+          {(() => {
+            const filteredCustList = customers.filter((c) => {
+              if (customerSegmentFilter === 'sultan') return c.status === 'Sultan Dulang';
+              if (customerSegmentFilter === 'setia') return c.status === 'Setia';
+              if (customerSegmentFilter === 'dormant') return isDormantCust(c);
+              return true;
+            });
+
+            return (
+              <>
+                {/* MOBILE VIEW: KARTU BERSIH & RINGKAS KHUSUS HP (TIDAK PENUH SESAK) */}
+                <div className="block md:hidden space-y-3">
+                  {filteredCustList.length === 0 ? (
+                    <div className="bg-white rounded-[20px] p-8 border-2 border-[#111111] text-center text-xs text-[#5C3D2E]/70 font-sans shadow-[3px_3px_0_#111111]">
+                      Tidak ada data pelanggan untuk filter ini.
+                    </div>
+                  ) : (
+                    filteredCustList.map((c) => {
+                      const isNewHighlight = highlightedCustId === c.id || highlightedCustId === c.qr_code_id;
+                      return (
+                        <div
+                          key={c.id}
+                          className={`bg-white rounded-[20px] p-4 border-2 border-[#111111] shadow-[3px_3px_0_#111111] space-y-3 transition-colors ${
+                            isNewHighlight ? 'bg-[#FFD700]/25 ring-2 ring-[#FFD700]' : ''
+                          }`}
+                        >
+                          {/* Header Kartu: Inisial, Nama, ID Stiker, Tier Badge */}
+                          <div className="flex items-start justify-between gap-2">
+                            <div
+                              onClick={() => setViewingCustDetail(c)}
+                              className="flex items-center gap-2.5 min-w-0 cursor-pointer group"
+                            >
+                              <div className="w-10 h-10 rounded-full bg-[#111111] text-[#FFD700] flex items-center justify-center font-hand font-bold text-lg shrink-0 border border-[#111111] group-hover:scale-105 transition">
+                                {c.name ? c.name.charAt(0).toUpperCase() : 'D'}
+                              </div>
+                              <div className="min-w-0">
+                                <div className="flex items-center gap-1.5 flex-wrap">
+                                  <span className="font-sans font-bold text-sm text-[#111111] group-hover:text-amber-800 transition truncate">
+                                    {c.name}
+                                  </span>
+                                  {isNewHighlight && <span className="text-xs">✨ Baru</span>}
+                                </div>
+                                <div className="flex items-center gap-1.5 text-[11px] font-mono text-[#5C3D2E]/75">
+                                  <span className="bg-[#FFF8E7] px-1.5 py-0.2 rounded border border-[#111111]/20 font-bold">
+                                    {c.qr_code_id}
+                                  </span>
+                                  <span>•</span>
+                                  <span>+{c.wa}</span>
+                                </div>
+                              </div>
+                            </div>
+
+                            <span
+                              className={`shrink-0 px-2.5 py-0.5 rounded-full text-[10px] font-bold uppercase ${
+                                c.status === 'Sultan Dulang'
+                                  ? 'bg-[#111111] text-[#FFD700]'
+                                  : c.status === 'Setia'
+                                  ? 'bg-[#FFD700] text-[#111111]'
+                                  : 'bg-gray-100 text-gray-700'
+                              }`}
+                            >
+                              {c.status}
+                            </span>
                           </div>
-                        </td>
-                        <td className="py-3 px-4 font-bold text-[#111111]">
-                          <div>{c.name}</div>
-                          <div className="flex flex-wrap items-center gap-1 mt-1">
+
+                          {/* Badge Notifikasi / Tag Status */}
+                          <div className="flex flex-wrap items-center gap-1.5">
                             {c.birth_day && c.birth_month && (
-                              <span className="inline-flex items-center gap-1 text-[10px] font-sans font-medium text-amber-900 bg-amber-100/80 px-2 py-0.5 rounded-full border border-amber-300">
+                              <span className="inline-flex items-center gap-1 text-[10px] font-sans font-medium text-amber-900 bg-amber-100/90 px-2 py-0.5 rounded-full border border-amber-300">
                                 <span>🎂</span>
                                 <span>
-                                  {c.birth_day}{' '}
-                                  {MONTHS_INDONESIA.find((m) => m.value === c.birth_month)?.label}
+                                  {c.birth_day} {MONTHS_INDONESIA.find((m) => m.value === c.birth_month)?.label}
                                 </span>
                               </span>
                             )}
                             {c.last_greeted_at && (
-                              <span
-                                className="inline-flex items-center gap-1 text-[10px] font-sans font-medium text-emerald-800 bg-emerald-100/80 px-2 py-0.5 rounded-full border border-emerald-300"
-                                title={`Terakhir disapa via WA: ${c.last_greeted_at}`}
-                              >
+                              <span className="inline-flex items-center gap-1 text-[10px] font-sans font-medium text-emerald-800 bg-emerald-100/90 px-2 py-0.5 rounded-full border border-emerald-300">
                                 <span>💬</span>
                                 <span>Disapa {c.last_greeted_at}</span>
                               </span>
                             )}
                             {isDormantCust(c) && !c.last_greeted_at && (
-                              <span
-                                className="inline-flex items-center gap-1 text-[10px] font-sans font-medium text-amber-900 bg-amber-100 px-2 py-0.5 rounded-full border border-amber-300"
-                                title="Belum pernah pesan / scan lagi > 14 hari"
-                              >
+                              <span className="inline-flex items-center gap-1 text-[10px] font-sans font-medium text-amber-900 bg-amber-100 px-2 py-0.5 rounded-full border border-amber-300">
                                 <span>💤</span>
                                 <span>&gt;14 hr pasif</span>
                               </span>
                             )}
                           </div>
-                        </td>
-                        <td className="py-3 px-4 font-mono text-xs">
-                          +{c.wa}
-                        </td>
-                        <td className="py-3 px-4 max-w-[200px] truncate" title={c.address}>
-                          {c.address} <span className="text-[#5C3D2E]/60 text-xs block">({c.area})</span>
-                        </td>
-                        {/* SELERA PELANGGAN: SI A SUKANYA APA */}
-                        <td className="py-3 px-4 max-w-[240px]">
-                          <div className="font-medium text-[#111111] flex items-center gap-1">
-                            <span>🥟</span>
-                            <span>{c.favorite_menu}</span>
-                          </div>
-                          {c.favorite_option && (
-                            <span className="inline-block bg-[#FFF8E7] text-[#5C3D2E] text-[10px] font-bold px-2 py-0.5 rounded border border-[#111111]/20 mt-1">
-                              🌶️ Opsi: {c.favorite_option}
-                            </span>
-                          )}
-                          {c.notes && (
-                            <div className="text-[11px] text-gray-500 italic mt-1 truncate" title={c.notes}>
-                              📝 "{c.notes}"
-                            </div>
-                          )}
-                          <button
-                            type="button"
-                            onClick={() =>
-                              setEditingCustNotes({
-                                id: c.id,
-                                name: c.name,
-                                notes: c.notes || '',
-                                favorite_option: c.favorite_option || '',
-                              })
-                            }
-                            className="cursor-pointer text-[10px] font-bold text-amber-900 underline hover:text-amber-700 block mt-1"
-                          >
-                            + Catat Selera Dapur
-                          </button>
-                        </td>
-                        {/* TOTAL BELANJA */}
-                        <td className="py-3 px-4 font-bold text-[#111111] whitespace-nowrap">
-                          Rp {(c.total_spent || 0).toLocaleString('id-ID')}
-                        </td>
-                        <td className="py-3 px-4 text-center">
-                          <div className="font-bold text-[#111111]">{c.total_orders}x</div>
+
+                          {/* Ringkasan Belanja & Selera Favorit (Ketuk Kartu untuk Lihat Detail Lengkap) */}
                           <div
-                            className="text-[10px] text-[#5C3D2E]/75 font-semibold whitespace-nowrap mt-0.5"
-                            title={`Terakhir transaksi: ${getCustomerLastOrderDate(c) || '-'}`}
+                            onClick={() => setViewingCustDetail(c)}
+                            className="cursor-pointer bg-[#FFFDF4] hover:bg-[#FFF9E6] rounded-[14px] p-3 border border-[#111111]/15 space-y-2 text-xs transition active:scale-[0.99]"
                           >
-                            {formatRelativeTime(getCustomerLastOrderDate(c))}
+                            <div className="flex items-center justify-between">
+                              <span className="text-[#5C3D2E]/80 font-medium">Total Belanja:</span>
+                              <div className="text-right">
+                                <span className="font-sans font-bold text-[#111111]">
+                                  Rp {(c.total_spent || 0).toLocaleString('id-ID')}
+                                </span>
+                                <span className="text-[10px] text-[#5C3D2E]/70 ml-1.5">
+                                  ({c.total_orders}x order • {formatRelativeTime(getCustomerLastOrderDate(c))})
+                                </span>
+                              </div>
+                            </div>
+
+                            <div className="flex items-start justify-between gap-2 pt-1 border-t border-[#111111]/10">
+                              <span className="text-[#5C3D2E]/80 font-medium shrink-0">Favorit:</span>
+                              <div className="text-right">
+                                <span className="font-bold text-[#111111]">🥟 {c.favorite_menu || '-'}</span>
+                                {c.favorite_option && (
+                                  <span className="block text-[10px] font-bold text-amber-900 mt-0.5">
+                                    🌶️ Opsi: {c.favorite_option}
+                                  </span>
+                                )}
+                              </div>
+                            </div>
+
+                            {c.notes && (
+                              <div className="text-[11px] text-gray-600 italic bg-white p-2 rounded-[10px] border border-[#111111]/10 truncate">
+                                📝 "{c.notes}"
+                              </div>
+                            )}
+
+                            <div className="pt-1 flex items-center justify-between text-[11px] text-[#5C3D2E]/80 border-t border-[#111111]/10">
+                              <span className="truncate max-w-[200px]">📍 {c.address || c.area || '-'}</span>
+                              <span className="font-bold text-amber-900 flex items-center gap-0.5 shrink-0">
+                                Detail & Memory →
+                              </span>
+                            </div>
                           </div>
-                        </td>
-                        <td className="py-3 px-4">
-                          <span
-                            className={`inline-block px-2.5 py-0.5 rounded-full text-[10px] font-bold uppercase ${
-                              c.status === 'Sultan Dulang'
-                                ? 'bg-[#111111] text-[#FFD700]'
-                                : c.status === 'Setia'
-                                ? 'bg-[#FFD700] text-[#111111]'
-                                : 'bg-gray-100 text-gray-700'
-                            }`}
-                          >
-                            {c.status}
-                          </span>
-                        </td>
-                        <td className="py-3 px-4 text-right">
-                          <div className="inline-flex items-center gap-1.5">
-                            <button
-                              type="button"
-                              onClick={() => handleSendFriendlyGreeting(c)}
-                              className="cursor-pointer bg-emerald-600 hover:bg-emerald-700 text-white px-2.5 py-1 rounded-full text-[11px] font-bold shadow-xs flex items-center gap-1 transition"
-                              title="Kirim sapaan hangat Dapur Dulang & tawarkan menu favorit via WA (Manual 1-by-1)"
-                            >
-                              <span>💬</span> Sapa WA
-                            </button>
-                            {c.birth_day && c.birth_month && (
+
+                          {/* Tombol Aksi Cepat Ramah Jempol */}
+                          <div className="flex items-center justify-between gap-1.5 pt-1 border-t border-[#111111]/10">
+                            <div className="flex items-center gap-1.5 flex-1 flex-wrap">
                               <button
                                 type="button"
-                                onClick={() => handleSendBirthdayGreeting(c)}
-                                className="cursor-pointer bg-gradient-to-r from-amber-200 to-amber-300 hover:brightness-105 text-amber-950 border border-amber-400 px-2.5 py-1 rounded-full text-[11px] font-bold shadow-xs flex items-center gap-1"
-                                title="Kirim ucapan & kupon ulang tahun via WA"
+                                onClick={() => handleSendFriendlyGreeting(c)}
+                                className="cursor-pointer bg-emerald-600 hover:bg-emerald-700 text-white px-3 py-1.5 rounded-full text-xs font-bold shadow-xs flex items-center gap-1 active:scale-95 transition"
                               >
-                                <span>🎂</span> Ultah
+                                <span>💬</span> Sapa WA
                               </button>
-                            )}
-                            <button
-                              type="button"
-                              onClick={() => handleCopyCourierReceipt(c)}
-                              className="cursor-pointer bg-[#FFD700] text-[#111111] hover:brightness-105 border border-[#111111] px-2.5 py-1 rounded-full text-[11px] font-bold shadow-xs flex items-center gap-1"
-                              title="Salin alamat & format pengiriman untuk kurir Grab/Gojek"
-                            >
-                              <span>📋</span> Resi Kurir
-                            </button>
-                            <a
-                              href={`https://wa.me/${c.wa.replace(/[^0-9]/g, '')}`}
-                              target="_blank"
-                              rel="noopener noreferrer"
-                              className="bg-emerald-100 text-emerald-800 hover:bg-emerald-200 px-2.5 py-1 rounded-full text-[11px] font-bold"
-                              title="Buka Chat WhatsApp"
-                            >
-                              WA
-                            </a>
+                              {c.birth_day && c.birth_month && (
+                                <button
+                                  type="button"
+                                  onClick={() => handleSendBirthdayGreeting(c)}
+                                  className="cursor-pointer bg-gradient-to-r from-amber-200 to-amber-300 text-amber-950 border border-amber-400 px-2.5 py-1.5 rounded-full text-xs font-bold shadow-xs flex items-center gap-1 active:scale-95 transition"
+                                >
+                                  <span>🎂</span> Ultah
+                                </button>
+                              )}
+                              <button
+                                type="button"
+                                onClick={() => handleCopyCourierReceipt(c)}
+                                className="cursor-pointer bg-[#FFD700] text-[#111111] border border-[#111111] px-2.5 py-1.5 rounded-full text-xs font-bold shadow-xs flex items-center gap-1 active:scale-95 transition"
+                              >
+                                <span>📋</span> Resi
+                              </button>
+                              <button
+                                type="button"
+                                onClick={() =>
+                                  setEditingCustNotes({
+                                    id: c.id,
+                                    name: c.name,
+                                    notes: c.notes || '',
+                                    favorite_option: c.favorite_option || '',
+                                  })
+                                }
+                                className="cursor-pointer bg-amber-100 hover:bg-amber-200 text-amber-900 border border-amber-300 px-2.5 py-1.5 rounded-full text-xs font-bold active:scale-95 transition"
+                              >
+                                + Selera
+                              </button>
+                            </div>
+
                             <button
                               type="button"
                               onClick={() => handleDeleteCustomer(c.id, c.name)}
-                              className="text-red-500 hover:text-red-700 hover:bg-red-50 px-2 py-1 rounded text-[11px] font-bold cursor-pointer"
-                              title="Hapus data pelanggan ini"
+                              className="cursor-pointer text-red-500 hover:text-red-700 p-1.5 text-xs font-bold rounded-full hover:bg-red-50 transition"
+                              title="Hapus data pelanggan"
                             >
-                              Hapus
+                              🗑️
                             </button>
                           </div>
-                        </td>
-                      </tr>
-                    );
-                  })}
-                  {customers.filter((c) => {
-                    if (customerSegmentFilter === 'sultan') return c.status === 'Sultan Dulang';
-                    if (customerSegmentFilter === 'setia') return c.status === 'Setia';
-                    if (customerSegmentFilter === 'dormant') return isDormantCust(c);
-                    return true;
-                  }).length === 0 && (
-                    <tr>
-                      <td colSpan={9} className="py-8 text-center text-[#5C3D2E]/70 font-sans text-xs">
-                        Tidak ada data pelanggan untuk kategori ini.
-                      </td>
-                    </tr>
+                        </div>
+                      );
+                    })
                   )}
-                </tbody>
-              </table>
-            </div>
-          </div>
+                </div>
+
+                {/* DESKTOP VIEW: TABEL LEBAR LENGKAP KHUSUS LAYAR LEBAR / LAPTOP */}
+                <div className="hidden md:block bg-white rounded-[20px] border-2 border-[#111111] shadow-[4px_4px_0_#111111] overflow-hidden">
+                  <div className="overflow-x-auto">
+                    <table className="w-full text-left font-sans text-[13px]">
+                      <thead className="bg-[#111111] text-[#FFF8E7] text-[11px] uppercase tracking-wider">
+                        <tr>
+                          <th className="py-3 px-4">ID Stiker</th>
+                          <th className="py-3 px-4">Nama Pelanggan</th>
+                          <th className="py-3 px-4">Nomor WA</th>
+                          <th className="py-3 px-4">Alamat & Wilayah</th>
+                          <th className="py-3 px-4">Selera & Langganan (Si A Sukanya Apa?)</th>
+                          <th className="py-3 px-4">Total Belanja</th>
+                          <th className="py-3 px-4 text-center">Order</th>
+                          <th className="py-3 px-4">Loyalty Tier</th>
+                          <th className="py-3 px-4 text-right">Aksi</th>
+                        </tr>
+                      </thead>
+                      <tbody className="divide-y divide-[#111111]/10">
+                        {filteredCustList.map((c) => {
+                          const isNewHighlight = highlightedCustId === c.id || highlightedCustId === c.qr_code_id;
+                          return (
+                            <tr
+                              key={c.id}
+                              className={`transition-colors duration-700 ${
+                                isNewHighlight
+                                  ? 'bg-[#FFD700]/30 font-semibold ring-2 ring-[#FFD700]'
+                                  : 'hover:bg-[#FFF8E7]/50'
+                              }`}
+                            >
+                              <td className="py-3 px-4 font-mono font-bold text-[#111111]">
+                                <div className="flex items-center gap-1.5">
+                                  {isNewHighlight && <span className="text-xs animate-ping">✨</span>}
+                                  <span>{c.qr_code_id}</span>
+                                </div>
+                              </td>
+                              <td className="py-3 px-4 font-bold text-[#111111]">
+                                <div
+                                  onClick={() => setViewingCustDetail(c)}
+                                  className="cursor-pointer hover:underline hover:text-amber-800 transition"
+                                  title="Klik untuk lihat detail lengkap pelanggan"
+                                >
+                                  {c.name}
+                                </div>
+                                <div className="flex flex-wrap items-center gap-1 mt-1">
+                                  {c.birth_day && c.birth_month && (
+                                    <span className="inline-flex items-center gap-1 text-[10px] font-sans font-medium text-amber-900 bg-amber-100/80 px-2 py-0.5 rounded-full border border-amber-300">
+                                      <span>🎂</span>
+                                      <span>
+                                        {c.birth_day}{' '}
+                                        {MONTHS_INDONESIA.find((m) => m.value === c.birth_month)?.label}
+                                      </span>
+                                    </span>
+                                  )}
+                                  {c.last_greeted_at && (
+                                    <span
+                                      className="inline-flex items-center gap-1 text-[10px] font-sans font-medium text-emerald-800 bg-emerald-100/80 px-2 py-0.5 rounded-full border border-emerald-300"
+                                      title={`Terakhir disapa via WA: ${c.last_greeted_at}`}
+                                    >
+                                      <span>💬</span>
+                                      <span>Disapa {c.last_greeted_at}</span>
+                                    </span>
+                                  )}
+                                  {isDormantCust(c) && !c.last_greeted_at && (
+                                    <span
+                                      className="inline-flex items-center gap-1 text-[10px] font-sans font-medium text-amber-900 bg-amber-100 px-2 py-0.5 rounded-full border border-amber-300"
+                                      title="Belum pernah pesan / scan lagi > 14 hari"
+                                    >
+                                      <span>💤</span>
+                                      <span>&gt;14 hr pasif</span>
+                                    </span>
+                                  )}
+                                </div>
+                              </td>
+                              <td className="py-3 px-4 font-mono text-xs">
+                                +{c.wa}
+                              </td>
+                              <td className="py-3 px-4 max-w-[200px] truncate" title={c.address}>
+                                {c.address} <span className="text-[#5C3D2E]/60 text-xs block">({c.area})</span>
+                              </td>
+                              {/* SELERA PELANGGAN: SI A SUKANYA APA */}
+                              <td className="py-3 px-4 max-w-[240px]">
+                                <div className="font-medium text-[#111111] flex items-center gap-1">
+                                  <span>🥟</span>
+                                  <span>{c.favorite_menu}</span>
+                                </div>
+                                {c.favorite_option && (
+                                  <span className="inline-block bg-[#FFF8E7] text-[#5C3D2E] text-[10px] font-bold px-2 py-0.5 rounded border border-[#111111]/20 mt-1">
+                                    🌶️ Opsi: {c.favorite_option}
+                                  </span>
+                                )}
+                                {c.notes && (
+                                  <div className="text-[11px] text-gray-500 italic mt-1 truncate" title={c.notes}>
+                                    📝 "{c.notes}"
+                                  </div>
+                                )}
+                                <button
+                                  type="button"
+                                  onClick={() =>
+                                    setEditingCustNotes({
+                                      id: c.id,
+                                      name: c.name,
+                                      notes: c.notes || '',
+                                      favorite_option: c.favorite_option || '',
+                                    })
+                                  }
+                                  className="cursor-pointer text-[10px] font-bold text-amber-900 underline hover:text-amber-700 block mt-1"
+                                >
+                                  + Catat Selera Dapur
+                                </button>
+                              </td>
+                              {/* TOTAL BELANJA */}
+                              <td className="py-3 px-4 font-bold text-[#111111] whitespace-nowrap">
+                                Rp {(c.total_spent || 0).toLocaleString('id-ID')}
+                              </td>
+                              <td className="py-3 px-4 text-center">
+                                <div className="font-bold text-[#111111]">{c.total_orders}x</div>
+                                <div
+                                  className="text-[10px] text-[#5C3D2E]/75 font-semibold whitespace-nowrap mt-0.5"
+                                  title={`Terakhir transaksi: ${getCustomerLastOrderDate(c) || '-'}`}
+                                >
+                                  {formatRelativeTime(getCustomerLastOrderDate(c))}
+                                </div>
+                              </td>
+                              <td className="py-3 px-4">
+                                <span
+                                  className={`inline-block px-2.5 py-0.5 rounded-full text-[10px] font-bold uppercase ${
+                                    c.status === 'Sultan Dulang'
+                                      ? 'bg-[#111111] text-[#FFD700]'
+                                      : c.status === 'Setia'
+                                      ? 'bg-[#FFD700] text-[#111111]'
+                                      : 'bg-gray-100 text-gray-700'
+                                  }`}
+                                >
+                                  {c.status}
+                                </span>
+                              </td>
+                              <td className="py-3 px-4 text-right">
+                                <div className="inline-flex items-center gap-1.5">
+                                  <button
+                                    type="button"
+                                    onClick={() => setViewingCustDetail(c)}
+                                    className="cursor-pointer bg-white hover:bg-gray-100 text-[#111111] border border-[#111111]/30 px-2 py-1 rounded-full text-[11px] font-bold shadow-xs transition"
+                                    title="Buka detail lengkap & memory belanja"
+                                  >
+                                    Detail
+                                  </button>
+                                  <button
+                                    type="button"
+                                    onClick={() => handleSendFriendlyGreeting(c)}
+                                    className="cursor-pointer bg-emerald-600 hover:bg-emerald-700 text-white px-2.5 py-1 rounded-full text-[11px] font-bold shadow-xs flex items-center gap-1 transition"
+                                    title="Kirim sapaan hangat Dapur Dulang & tawarkan menu favorit via WA (Manual 1-by-1)"
+                                  >
+                                    <span>💬</span> Sapa WA
+                                  </button>
+                                  {c.birth_day && c.birth_month && (
+                                    <button
+                                      type="button"
+                                      onClick={() => handleSendBirthdayGreeting(c)}
+                                      className="cursor-pointer bg-gradient-to-r from-amber-200 to-amber-300 hover:brightness-105 text-amber-950 border border-amber-400 px-2.5 py-1 rounded-full text-[11px] font-bold shadow-xs flex items-center gap-1"
+                                      title="Kirim ucapan & kupon ulang tahun via WA"
+                                    >
+                                      <span>🎂</span> Ultah
+                                    </button>
+                                  )}
+                                  <button
+                                    type="button"
+                                    onClick={() => handleCopyCourierReceipt(c)}
+                                    className="cursor-pointer bg-[#FFD700] text-[#111111] hover:brightness-105 border border-[#111111] px-2.5 py-1 rounded-full text-[11px] font-bold shadow-xs flex items-center gap-1"
+                                    title="Salin alamat & format pengiriman untuk kurir Grab/Gojek"
+                                  >
+                                    <span>📋</span> Resi Kurir
+                                  </button>
+                                  <a
+                                    href={`https://wa.me/${c.wa.replace(/[^0-9]/g, '')}`}
+                                    target="_blank"
+                                    rel="noopener noreferrer"
+                                    className="bg-emerald-100 text-emerald-800 hover:bg-emerald-200 px-2.5 py-1 rounded-full text-[11px] font-bold"
+                                    title="Buka Chat WhatsApp"
+                                  >
+                                    WA
+                                  </a>
+                                  <button
+                                    type="button"
+                                    onClick={() => handleDeleteCustomer(c.id, c.name)}
+                                    className="text-red-500 hover:text-red-700 hover:bg-red-50 px-2 py-1 rounded text-[11px] font-bold cursor-pointer"
+                                    title="Hapus data pelanggan ini"
+                                  >
+                                    Hapus
+                                  </button>
+                                </div>
+                              </td>
+                            </tr>
+                          );
+                        })}
+                        {filteredCustList.length === 0 && (
+                          <tr>
+                            <td colSpan={9} className="py-8 text-center text-[#5C3D2E]/70 font-sans text-xs">
+                              Tidak ada data pelanggan untuk kategori ini.
+                            </td>
+                          </tr>
+                        )}
+                      </tbody>
+                    </table>
+                  </div>
+                </div>
+
+                {/* MODAL DETAIL LENGKAP & MEMORY BELANJA PELANGGAN (UNTUK MOBILE CARD & DESKTOP KLIK) */}
+                {viewingCustDetail && (
+                  <div className="fixed inset-0 bg-black/60 backdrop-blur-xs z-50 flex items-center justify-center p-3 sm:p-4">
+                    <div className="bg-white rounded-[24px] max-w-lg w-full p-5 sm:p-6 border-2 border-[#111111] shadow-[6px_6px_0_#111111] space-y-4 max-h-[90vh] overflow-y-auto animate-in zoom-in-95 duration-200">
+                      {/* Modal Header */}
+                      <div className="flex items-start justify-between border-b-2 border-[#111111]/10 pb-3">
+                        <div className="flex items-center gap-3">
+                          <div className="w-12 h-12 rounded-full bg-[#111111] text-[#FFD700] flex items-center justify-center font-hand font-bold text-2xl border-2 border-[#111111] shadow-xs">
+                            {viewingCustDetail.name ? viewingCustDetail.name.charAt(0).toUpperCase() : 'D'}
+                          </div>
+                          <div>
+                            <div className="flex items-center gap-2 flex-wrap">
+                              <h3 className="font-hand font-bold text-2xl text-[#111111] leading-none">
+                                Kak {viewingCustDetail.name}
+                              </h3>
+                              <span
+                                className={`px-2.5 py-0.5 rounded-full text-[10px] font-bold uppercase ${
+                                  viewingCustDetail.status === 'Sultan Dulang'
+                                    ? 'bg-[#111111] text-[#FFD700]'
+                                    : viewingCustDetail.status === 'Setia'
+                                    ? 'bg-[#FFD700] text-[#111111]'
+                                    : 'bg-gray-100 text-gray-700'
+                                }`}
+                              >
+                                {viewingCustDetail.status}
+                              </span>
+                            </div>
+                            <div className="flex items-center gap-2 text-xs font-mono text-[#5C3D2E]/80 mt-1">
+                              <span className="bg-[#FFF8E7] px-2 py-0.5 rounded border border-[#111111]/20 font-bold">
+                                ID: {viewingCustDetail.qr_code_id}
+                              </span>
+                              <span>•</span>
+                              <span>+{viewingCustDetail.wa}</span>
+                            </div>
+                          </div>
+                        </div>
+                        <button
+                          type="button"
+                          onClick={() => setViewingCustDetail(null)}
+                          className="cursor-pointer text-gray-400 hover:text-black font-bold text-lg p-1"
+                        >
+                          ✕
+                        </button>
+                      </div>
+
+                      {/* Memory Transaksi & Langganan */}
+                      <div className="bg-[#FFFDF4] rounded-[18px] p-4 border border-[#111111]/15 space-y-3">
+                        <span className="font-sans text-[11px] font-bold uppercase tracking-wider text-[#5C3D2E] block">
+                          📊 Memory Belanja & Riwayat Terakhir:
+                        </span>
+                        <div className="grid grid-cols-2 gap-2.5 text-xs">
+                          <div className="bg-white p-2.5 rounded-[12px] border border-[#111111]/10">
+                            <span className="text-[#5C3D2E]/70 text-[10px] block">Total Belanjaan</span>
+                            <span className="font-sans font-bold text-[#111111] text-sm">
+                              Rp {(viewingCustDetail.total_spent || 0).toLocaleString('id-ID')}
+                            </span>
+                          </div>
+                          <div className="bg-white p-2.5 rounded-[12px] border border-[#111111]/10">
+                            <span className="text-[#5C3D2E]/70 text-[10px] block">Frekuensi Order</span>
+                            <span className="font-sans font-bold text-[#111111] text-sm">
+                              {viewingCustDetail.total_orders || 0}x Pesanan
+                            </span>
+                          </div>
+                          <div className="bg-white p-2.5 rounded-[12px] border border-[#111111]/10 col-span-2">
+                            <span className="text-[#5C3D2E]/70 text-[10px] block">Terakhir Transaksi</span>
+                            <div className="flex items-center justify-between">
+                              <span className="font-sans font-semibold text-[#111111]">
+                                {formatRelativeTime(getCustomerLastOrderDate(viewingCustDetail))}
+                              </span>
+                              <span className="text-[11px] text-[#5C3D2E]/60">
+                                {getCustomerLastOrderDate(viewingCustDetail) || 'Belum ada transaksi'}
+                              </span>
+                            </div>
+                          </div>
+                        </div>
+                      </div>
+
+                      {/* Selera Pelanggan (Si A Sukanya Apa?) */}
+                      <div className="bg-[#FFF8E7] rounded-[18px] p-4 border border-[#FFD700] space-y-2.5">
+                        <div className="flex items-center justify-between">
+                          <span className="font-sans text-[11px] font-bold uppercase tracking-wider text-[#5C3D2E]">
+                            🥟 Selera Dapur & Menu Favorit:
+                          </span>
+                          <button
+                            type="button"
+                            onClick={() => {
+                              setEditingCustNotes({
+                                id: viewingCustDetail.id,
+                                name: viewingCustDetail.name,
+                                notes: viewingCustDetail.notes || '',
+                                favorite_option: viewingCustDetail.favorite_option || '',
+                              });
+                            }}
+                            className="cursor-pointer text-[11px] font-bold text-amber-900 underline hover:text-amber-700"
+                          >
+                            ✏️ Edit Selera
+                          </button>
+                        </div>
+
+                        <div className="bg-white rounded-[14px] p-3 border border-[#111111]/10 space-y-1.5 text-xs">
+                          <div className="flex items-center justify-between">
+                            <span className="text-[#5C3D2E]/70">Menu Favorit:</span>
+                            <span className="font-bold text-[#111111]">
+                              🥟 {viewingCustDetail.favorite_menu || '-'}
+                            </span>
+                          </div>
+                          {viewingCustDetail.favorite_option && (
+                            <div className="flex items-center justify-between pt-1 border-t border-gray-100">
+                              <span className="text-[#5C3D2E]/70">Opsi / Saos Favorit:</span>
+                              <span className="font-bold text-amber-900">
+                                🌶️ {viewingCustDetail.favorite_option}
+                              </span>
+                            </div>
+                          )}
+                          {viewingCustDetail.notes ? (
+                            <div className="pt-1.5 border-t border-gray-100 text-[11px] text-gray-700 italic">
+                              📝 "{viewingCustDetail.notes}"
+                            </div>
+                          ) : (
+                            <div className="pt-1.5 border-t border-gray-100 text-[11px] text-gray-400 italic">
+                              Belum ada catatan selera dapur khusus.
+                            </div>
+                          )}
+                        </div>
+                      </div>
+
+                      {/* Info Kontak & Pengiriman */}
+                      <div className="bg-white rounded-[18px] p-3.5 border border-[#111111]/15 space-y-2 text-xs">
+                        <div className="flex items-center justify-between">
+                          <span className="text-[#5C3D2E]/70">Ulang Tahun:</span>
+                          <span className="font-semibold text-[#111111]">
+                            {viewingCustDetail.birth_day && viewingCustDetail.birth_month
+                              ? `🎂 ${viewingCustDetail.birth_day} ${MONTHS_INDONESIA.find((m) => m.value === viewingCustDetail.birth_month)?.label}`
+                              : 'Belum diisi'}
+                          </span>
+                        </div>
+                        <div className="flex items-start justify-between gap-2 pt-1 border-t border-gray-100">
+                          <span className="text-[#5C3D2E]/70 shrink-0">Alamat Kirim:</span>
+                          <span className="font-semibold text-[#111111] text-right">
+                            {viewingCustDetail.address
+                              ? `${viewingCustDetail.address} (${viewingCustDetail.area || '-'})`
+                              : viewingCustDetail.area || '-'}
+                          </span>
+                        </div>
+                      </div>
+
+                      {/* Action Buttons inside Modal */}
+                      <div className="space-y-2 pt-2 border-t border-[#111111]/10">
+                        <div className="grid grid-cols-2 gap-2">
+                          <button
+                            type="button"
+                            onClick={() => handleSendFriendlyGreeting(viewingCustDetail)}
+                            className="cursor-pointer bg-emerald-600 hover:bg-emerald-700 text-white rounded-full py-2.5 px-3 font-sans font-bold text-xs flex items-center justify-center gap-1.5 shadow-sm transition active:scale-95"
+                          >
+                            <span>💬</span> Sapa Hangat WA
+                          </button>
+                          <button
+                            type="button"
+                            onClick={() => handleCopyCourierReceipt(viewingCustDetail)}
+                            className="cursor-pointer bg-[#FFD700] hover:bg-[#FFE033] text-[#111111] border border-[#111111] rounded-full py-2.5 px-3 font-sans font-bold text-xs flex items-center justify-center gap-1.5 shadow-sm transition active:scale-95"
+                          >
+                            <span>📋</span> Salin Resi Kurir
+                          </button>
+                        </div>
+
+                        {viewingCustDetail.birth_day && viewingCustDetail.birth_month && (
+                          <button
+                            type="button"
+                            onClick={() => handleSendBirthdayGreeting(viewingCustDetail)}
+                            className="cursor-pointer w-full bg-gradient-to-r from-amber-200 to-amber-300 text-amber-950 border border-amber-400 rounded-full py-2 px-3 font-sans font-bold text-xs flex items-center justify-center gap-1.5 shadow-xs transition active:scale-95"
+                          >
+                            <span>🎂</span> Kirim Ucapan & Kupon Ultah WA
+                          </button>
+                        )}
+
+                        <div className="flex items-center justify-between pt-1">
+                          <a
+                            href={`https://wa.me/${viewingCustDetail.wa.replace(/[^0-9]/g, '')}`}
+                            target="_blank"
+                            rel="noopener noreferrer"
+                            className="text-xs font-bold text-emerald-800 hover:underline flex items-center gap-1"
+                          >
+                            <span>📱</span> Buka Chat WA Langsung
+                          </a>
+                          <button
+                            type="button"
+                            onClick={() => {
+                              const c = viewingCustDetail;
+                              setViewingCustDetail(null);
+                              handleDeleteCustomer(c.id, c.name);
+                            }}
+                            className="cursor-pointer text-xs font-bold text-red-500 hover:text-red-700 hover:underline"
+                          >
+                            Hapus Pelanggan
+                          </button>
+                        </div>
+                      </div>
+                    </div>
+                  </div>
+                )}
+              </>
+            );
+          })()}
 
           {/* MODAL CATAT SELERA PELANGGAN (SI A SUKANYA APA) */}
           {editingCustNotes && (
