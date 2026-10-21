@@ -1,4 +1,4 @@
-import React, { useState, useEffect, useRef } from 'react';
+import React, { useState, useEffect, useRef, useMemo } from 'react';
 import {
   MenuItem,
   Customer,
@@ -225,6 +225,36 @@ export const OwnerDashboardView: React.FC<OwnerDashboardViewProps> = ({
 
   // --- EDIT MENU STATE ---
   const [editingItem, setEditingItem] = useState<MenuItem | null>(null);
+
+  // --- MENU FILTER & SEARCH STATE ---
+  const [menuServingFilter, setMenuServingFilter] = useState<'all' | 'matang_only' | 'frozen_only' | 'both'>('all');
+  const [menuSearchQuery, setMenuSearchQuery] = useState('');
+
+  const countMatangOnly = useMemo(() => {
+    return menus.filter((m) => (m.servingType || (m.variantType === 'frozen' || m.nama.toLowerCase().includes('frozen') ? 'frozen_only' : 'matang_only')) === 'matang_only').length;
+  }, [menus]);
+
+  const countFrozenOnly = useMemo(() => {
+    return menus.filter((m) => (m.servingType || (m.variantType === 'frozen' || m.nama.toLowerCase().includes('frozen') ? 'frozen_only' : 'matang_only')) === 'frozen_only').length;
+  }, [menus]);
+
+  const countBoth = useMemo(() => {
+    return menus.filter((m) => (m.servingType || (m.variantType === 'frozen' || m.nama.toLowerCase().includes('frozen') ? 'frozen_only' : 'matang_only')) === 'both').length;
+  }, [menus]);
+
+  const filteredDashboardMenus = useMemo(() => {
+    return menus.filter((m) => {
+      const st = m.servingType || (m.variantType === 'frozen' || m.nama.toLowerCase().includes('frozen') ? 'frozen_only' : 'matang_only');
+      if (menuServingFilter !== 'all' && st !== menuServingFilter) {
+        return false;
+      }
+      if (menuSearchQuery.trim()) {
+        const q = menuSearchQuery.toLowerCase();
+        return m.nama.toLowerCase().includes(q) || (m.deskripsi && m.deskripsi.toLowerCase().includes(q));
+      }
+      return true;
+    });
+  }, [menus, menuServingFilter, menuSearchQuery]);
 
   // --- SETTINGS FORM STATE ---
   const [localConfig, setLocalConfig] = useState<StoreConfig>({ ...storeConfig });
@@ -2468,9 +2498,90 @@ Catatan Kurir: Pastikan posisi dus ditaruh datar agar mayo tidak tumpah ya kak.`
             </div>
           )}
 
+          {/* FILTER BAR BENTUK PENYAJIAN & PENCARIAN MENU */}
+          <div className="bg-white rounded-[20px] p-3.5 border-2 border-[#111111] shadow-[3px_3px_0_#111111] space-y-3">
+            <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-3">
+              {/* Filter Tabs */}
+              <div className="flex items-center gap-1.5 overflow-x-auto pb-1 sm:pb-0 no-scrollbar">
+                {[
+                  { id: 'all' as const, label: 'Semua Menu', count: menus.length, icon: '✨' },
+                  { id: 'matang_only' as const, label: 'Hanya Matang', count: countMatangOnly, icon: '🍳' },
+                  { id: 'frozen_only' as const, label: 'Hanya Frozen', count: countFrozenOnly, icon: '❄️' },
+                  { id: 'both' as const, label: 'Bisa Keduanya', count: countBoth, icon: '🔄' },
+                ].map((tab) => {
+                  const isActive = menuServingFilter === tab.id;
+                  return (
+                    <button
+                      key={tab.id}
+                      type="button"
+                      onClick={() => setMenuServingFilter(tab.id)}
+                      className={`cursor-pointer px-3 py-1.5 rounded-full font-sans font-bold text-xs transition whitespace-nowrap flex items-center gap-1.5 border active:scale-95 ${
+                        isActive
+                          ? 'bg-[#111111] text-[#FFD700] border-[#111111] shadow-xs'
+                          : 'bg-[#FFF8E7] text-[#5C3D2E] border-[#111111]/20 hover:border-[#111111]'
+                      }`}
+                    >
+                      <span>{tab.icon}</span>
+                      <span>{tab.label}</span>
+                      <span
+                        className={`text-[10px] px-1.5 py-0.2 rounded-full font-mono font-bold ${
+                          isActive ? 'bg-[#FFD700] text-[#111111]' : 'bg-black/10 text-[#111111]'
+                        }`}
+                      >
+                        {tab.count}
+                      </span>
+                    </button>
+                  );
+                })}
+              </div>
+
+              {/* Search Box */}
+              <div className="relative w-full sm:w-64">
+                <input
+                  type="text"
+                  value={menuSearchQuery}
+                  onChange={(e) => setMenuSearchQuery(e.target.value)}
+                  placeholder="Cari nama menu..."
+                  className="w-full rounded-full border-2 border-[#111111] pl-8 pr-8 py-1.5 text-xs font-sans bg-[#FFFDF4] focus:outline-none focus:border-[#FFD700]"
+                />
+                <span className="absolute left-2.5 top-1/2 -translate-y-1/2 text-xs opacity-50">🔍</span>
+                {menuSearchQuery && (
+                  <button
+                    type="button"
+                    onClick={() => setMenuSearchQuery('')}
+                    className="cursor-pointer absolute right-2.5 top-1/2 -translate-y-1/2 text-xs font-bold text-gray-400 hover:text-black"
+                  >
+                    ✕
+                  </button>
+                )}
+              </div>
+            </div>
+          </div>
+
+          {/* EMPTY STATE JIKA FILTER KOSONG */}
+          {filteredDashboardMenus.length === 0 && (
+            <div className="text-center py-12 bg-white rounded-[22px] border-2 border-dashed border-[#111111]/25 p-6 space-y-2">
+              <div className="text-4xl">🥟</div>
+              <div className="font-bold text-sm text-[#111111]">Tidak ada menu yang sesuai kriteria ini</div>
+              <p className="text-xs text-[#5C3D2E]/70 max-w-sm mx-auto">
+                Silakan ganti tab filter penyajian atau hapus kata kunci pencarian.
+              </p>
+              <button
+                type="button"
+                onClick={() => {
+                  setMenuServingFilter('all');
+                  setMenuSearchQuery('');
+                }}
+                className="mt-2 cursor-pointer bg-[#111111] text-[#FFD700] px-4 py-1.5 rounded-full font-bold text-xs shadow-xs"
+              >
+                Reset Filter Menu
+              </button>
+            </div>
+          )}
+
           {/* MOBILE VIEW: Kotak-kotak (Grid 2 Kolom) Bersih & Ringkas Khusus Layar HP */}
           <div className="grid grid-cols-2 gap-2.5 sm:hidden">
-            {menus.map((m) => (
+            {filteredDashboardMenus.map((m) => (
               <div
                 key={m.id}
                 onClick={() => {
@@ -2583,7 +2694,7 @@ Catatan Kurir: Pastikan posisi dus ditaruh datar agar mayo tidak tumpah ya kak.`
 
           {/* DESKTOP / TABLET VIEW: Tampilan List Baris Horizontal Yang Nyaman Diklik Mouse */}
           <div className="hidden sm:grid gap-4">
-            {menus.map((m) => (
+            {filteredDashboardMenus.map((m) => (
               <div
                 key={m.id}
                 className="bg-white rounded-[20px] p-5 border-2 border-[#111111] shadow-[3px_3px_0_#111111] flex flex-col md:flex-row gap-4 items-start md:items-center justify-between"

@@ -39,6 +39,7 @@ export const LandingView: React.FC<LandingViewProps> = ({
 }) => {
   const [menuTab, setMenuTab] = useState<'today' | 'tomorrow'>('today');
   const [selectedCategory, setSelectedCategory] = useState<MenuCategory>('all');
+  const [servingFilter, setServingFilter] = useState<'all' | 'matang' | 'frozen'>('all');
   const [isTestimonialsOpen, setIsTestimonialsOpen] = useState(false);
   const [isMixMatchOpen, setIsMixMatchOpen] = useState(false);
   const [lastCart, setLastCart] = useState<any[] | null>(() => {
@@ -720,16 +721,76 @@ export const LandingView: React.FC<LandingViewProps> = ({
           </div>
         )}
 
+        {/* Serving Mode Filter (Semua Sajian | 🍳 Siap Santap / Matang | ❄️ Stok Frozen / Beku) */}
+        {(() => {
+          const activeMenusList = menuTab === 'today' ? menus : menus.filter((m) => m.tersediaBesok !== false);
+          const countMatang = activeMenusList.filter((item) => {
+            const name = item.nama.toLowerCase();
+            return item.servingType === 'matang_only' || item.servingType === 'both' || (item.variantType !== 'frozen' && !name.includes('frozen') && !name.includes('beku'));
+          }).length;
+          const countFrozen = activeMenusList.filter((item) => {
+            const name = item.nama.toLowerCase();
+            return item.servingType === 'frozen_only' || item.servingType === 'both' || item.variantType === 'frozen' || name.includes('frozen') || name.includes('beku');
+          }).length;
+
+          return (
+            <div className="flex items-center gap-1.5 overflow-x-auto pb-1 pt-1 no-scrollbar -mx-1 px-1">
+              <div className="inline-flex items-center gap-1 p-1 bg-white rounded-full border-2 border-[#111111] shadow-[2px_2px_0_#111111] shrink-0">
+                <button
+                  type="button"
+                  onClick={() => setServingFilter('all')}
+                  className={`cursor-pointer px-3 sm:px-3.5 py-1.5 rounded-full font-sans font-bold text-xs transition flex items-center gap-1.5 active:scale-95 whitespace-nowrap ${
+                    servingFilter === 'all'
+                      ? 'bg-[#111111] text-[#FFD700]'
+                      : 'text-[#5C3D2E] hover:text-[#111111]'
+                  }`}
+                >
+                  <span>✨</span>
+                  <span>Semua Sajian ({activeMenusList.length})</span>
+                </button>
+                <button
+                  type="button"
+                  onClick={() => setServingFilter('matang')}
+                  className={`cursor-pointer px-3 sm:px-3.5 py-1.5 rounded-full font-sans font-bold text-xs transition flex items-center gap-1.5 active:scale-95 whitespace-nowrap ${
+                    servingFilter === 'matang'
+                      ? 'bg-[#FFD700] text-[#111111] shadow-xs'
+                      : 'text-[#5C3D2E] hover:text-[#111111]'
+                  }`}
+                >
+                  <span>🍳</span>
+                  <span>Siap Santap / Matang ({countMatang})</span>
+                </button>
+                <button
+                  type="button"
+                  onClick={() => setServingFilter('frozen')}
+                  className={`cursor-pointer px-3 sm:px-3.5 py-1.5 rounded-full font-sans font-bold text-xs transition flex items-center gap-1.5 active:scale-95 whitespace-nowrap ${
+                    servingFilter === 'frozen'
+                      ? 'bg-sky-600 text-white shadow-xs'
+                      : 'text-[#5C3D2E] hover:text-[#111111]'
+                  }`}
+                >
+                  <span>❄️</span>
+                  <span>Stok Kulkas / Frozen ({countFrozen})</span>
+                </button>
+              </div>
+            </div>
+          );
+        })()}
+
         {/* Category Filter Pills (Horizontal Scroll on Mobile) */}
         <div className="flex items-center gap-2 overflow-x-auto pb-1 pt-1 no-scrollbar -mx-1 px-1">
           {MENU_CATEGORIES.map((cat) => {
             const isSelected = selectedCategory === cat.id;
             const activeMenusList = menuTab === 'today' ? menus : menus.filter((m) => m.tersediaBesok !== false);
             const count = activeMenusList.filter((item) => {
-              if (cat.id === 'all') return true;
               const name = item.nama.toLowerCase();
               const isFrozen = item.variantType === 'frozen' || item.servingType === 'frozen_only' || item.servingType === 'both' || name.includes('frozen') || name.includes('beku');
               const isFrozenOnly = item.servingType === 'frozen_only' || item.variantType === 'frozen' || name.includes('frozen') || name.includes('beku');
+
+              if (servingFilter === 'matang' && isFrozenOnly) return false;
+              if (servingFilter === 'frozen' && !isFrozen) return false;
+
+              if (cat.id === 'all') return true;
               if (cat.id === 'frozen') return isFrozen;
               if (cat.id === 'risol') return name.includes('risol') && !isFrozenOnly;
               if (cat.id === 'gorengan') {
@@ -870,10 +931,14 @@ export const LandingView: React.FC<LandingViewProps> = ({
         {(() => {
           const activeMenusList = menuTab === 'today' ? menus : menus.filter((m) => m.tersediaBesok !== false);
           const filteredMenus = activeMenusList.filter((item) => {
-            if (selectedCategory === 'all') return true;
             const name = item.nama.toLowerCase();
             const isFrozen = item.variantType === 'frozen' || item.servingType === 'frozen_only' || item.servingType === 'both' || name.includes('frozen') || name.includes('beku');
             const isFrozenOnly = item.servingType === 'frozen_only' || item.variantType === 'frozen' || name.includes('frozen') || name.includes('beku');
+
+            if (servingFilter === 'matang' && isFrozenOnly) return false;
+            if (servingFilter === 'frozen' && !isFrozen) return false;
+
+            if (selectedCategory === 'all') return true;
             if (selectedCategory === 'frozen') return isFrozen;
             if (selectedCategory === 'risol') return name.includes('risol') && !isFrozenOnly;
             if (selectedCategory === 'gorengan') {
@@ -906,16 +971,19 @@ export const LandingView: React.FC<LandingViewProps> = ({
             return (
               <div className="text-center py-12 bg-white rounded-[22px] border-2 border-dashed border-[#111111]/20 p-6 space-y-2">
                 <div className="text-4xl">🥟</div>
-                <div className="font-bold text-sm text-[#111111]">Belum ada menu di kategori ini</div>
+                <div className="font-bold text-sm text-[#111111]">Belum ada menu di kategori atau pilihan ini</div>
                 <p className="text-xs text-[#5C3D2E]/70 max-w-sm mx-auto">
-                  Silakan pilih kategori lain atau tampilkan seluruh menu andalan Dapur Dulang.
+                  Silakan ganti pilihan sajian atau tampilkan seluruh menu andalan Dapur Dulang.
                 </p>
                 <button
                   type="button"
-                  onClick={() => setSelectedCategory('all')}
+                  onClick={() => {
+                    setSelectedCategory('all');
+                    setServingFilter('all');
+                  }}
                   className="mt-2 cursor-pointer bg-[#111111] text-[#FFD700] px-4 py-2 rounded-full font-bold text-xs shadow-xs"
                 >
-                  Lihat Semua Menu
+                  Tampilkan Semua Menu
                 </button>
               </div>
             );
