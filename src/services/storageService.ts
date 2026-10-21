@@ -68,7 +68,21 @@ export const storageService = {
       const data = localStorage.getItem(STORAGE_KEYS.MENUS);
       if (data) {
         const parsed = JSON.parse(data);
-        if (Array.isArray(parsed) && parsed.length > 0) return parsed;
+        if (Array.isArray(parsed) && parsed.length > 0) {
+          return parsed.map((m: MenuItem) => {
+            if (!m.servingType) {
+              const name = (m.nama || '').toLowerCase();
+              if (m.variantType === 'frozen' || name.includes('frozen') || name.includes('beku')) {
+                return { ...m, servingType: 'frozen_only', variantType: 'frozen' };
+              } else if (name.includes('risol')) {
+                return { ...m, servingType: 'both' };
+              } else {
+                return { ...m, servingType: 'matang_only' };
+              }
+            }
+            return m;
+          });
+        }
       }
     } catch (e) {
       console.warn('Failed to read menus from localStorage:', e);

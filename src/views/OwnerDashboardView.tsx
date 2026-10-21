@@ -1237,6 +1237,14 @@ Catatan Kurir: Pastikan posisi dus ditaruh datar agar mayo tidak tumpah ya kak.`
       )}\n*Kembalian:* Rp ${(ord.cash_change || 0).toLocaleString('id-ID')}`;
     }
 
+    let giftInfo = '';
+    if (ord.is_gift || ord.gift_recipient) {
+      giftInfo =
+        `🎁 *PESANAN HADIAH UNTUK:* Kak ${ord.gift_recipient || 'Istimewa'}\n` +
+        (ord.gift_message ? `💌 *Ucapan:* "${ord.gift_message}"\n` : '') +
+        `----------------------------------------\n`;
+    }
+
     return (
       `*🧾 NOTA RESMI ${brandTitle}*\n` +
       `_${brandTag}_\n` +
@@ -1246,6 +1254,7 @@ Catatan Kurir: Pastikan posisi dus ditaruh datar agar mayo tidak tumpah ya kak.`
       `*Pelanggan:* ${ord.customer_name}\n` +
       `*Metode Bayar:* ${(ord.payment_method || 'Tunai').toUpperCase()}\n` +
       `----------------------------------------\n` +
+      `${giftInfo}` +
       `${itemsText}\n` +
       `----------------------------------------\n` +
       `*TOTAL TAGIHAN: Rp ${ord.total_price.toLocaleString('id-ID')}*\n` +
@@ -2519,12 +2528,36 @@ Catatan Kurir: Pastikan posisi dus ditaruh datar agar mayo tidak tumpah ya kak.`
                   </div>
 
                   {/* Info Ringkas Menu */}
-                  <div className="mt-2 space-y-0.5">
+                  <div className="mt-2 space-y-1">
                     <h3 className="font-bold text-[13px] text-[#111111] leading-snug line-clamp-2">
                       {m.nama}
                     </h3>
-                    <div className="font-mono font-bold text-xs text-[#5C3D2E]">
-                      Rp {m.harga.toLocaleString('id-ID')}
+                    <div className="flex items-center justify-between gap-1">
+                      <div className="font-mono font-bold text-xs text-[#5C3D2E]">
+                        Rp {m.harga.toLocaleString('id-ID')}
+                      </div>
+                      {(() => {
+                        const st = m.servingType || (m.variantType === 'frozen' || m.nama.toLowerCase().includes('frozen') ? 'frozen_only' : 'matang_only');
+                        if (st === 'both') {
+                          return (
+                            <span className="text-[9px] font-bold px-1.5 py-0.5 rounded-full bg-emerald-100 text-emerald-800 border border-emerald-300">
+                              🔄 Keduanya
+                            </span>
+                          );
+                        }
+                        if (st === 'frozen_only') {
+                          return (
+                            <span className="text-[9px] font-bold px-1.5 py-0.5 rounded-full bg-sky-100 text-sky-800 border border-sky-300">
+                              ❄️ Frozen
+                            </span>
+                          );
+                        }
+                        return (
+                          <span className="text-[9px] font-bold px-1.5 py-0.5 rounded-full bg-amber-100 text-amber-900 border border-amber-300">
+                            🍳 Matang
+                          </span>
+                        );
+                      })()}
                     </div>
                   </div>
                 </div>
@@ -2585,6 +2618,28 @@ Catatan Kurir: Pastikan posisi dus ditaruh datar agar mayo tidak tumpah ya kak.`
                       >
                         {m.tersedia ? 'Tersedia' : 'Habis'}
                       </span>
+                      {(() => {
+                        const st = m.servingType || (m.variantType === 'frozen' || m.nama.toLowerCase().includes('frozen') ? 'frozen_only' : 'matang_only');
+                        if (st === 'both') {
+                          return (
+                            <span className="text-[10px] font-bold px-2 py-0.5 rounded-full bg-emerald-100 text-emerald-800 border border-emerald-300 flex items-center gap-1">
+                              <span>🔄</span> Matang & Frozen
+                            </span>
+                          );
+                        }
+                        if (st === 'frozen_only') {
+                          return (
+                            <span className="text-[10px] font-bold px-2 py-0.5 rounded-full bg-sky-100 text-sky-800 border border-sky-300 flex items-center gap-1">
+                              <span>❄️</span> Hanya Frozen
+                            </span>
+                          );
+                        }
+                        return (
+                          <span className="text-[10px] font-bold px-2 py-0.5 rounded-full bg-amber-100 text-amber-900 border border-amber-300 flex items-center gap-1">
+                            <span>🍳</span> Hanya Matang
+                          </span>
+                        );
+                      })()}
                       {m.opsi && m.opsi.length > 0 && (
                         <span className="text-[11px] font-sans bg-[#FFD700]/30 text-[#111111] border border-[#111111]/30 px-2.5 py-0.5 rounded-full font-bold">
                           Opsi: {m.opsi.join(' / ')}
@@ -3553,6 +3608,18 @@ Catatan Kurir: Pastikan posisi dus ditaruh datar agar mayo tidak tumpah ya kak.`
                             </span>
                           ))}
                         </div>
+
+                        {(ord.is_gift || ord.gift_recipient) && (
+                          <div className="font-sans text-xs bg-pink-50 text-pink-900 px-3 py-1.5 rounded-lg border border-pink-300 flex items-start gap-2">
+                            <span className="text-base shrink-0">🎁</span>
+                            <div>
+                              <span className="font-bold">Pesanan Hadiah untuk:</span> Kak {ord.gift_recipient || 'Istimewa'}
+                              {ord.gift_message && (
+                                <span className="block text-[11px] italic text-pink-800 mt-0.5">"{ord.gift_message}"</span>
+                              )}
+                            </div>
+                          </div>
+                        )}
 
                         {ord.notes && (
                           <div className="font-sans text-xs bg-amber-100/60 text-[#5C3D2E] px-2.5 py-1 rounded-lg border border-amber-200/80">
@@ -7663,6 +7730,21 @@ Catatan Kurir: Pastikan posisi dus ditaruh datar agar mayo tidak tumpah ya kak.`
                     <span className="font-bold uppercase">{selectedOrderForReceipt.payment_method || 'TUNAI'}</span>
                   </div>
                 </div>
+
+                {/* Gift Order Banner in Thermal Receipt */}
+                {(selectedOrderForReceipt.is_gift || selectedOrderForReceipt.gift_recipient) && (
+                  <div className="py-2 border-b border-dashed border-gray-400 text-[11px] bg-pink-50 p-2 my-1 rounded text-center">
+                    <div className="font-bold text-pink-900">🎁 PESANAN KHUSUS HADIAH 🎁</div>
+                    <div className="mt-0.5 text-gray-900">
+                      <strong>Untuk:</strong> {selectedOrderForReceipt.gift_recipient}
+                    </div>
+                    {selectedOrderForReceipt.gift_message && (
+                      <div className="mt-0.5 text-[10px] italic text-gray-700">
+                        "{selectedOrderForReceipt.gift_message}"
+                      </div>
+                    )}
+                  </div>
+                )}
 
                 {/* Items List */}
                 <div className="py-2 border-b border-dashed border-gray-400 space-y-1.5 text-[11px]">

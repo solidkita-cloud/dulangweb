@@ -29,7 +29,12 @@ export const BRAND = {
 };
 
 export const DEFAULT_STORE_CONFIG: StoreConfig = {
-  heroImage: '/dulang-logo.png',
+  heroImage: 'https://images.unsplash.com/photo-1608039829572-78524f79c4c7?auto=format&fit=crop&w=800&q=80',
+  heroImages: [
+    'https://images.unsplash.com/photo-1608039829572-78524f79c4c7?auto=format&fit=crop&w=800&q=80',
+    'https://images.unsplash.com/photo-1541592106381-b31e9677c0e5?auto=format&fit=crop&w=800&q=80',
+    'https://images.unsplash.com/photo-1544025162-d76694265947?auto=format&fit=crop&w=800&q=80',
+  ],
   heroHeadlineSub: 'digoreng jam 10 pagi\nhabis jam 8 malem',
   jamBukaTeks: '10.00 - 19.30 (kalo habis ya tutup duluan)',
   schedules: [
@@ -284,6 +289,7 @@ export const DEFAULT_MENUS: MenuItem[] = [
     deskripsi: 'Kulit lembut buatan subuh, smoked beef gurih, telur rebus, dan mayo lumer melimpah.',
     tersedia: true,
     opsi: ['Saos Pedas', 'Saos Tidak Pedas', 'cabai aja'],
+    servingType: 'both',
   },
   {
     id: 'menu-2',
@@ -292,6 +298,7 @@ export const DEFAULT_MENUS: MenuItem[] = [
     deskripsi: 'Rogut ayam wortel creamy gurih berempah khas resep wajan panas sejak 2020.',
     tersedia: true,
     opsi: ['Saos Pedas', 'Saos Tidak Pedas', 'cabai aja'],
+    servingType: 'both',
   },
   {
     id: 'menu-3',
@@ -300,6 +307,7 @@ export const DEFAULT_MENUS: MenuItem[] = [
     deskripsi: 'Lumpia renyah isi tumisan rebung dan sayuran segar gurih mantap.',
     tersedia: true,
     opsi: ['komplit', 'daun bawang aja', 'cabai aja'],
+    servingType: 'matang_only',
   },
   {
     id: 'menu-4',
@@ -307,6 +315,7 @@ export const DEFAULT_MENUS: MenuItem[] = [
     harga: 2500,
     deskripsi: 'Pisang manis legit berbalut cokelat premium yang meletus di mulut. Luar renyah, dalam melted.',
     tersedia: true,
+    servingType: 'matang_only',
   },
   {
     id: 'menu-5',
@@ -315,6 +324,7 @@ export const DEFAULT_MENUS: MenuItem[] = [
     deskripsi: 'Tahu goreng renyah isi sayur pedas gurih nagih, pas buat cemilan anget.',
     tersedia: true,
     opsi: ['Pedas', 'Tidak Pedas', 'cabai aja'],
+    servingType: 'matang_only',
   },
   {
     id: 'menu-6',
@@ -322,6 +332,7 @@ export const DEFAULT_MENUS: MenuItem[] = [
     harga: 2000,
     deskripsi: 'Bakwan sayur / ote-ote khas Jawa Timur yang renyah di luar, lembut dan gurih di dalam.',
     tersedia: true,
+    servingType: 'matang_only',
   },
   {
     id: 'menu-7',
@@ -330,6 +341,7 @@ export const DEFAULT_MENUS: MenuItem[] = [
     deskripsi: 'Tortilla panggang isi irisan daging lezat, sayuran segar, dan racikan saus spesial.',
     tersedia: true,
     opsi: ['Pedas', 'Sedang', 'Tidak Pedas'],
+    servingType: 'matang_only',
   },
   {
     id: 'menu-8',
@@ -338,6 +350,7 @@ export const DEFAULT_MENUS: MenuItem[] = [
     deskripsi: 'Roti bun lembut dengan patty daging gurih, sayuran segar, dan siraman saus mantap.',
     tersedia: true,
     opsi: ['Pedas', 'Sedang', 'Tidak Pedas'],
+    servingType: 'matang_only',
   },
   {
     id: 'menu-9',
@@ -346,6 +359,7 @@ export const DEFAULT_MENUS: MenuItem[] = [
     deskripsi: 'Pack hemat isi 5 pcs risoles mayo siap goreng di rumah, tahan simpan kulkas/freezer.',
     tersedia: true,
     variantType: 'frozen',
+    servingType: 'frozen_only',
   },
   {
     id: 'menu-10',
@@ -354,6 +368,7 @@ export const DEFAULT_MENUS: MenuItem[] = [
     deskripsi: 'Pack hemat isi 5 pcs risoles rogut ayam sayur creamy siap goreng kapan saja.',
     tersedia: true,
     variantType: 'frozen',
+    servingType: 'frozen_only',
   },
   {
     id: 'menu-11',
@@ -362,6 +377,7 @@ export const DEFAULT_MENUS: MenuItem[] = [
     deskripsi: 'Pack isi kebab tortilla daging siap panggang teflon hangat di rumah.',
     tersedia: true,
     variantType: 'frozen',
+    servingType: 'frozen_only',
   },
   {
     id: 'menu-12',
@@ -370,6 +386,7 @@ export const DEFAULT_MENUS: MenuItem[] = [
     deskripsi: 'Kemasan box isi 10 pcs risoles mayo beku super mantap buat stok keluarga.',
     tersedia: true,
     variantType: 'frozen',
+    servingType: 'frozen_only',
   },
   {
     id: 'menu-13',
@@ -378,6 +395,7 @@ export const DEFAULT_MENUS: MenuItem[] = [
     deskripsi: 'Kemasan box isi 10 pcs risoles rogut beku gurih berempah.',
     tersedia: true,
     variantType: 'frozen',
+    servingType: 'frozen_only',
   },
 ];
 

@@ -327,6 +327,31 @@ export const OrderTrackingView: React.FC<OrderTrackingViewProps> = ({
 
           {/* Itemized Order Details Card */}
           <div className="bg-white rounded-[24px] p-6 border-2 border-[#111111] shadow-[6px_6px_0_#111111] space-y-4">
+            {/* Gift Card Message Banner */}
+            {(currentOrder.is_gift || currentOrder.gift_recipient) && (
+              <div className="bg-pink-50 rounded-[18px] p-4 border border-pink-200 space-y-1.5 animate-in fade-in">
+                <div className="flex items-center gap-2">
+                  <span className="text-xl">🎁</span>
+                  <div>
+                    <h4 className="font-sans font-bold text-xs text-pink-900 uppercase tracking-wider">
+                      Paket Hadiah / Hampers Spesial
+                    </h4>
+                    <span className="text-xs text-pink-950 font-bold">
+                      Untuk: Kak {currentOrder.gift_recipient || 'Penerima Istimewa'}
+                    </span>
+                  </div>
+                </div>
+                {currentOrder.gift_message && (
+                  <div className="text-xs italic text-pink-900 bg-white/80 p-2.5 rounded-[12px] border border-pink-200/80 mt-1">
+                    "{currentOrder.gift_message}"
+                  </div>
+                )}
+                <p className="text-[11px] text-pink-700 pt-0.5">
+                  ✨ Tim Dulang sedang menyiapkan dus & kartu ucapan tulisan tangan manis untuk paket hadiah ini!
+                </p>
+              </div>
+            )}
+
             <div className="flex items-center justify-between pb-3 border-b-2 border-[#111111]/10">
               <div className="flex items-center gap-2">
                 <span className="text-xl">🥟</span>

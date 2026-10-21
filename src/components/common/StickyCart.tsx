@@ -99,6 +99,11 @@ export const StickyCart: React.FC<StickyCartProps> = ({
   const [mayoChoice, setMayoChoice] = useState<'original' | 'pedas'>('original');
   const [orderNote, setOrderNote] = useState('');
 
+  // 3c: Opsi Kirim Hadiah / Hampers (Gift Card)
+  const [isGiftOrder, setIsGiftOrder] = useState<boolean>(false);
+  const [giftRecipient, setGiftRecipient] = useState<string>('');
+  const [giftMessage, setGiftMessage] = useState<string>('');
+
   // 3a: Jadwal Kirim (Hari Ini vs Pre-Order Besok)
   const [deliveryDay, setDeliveryDay] = useState<'today' | 'tomorrow'>('today');
   const [deliverySlot, setDeliverySlot] = useState<string>('Sekarang / Fresh Panas 🍳');
@@ -214,6 +219,17 @@ export const StickyCart: React.FC<StickyCartProps> = ({
       message += `• Catatan Khusus: ${orderNote.trim()}\n`;
     }
 
+    if (isGiftOrder && (giftRecipient.trim() || giftMessage.trim())) {
+      message += `\n🎁 *PESANAN KHUSUS HADIAH / HAMPERS:*\n`;
+      if (giftRecipient.trim()) {
+        message += `• *Untuk Penerima:* Kak ${giftRecipient.trim()}\n`;
+      }
+      if (giftMessage.trim()) {
+        message += `• *Pesan di Kartu Ucapan:* "${giftMessage.trim()}"\n`;
+      }
+      message += `_(Mohon tim Dulang bantu selipkan kartu ucapan manis di atas dus yaa 🙏✨)_\n`;
+    }
+
     if (appliedVoucher) {
       message += `\n🎟️ *Voucher Terpakai:* ${appliedVoucher.code} (-Rp ${discountAmount.toLocaleString('id-ID')})\n`;
       if (appliedVoucher.childVoucher) {
@@ -250,8 +266,12 @@ export const StickyCart: React.FC<StickyCartProps> = ({
         total_price: finalPrice,
         delivery_schedule: fullScheduleText,
         delivery_slot: finalSlotText,
+        is_gift: isGiftOrder,
+        gift_recipient: giftRecipient.trim() || undefined,
+        gift_message: giftMessage.trim() || undefined,
         notes: [
           deliveryMethod === 'pickup' ? 'Ambil di Dapur' : `Antar Kurir (${selectedDistrict}): ${buyerAddress.trim()}`,
+          isGiftOrder ? `🎁 HADIAH untuk: ${giftRecipient.trim() || 'Penerima'} ("${giftMessage.trim() || '-'}")` : '',
           shippingCost > 0 ? `Ongkir: Rp ${shippingCost}` : '',
           extraChili ? 'Ekstra Cabe Rawit' : '',
           mayoChoice === 'pedas' ? 'Mayo Pedas' : 'Mayo Original',
@@ -701,6 +721,88 @@ export const StickyCart: React.FC<StickyCartProps> = ({
                   placeholder="misal: minta digoreng agak garing, dipisah per mika..."
                   className="w-full rounded-full border-2 border-[#111111] px-4 py-2 font-sans text-xs bg-white focus:outline-none focus:border-[#FFD700]"
                 />
+              </div>
+
+              {/* 3c. Opsi Kirim Hadiah / Hampers (Gift Card) */}
+              <div className="bg-[#FFFDF4] rounded-[18px] p-3.5 border-2 border-[#111111] shadow-[2px_2px_0_#111111] space-y-3">
+                <div className="flex items-center justify-between">
+                  <div className="flex items-center gap-2">
+                    <span className="text-xl">🎁</span>
+                    <div>
+                      <div className="font-sans font-bold text-xs text-[#111111]">
+                        Kirim Sebagai Hadiah / Hampers?
+                      </div>
+                      <div className="text-[10px] text-[#5C3D2E]/75">
+                        Dapur selipkan kartu ucapan tulisan tangan manis di atas dus
+                      </div>
+                    </div>
+                  </div>
+                  <label className="relative inline-flex items-center cursor-pointer">
+                    <input
+                      type="checkbox"
+                      checked={isGiftOrder}
+                      onChange={(e) => setIsGiftOrder(e.target.checked)}
+                      className="sr-only peer"
+                    />
+                    <div className="w-10 h-6 bg-gray-300 peer-focus:outline-none rounded-full peer peer-checked:after:translate-x-full peer-checked:after:border-white after:content-[''] after:absolute after:top-[2px] after:left-[2px] after:bg-white after:border-gray-300 after:border after:rounded-full after:h-5 after:w-5 after:transition-all peer-checked:bg-[#111111]"></div>
+                  </label>
+                </div>
+
+                {isGiftOrder && (
+                  <div className="space-y-2.5 pt-2 border-t border-[#111111]/15 animate-in fade-in duration-200">
+                    <div>
+                      <label className="block text-[11px] font-bold text-[#111111] uppercase tracking-wider mb-1">
+                        👤 Nama Penerima Hadiah *
+                      </label>
+                      <input
+                        type="text"
+                        value={giftRecipient}
+                        onChange={(e) => setGiftRecipient(e.target.value)}
+                        placeholder="Contoh: Sahabatku Maya / Ibu Ratna"
+                        className="w-full rounded-full border-2 border-[#111111] px-3.5 py-1.5 text-xs font-sans bg-white focus:outline-none focus:border-[#FFD700]"
+                      />
+                    </div>
+
+                    <div>
+                      <div className="flex items-center justify-between mb-1">
+                        <label className="text-[11px] font-bold text-[#111111] uppercase tracking-wider">
+                          💌 Tulisan di Kartu Ucapan
+                        </label>
+                        <span className="text-[10px] text-gray-500 font-mono">
+                          {giftMessage.length}/120
+                        </span>
+                      </div>
+                      <textarea
+                        rows={2}
+                        maxLength={120}
+                        value={giftMessage}
+                        onChange={(e) => setGiftMessage(e.target.value)}
+                        placeholder="Tulis ucapan manismu, misal: 'Selamat ulang tahun ya! Semoga harimu renyah & bahagia selalu...'"
+                        className="w-full rounded-[14px] border-2 border-[#111111] p-2.5 text-xs font-sans bg-white focus:outline-none focus:border-[#FFD700] resize-none"
+                      />
+                    </div>
+
+                    {/* Preset Cepat Kartu Ucapan */}
+                    <div className="flex flex-wrap items-center gap-1.5">
+                      <span className="text-[10px] font-bold text-[#5C3D2E]/70">Ide cepat:</span>
+                      {[
+                        '🎉 Selamat Ulang Tahun!',
+                        '💐 Lekas sembuh & pulih yaa!',
+                        '✨ Semangat kerjanya hari ini!',
+                        '🙏 Terima kasih banyak atas bantuannya!',
+                      ].map((tpl) => (
+                        <button
+                          key={tpl}
+                          type="button"
+                          onClick={() => setGiftMessage(tpl)}
+                          className="cursor-pointer text-[10px] bg-white hover:bg-amber-100 border border-[#111111]/25 px-2 py-0.5 rounded-full font-medium transition active:scale-95"
+                        >
+                          {tpl}
+                        </button>
+                      ))}
+                    </div>
+                  </div>
+                )}
               </div>
 
               {/* 4. Voucher Diskon & Kupon Traktiran (Step 6) */}

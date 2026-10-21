@@ -62,14 +62,15 @@ export const LandingView: React.FC<LandingViewProps> = ({
   }, [storeConfig.heroImages, storeConfig.heroImage]);
 
   const [activeHeroIdx, setActiveHeroIdx] = useState(0);
+  const [isHeroHovered, setIsHeroHovered] = useState(false);
 
   useEffect(() => {
-    if (heroPhotoList.length <= 1) return;
+    if (heroPhotoList.length <= 1 || isHeroHovered) return;
     const timer = setInterval(() => {
       setActiveHeroIdx((prev) => (prev + 1) % heroPhotoList.length);
-    }, 3800);
+    }, 4000);
     return () => clearInterval(timer);
-  }, [heroPhotoList.length]);
+  }, [heroPhotoList.length, isHeroHovered]);
 
   const [testimonials] = useState<CustomerTestimonial[]>(() =>
     storageService.getTestimonials().filter((t) => t.is_active)
@@ -467,7 +468,11 @@ export const LandingView: React.FC<LandingViewProps> = ({
           </div>
 
           {/* Right Column: Hero Visual Frame + Callout */}
-          <div className="relative lg:pt-2">
+          <div
+            className="relative lg:pt-2 group"
+            onMouseEnter={() => setIsHeroHovered(true)}
+            onMouseLeave={() => setIsHeroHovered(false)}
+          >
             <div className="relative rounded-[24px] sm:rounded-[28px] bg-white p-3.5 sm:p-4 sm:rotate-[1deg] polaroid-shadow border-2 border-[#111111]">
               <div className="rounded-[18px] sm:rounded-[20px] overflow-hidden bg-[#FFEEC2] aspect-[4/3] relative grid place-items-center border border-[#111111]/10">
                 <div className="absolute inset-0 bg-[radial-gradient(ellipse_at_30%_20%,#FFF8E7_0%,#FFE6A0_45%,#FFD36B_100%)]" />
@@ -484,6 +489,34 @@ export const LandingView: React.FC<LandingViewProps> = ({
                         }`}
                       />
                     ))}
+
+                    {/* Left & Right Interactive Arrows (if > 1 photo) */}
+                    {heroPhotoList.length > 1 && (
+                      <>
+                        <button
+                          type="button"
+                          onClick={(e) => {
+                            e.stopPropagation();
+                            setActiveHeroIdx((prev) => (prev - 1 + heroPhotoList.length) % heroPhotoList.length);
+                          }}
+                          className="cursor-pointer absolute left-2 sm:left-3 top-1/2 -translate-y-1/2 z-25 w-7 h-7 sm:w-8 sm:h-8 rounded-full bg-black/60 hover:bg-black text-[#FFD700] hover:text-white flex items-center justify-center font-bold text-base sm:text-lg backdrop-blur-xs transition shadow-md border border-white/20 active:scale-90"
+                          title="Foto sebelumnya"
+                        >
+                          ‹
+                        </button>
+                        <button
+                          type="button"
+                          onClick={(e) => {
+                            e.stopPropagation();
+                            setActiveHeroIdx((prev) => (prev + 1) % heroPhotoList.length);
+                          }}
+                          className="cursor-pointer absolute right-2 sm:right-3 top-1/2 -translate-y-1/2 z-25 w-7 h-7 sm:w-8 sm:h-8 rounded-full bg-black/60 hover:bg-black text-[#FFD700] hover:text-white flex items-center justify-center font-bold text-base sm:text-lg backdrop-blur-xs transition shadow-md border border-white/20 active:scale-90"
+                          title="Foto selanjutnya"
+                        >
+                          ›
+                        </button>
+                      </>
+                    )}
 
                     {/* Dot Indicators if more than 1 photo */}
                     {heroPhotoList.length > 1 && (
@@ -695,9 +728,10 @@ export const LandingView: React.FC<LandingViewProps> = ({
             const count = activeMenusList.filter((item) => {
               if (cat.id === 'all') return true;
               const name = item.nama.toLowerCase();
-              const isFrozen = item.variantType === 'frozen' || name.includes('frozen') || name.includes('beku');
+              const isFrozen = item.variantType === 'frozen' || item.servingType === 'frozen_only' || item.servingType === 'both' || name.includes('frozen') || name.includes('beku');
+              const isFrozenOnly = item.servingType === 'frozen_only' || item.variantType === 'frozen' || name.includes('frozen') || name.includes('beku');
               if (cat.id === 'frozen') return isFrozen;
-              if (cat.id === 'risol') return name.includes('risol') && !isFrozen;
+              if (cat.id === 'risol') return name.includes('risol') && !isFrozenOnly;
               if (cat.id === 'gorengan') {
                 return (
                   (name.includes('lumpia') ||
@@ -708,7 +742,7 @@ export const LandingView: React.FC<LandingViewProps> = ({
                     name.includes('pastel') ||
                     name.includes('sosis solo') ||
                     name.includes('cireng')) &&
-                  !isFrozen
+                  !isFrozenOnly
                 );
               }
               if (cat.id === 'manis') {
@@ -838,9 +872,10 @@ export const LandingView: React.FC<LandingViewProps> = ({
           const filteredMenus = activeMenusList.filter((item) => {
             if (selectedCategory === 'all') return true;
             const name = item.nama.toLowerCase();
-            const isFrozen = item.variantType === 'frozen' || name.includes('frozen') || name.includes('beku');
+            const isFrozen = item.variantType === 'frozen' || item.servingType === 'frozen_only' || item.servingType === 'both' || name.includes('frozen') || name.includes('beku');
+            const isFrozenOnly = item.servingType === 'frozen_only' || item.variantType === 'frozen' || name.includes('frozen') || name.includes('beku');
             if (selectedCategory === 'frozen') return isFrozen;
-            if (selectedCategory === 'risol') return name.includes('risol') && !isFrozen;
+            if (selectedCategory === 'risol') return name.includes('risol') && !isFrozenOnly;
             if (selectedCategory === 'gorengan') {
               return (
                 (name.includes('lumpia') ||
@@ -851,7 +886,7 @@ export const LandingView: React.FC<LandingViewProps> = ({
                   name.includes('pastel') ||
                   name.includes('sosis solo') ||
                   name.includes('cireng')) &&
-                !isFrozen
+                !isFrozenOnly
               );
             }
             if (selectedCategory === 'manis') {

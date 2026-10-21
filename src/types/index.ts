@@ -180,6 +180,9 @@ export interface OrderRecord {
   kitchen_status?: KitchenCookingStatus;
   cooking_started_at?: string;
   cooking_completed_at?: string;
+  is_gift?: boolean;
+  gift_recipient?: string;
+  gift_message?: string;
 }
 
 // --- PENDAPAT / TESTIMONI PELANGGAN (COLLAPSIBLE / ACCORDION) ---
