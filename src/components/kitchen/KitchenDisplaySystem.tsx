@@ -300,8 +300,8 @@ export const KitchenDisplaySystem: React.FC<KitchenDisplaySystemProps> = ({
                               <span className="font-bold text-base">{item.nama}</span>
                             </div>
                             {item.pilihanOpsi && (
-                              <div className="text-xs text-white/60 mt-0.5 pl-6">
-                                Opsi: {item.pilihanOpsi}
+                              <div className="text-xs text-[#FFD700] mt-0.5 pl-6 font-semibold">
+                                {item.qty > 1 ? `↳ Semua ${item.pilihanOpsi} (${item.qty} pcs)` : `↳ Opsi: ${item.pilihanOpsi}`}
                               </div>
                             )}
                           </div>

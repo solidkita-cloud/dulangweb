@@ -1181,9 +1181,9 @@ Rasanya gurih, gurih-creamy lembut, dan nagih banget di lidah. Mau dipesankan be
       return {
         category: 10,
         categoryName: 'Menu Luar Dapur Dulang',
-        reply: `🥟 *Dapur Dulang Indonesia Spesialis Risoles & Pastel Sidoarjo!*
+        reply: `🥟 *Dapur Dulang Indonesia Spesialis Risoles & Gorengan Renyah Sidoarjo!*
 
-Mohon maaf Kak ${customerDisplayName}, di Dapur Dulang kami khusus memproduksi *Aneka Risoles Crispy Premium, Rogut Creamy, Piscok Lumer, Kebab, & Frozen Food* fresh dari wajan subuh yaa 🙏
+Mohon maaf Kak ${customerDisplayName}, di Dapur Dulang kami khusus memproduksi *Aneka Risoles Crispy Premium, Rogut Creamy, Piscok Lumer, Lumpia Sayur, Kebab, & Frozen Food* fresh dari wajan subuh yaa 🙏
 Kami belum sedia menu *${matchedOther}*.
 
 ✨ Tapi kalau Kakak lagi pengen cemilan gurih renyah, lezat, & anget, wajib coba:
@@ -1335,7 +1335,7 @@ Mau kami bungkusin Risol Mayo hangat untuk dicoba dulu Kak? 😊`
         return {
           category: 3,
           categoryName: 'Nanya Harga / Paket Hajatan',
-          reply: `🍱 *Paket Snack Box & Hajatan Dulang:*\n• *Paket Hemat (Rp 10.000):* 1 Risol Mayo + 1 Lumpia + 1 Lemper/Kue Basah + Air Mineral\n• *Paket Spesial (Rp 13.000):* 1 Risol Mayo + 1 Kebab Mini + 1 Piscok + Air Mineral\n✓ Sudah free dus kemasan cantik & label acara.\n_Rencana buat acara tanggal berapa dan butuh berapa box Kak?_ 🎉`
+          reply: `🍱 *Paket Snack Box & Hajatan Dulang:*\n• *Paket Hemat (Rp 10.000):* 1 Risol Mayo + 1 Lumpia Sayur + 1 Pisang Coklat + Air Mineral\n• *Paket Spesial (Rp 13.000):* 1 Risol Mayo + 1 Risol Rogut + 1 Piscok + Air Mineral\n✓ Sudah free dus kemasan cantik & label acara.\n_Rencana buat acara tanggal berapa dan butuh berapa box Kak?_ 🎉`
         };
       }
 

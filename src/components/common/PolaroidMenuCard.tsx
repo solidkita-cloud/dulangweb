@@ -243,6 +243,9 @@ export const PolaroidMenuCard: React.FC<PolaroidMenuCardProps> = ({
                     </button>
                   ))}
                 </div>
+                <p className="text-[10px] text-[#5C3D2E]/70 italic pt-1">
+                  *Pilihan rasa berlaku untuk semua porsi yang dipesan. Jika ingin rasa campur (misal 1 pedas, 1 original), tambahkan ke keranjang terpisah yaa.
+                </p>
               </div>
             )}
 

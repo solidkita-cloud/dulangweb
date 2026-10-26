@@ -67,21 +67,47 @@ export const storageService = {
     try {
       const data = localStorage.getItem(STORAGE_KEYS.MENUS);
       if (data) {
-        const parsed = JSON.parse(data);
+        let parsed = JSON.parse(data);
         if (Array.isArray(parsed) && parsed.length > 0) {
-          return parsed.map((m: MenuItem) => {
-            if (!m.servingType) {
-              const name = (m.nama || '').toLowerCase();
+          // Sinkronisasi otomatis: Jika ada menu default baru (misal paket frozen pack) yang belum ada di browser owner
+          const existingIds = new Set(parsed.map((m: any) => m.id));
+          const missingDefaults = DEFAULT_MENUS.filter((dm) => !existingIds.has(dm.id));
+          let hasChanges = false;
+
+          if (missingDefaults.length > 0) {
+            parsed = [...parsed, ...missingDefaults];
+            hasChanges = true;
+          }
+
+          const processed = parsed.map((m: MenuItem) => {
+            const name = (m.nama || '').toLowerCase();
+            let st = m.servingType;
+            if (!st) {
               if (m.variantType === 'frozen' || name.includes('frozen') || name.includes('beku')) {
-                return { ...m, servingType: 'frozen_only', variantType: 'frozen' };
-              } else if (name.includes('risol')) {
-                return { ...m, servingType: 'both' };
+                st = 'frozen_only';
+              } else if (name.includes('risol') && !name.includes('frozen')) {
+                st = 'both';
               } else {
-                return { ...m, servingType: 'matang_only' };
+                st = 'matang_only';
               }
+              hasChanges = true;
+            } else if (st === 'matang_only' && (m.id === 'menu-1' || m.id === 'menu-2' || (name.includes('risol') && !name.includes('frozen') && !name.includes('pack') && !name.includes('isi')))) {
+              // Risol Mayo & Risol Rogut satuan bisa matang & frozen
+              st = 'both';
+              hasChanges = true;
             }
-            return m;
+
+            return {
+              ...m,
+              servingType: st,
+              variantType: (m.variantType || (st === 'frozen_only' ? 'frozen' : 'matang')),
+            };
           });
+
+          if (hasChanges) {
+            localStorage.setItem(STORAGE_KEYS.MENUS, JSON.stringify(processed));
+          }
+          return processed;
         }
       }
     } catch (e) {
@@ -148,11 +174,27 @@ export const storageService = {
         };
       });
 
-      localStorage.setItem(STORAGE_KEYS.MENUS, JSON.stringify(merged));
+      // Tambahkan menu dapur baru dari Supabase jika belum ada di lokal (khusus prefix menu-)
+      const localIds = new Set(currentMenus.map((m) => m.id));
+      const extraRemoteItems = data
+        .filter((r: any) => r.id && r.id.startsWith('menu-') && !localIds.has(r.id))
+        .map((r: any) => ({
+          id: r.id,
+          nama: r.nama,
+          harga: Number(r.harga || 0),
+          deskripsi: r.deskripsi || '',
+          foto: r.foto || '',
+          tersedia: r.tersedia !== false,
+          servingType: (r.nama?.toLowerCase().includes('frozen') ? 'frozen_only' : 'matang_only') as any,
+        }));
+
+      const finalMerged = [...merged, ...extraRemoteItems];
+
+      localStorage.setItem(STORAGE_KEYS.MENUS, JSON.stringify(finalMerged));
       if (typeof window !== 'undefined') {
         window.dispatchEvent(new Event('dulang_menus_updated'));
       }
-      return merged;
+      return finalMerged;
     } catch (err) {
       console.warn('Failed to sync menus from Supabase:', err);
       return this.getMenus();
@@ -821,6 +863,10 @@ ${lines.join('\n')}
       const data = localStorage.getItem('dulang_store_config');
       if (data) {
         const parsed = JSON.parse(data);
+        // Migrasi aman otomatis jika browser masih menyimpan alamat dummy Diponegoro / Pagerwojo
+        if (parsed.pickupAddressNote && (parsed.pickupAddressNote.includes('Diponegoro') || parsed.pickupAddressNote.includes('Pagerwojo'))) {
+          parsed.pickupAddressNote = DEFAULT_STORE_CONFIG.pickupAddressNote;
+        }
         return { ...DEFAULT_STORE_CONFIG, ...parsed };
       }
     } catch (e) {

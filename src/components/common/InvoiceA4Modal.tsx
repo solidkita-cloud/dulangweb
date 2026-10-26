@@ -208,8 +208,8 @@ export const InvoiceA4Modal: React.FC<InvoiceA4ModalProps> = ({
                       <td className="py-2.5 px-3">
                         <strong className="text-gray-900">{it.nama}</strong>
                         {it.pilihanOpsi && (
-                          <span className="text-gray-500 block text-[11px] font-normal">
-                            Opsi: {it.pilihanOpsi}
+                          <span className="text-gray-600 block text-[11px] font-medium">
+                            {it.qty > 1 ? `↳ Semua ${it.pilihanOpsi} (${it.qty} pcs)` : `↳ ${it.pilihanOpsi}`}
                           </span>
                         )}
                       </td>

@@ -190,7 +190,7 @@ export const StickyCart: React.FC<StickyCartProps> = ({
 
     message += `📋 *Rincian Pesanan Saya:*\n`;
     cart.forEach((c) => {
-      const opsiTxt = c.pilihanOpsi ? ` [${c.pilihanOpsi}]` : '';
+      const opsiTxt = c.pilihanOpsi ? (c.qty > 1 ? ` [Semua ${c.pilihanOpsi} • ${c.qty} pcs]` : ` [${c.pilihanOpsi}]`) : '';
       const variantTxt = c.variantType === 'frozen' ? ' [❄️ Frozen Food / Mentah Beku]' : ' [🍳 Goreng Matang]';
       message += `• ${c.qty}x ${c.item.nama}${opsiTxt}${variantTxt} (Rp ${(c.qty * c.item.harga).toLocaleString('id-ID')})\n`;
     });
@@ -373,7 +373,7 @@ export const StickyCart: React.FC<StickyCartProps> = ({
                       </div>
                       {c.pilihanOpsi && (
                         <span className="inline-block text-[10px] sm:text-[11px] font-sans font-bold bg-[#FFD700] text-[#111111] px-2 py-0.5 rounded-full border border-[#111111] my-0.5">
-                          Opsi: {c.pilihanOpsi}
+                          {c.qty > 1 ? `Semua ${c.pilihanOpsi} (${c.qty} pcs)` : `Opsi: ${c.pilihanOpsi}`}
                         </span>
                       )}
                       <p className="font-sans text-[11px] sm:text-xs text-[#5C3D2E] font-medium">
@@ -467,7 +467,7 @@ export const StickyCart: React.FC<StickyCartProps> = ({
                   type="text"
                   value={buyerAddress}
                   onChange={(e) => setBuyerAddress(e.target.value)}
-                  placeholder="Contoh: Jl. Diponegoro No. 12, Pagerwojo (pagar hitam depan masjid)"
+                  placeholder="Contoh: Jl. Sedati Agung No. 10, Sedati (pagar hitam depan masjid)"
                   className="w-full rounded-[14px] border-2 border-[#111111] px-3.5 py-2 font-sans text-xs bg-[#FFFDF4] focus:outline-none focus:ring-1 focus:ring-[#FFD700]"
                 />
               </div>
@@ -523,7 +523,7 @@ export const StickyCart: React.FC<StickyCartProps> = ({
 
               {deliveryMethod === 'pickup' ? (
                 <div className="p-2.5 bg-[#FFFDF4] rounded-[12px] border border-[#111111]/20 font-sans text-xs text-[#5C3D2E]">
-                  📍 <strong>Lokasi Dapur:</strong> {storeConfig.pickupAddressNote || 'Jl. Diponegoro No. 12, Pagerwojo - Dekat Pasar Payan, Sidoarjo'}
+                  📍 <strong>Lokasi Dapur:</strong> {storeConfig.pickupAddressNote || 'Dapur Dulang - Sedati, Sidoarjo'}
                   <div className="text-[11px] text-[#5C3D2E]/70 mt-0.5">
                     *Risoles digoreng fresh dadakan menjelang jam kamu datang yaa.
                   </div>

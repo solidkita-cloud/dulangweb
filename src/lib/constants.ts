@@ -74,7 +74,7 @@ export const DEFAULT_STORE_CONFIG: StoreConfig = {
   isTomorrowOrderOpen: true,
   tomorrowOrderNote: 'Amankan kuota risoles besok! Digulung & digoreng fresh besok subuh khusus pesananmu.',
   enableDeliveryOption: false, // Default mati/pasif (kebanyakan ambil di tempat, aktifkan bila perlu)
-  pickupAddressNote: 'Ambil di Dapur Dulang (Jl. Diponegoro No. 12, Pagerwojo - Dekat Pasar)',
+  pickupAddressNote: 'Dapur Dulang - Sedati, Sidoarjo',
   deliveryRates: {
     'Sidoarjo Kota': 6000,
     'Buduran': 7000,
@@ -372,9 +372,9 @@ export const DEFAULT_MENUS: MenuItem[] = [
   },
   {
     id: 'menu-11',
-    nama: 'Kebab Frozen',
+    nama: 'Kebab Frozen (Pack Isi 5)',
     harga: 25000,
-    deskripsi: 'Pack isi kebab tortilla daging siap panggang teflon hangat di rumah.',
+    deskripsi: 'Kemasan beku pack isi 5 pcs kebab tortilla daging spesial, siap panggang teflon kapan saja.',
     tersedia: true,
     variantType: 'frozen',
     servingType: 'frozen_only',

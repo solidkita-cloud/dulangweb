@@ -1254,7 +1254,7 @@ Catatan Kurir: Pastikan posisi dus ditaruh datar agar mayo tidak tumpah ya kak.`
 
     const itemsText = ord.items
       .map((it) => {
-        const opt = it.pilihanOpsi ? ` (_${it.pilihanOpsi}_)` : '';
+        const opt = it.pilihanOpsi ? (it.qty > 1 ? ` (_Semua ${it.pilihanOpsi} • ${it.qty} pcs_)` : ` (_${it.pilihanOpsi}_)`) : '';
         const vType = it.variantType === 'frozen' ? ' [❄️ Frozen]' : ' [🍳 Matang]';
         return `• *${it.qty}x ${it.nama}*${opt}${vType} = Rp ${(it.harga * it.qty).toLocaleString('id-ID')}`;
       })
@@ -1283,6 +1283,8 @@ Catatan Kurir: Pastikan posisi dus ditaruh datar agar mayo tidak tumpah ya kak.`
       `*Waktu:* ${dateStr}\n` +
       `*Pelanggan:* ${ord.customer_name}\n` +
       `*Metode Bayar:* ${(ord.payment_method || 'Tunai').toUpperCase()}\n` +
+      `*Layanan:* ${ord.delivery_method === 'delivery' ? `🛵 Antar Kurir (${ord.shipping_district || 'Sidoarjo'})` : `🍳 Ambil di Dapur (${storeConfig.pickupAddressNote || 'Sedati, Sidoarjo'})`}\n` +
+      (ord.delivery_method === 'delivery' && ord.notes ? `*Alamat / Catatan:* ${ord.notes}\n` : '') +
       `----------------------------------------\n` +
       `${giftInfo}` +
       `${itemsText}\n` +
@@ -1319,7 +1321,7 @@ Catatan Kurir: Pastikan posisi dus ditaruh datar agar mayo tidak tumpah ya kak.`
 
     const itemsText = ord.items
       .map((it) => {
-        const opt = it.pilihanOpsi ? ` [${it.pilihanOpsi}]` : '';
+        const opt = it.pilihanOpsi ? (it.qty > 1 ? ` [Semua ${it.pilihanOpsi} • ${it.qty} pcs]` : ` [${it.pilihanOpsi}]`) : '';
         const vType = it.variantType === 'frozen' ? ' [❄️ Frozen Beku]' : ' [🍳 Goreng Matang]';
         return `• ${it.qty}x ${it.nama}${opt}${vType} = Rp ${(it.harga * it.qty).toLocaleString('id-ID')}`;
       })
@@ -1938,17 +1940,17 @@ Catatan Kurir: Pastikan posisi dus ditaruh datar agar mayo tidak tumpah ya kak.`
                 type="button"
                 onClick={() => {
                   const conf = window.confirm(
-                    'Kembalikan daftar menu ke 8 menu standar Dulang (Risol Mayo, Risol Rogut, Lumpia Sayur, Pisang Coklat, Tahu Isi Pedas, Ote-Ote, Kebab, Burger)?'
+                    'Muat ulang seluruh menu standar Dapur Dulang (termasuk varian Gorengan Matang & Frozen Pack)?'
                   );
                   if (conf) {
                     const fresh = storageService.resetDefaultMenus();
                     onUpdateMenus(fresh);
-                    onShowToast('8 Menu utama Dulang berhasil dimuat ulang!');
+                    onShowToast('Seluruh menu standar Dulang berhasil dimuat ulang! ✓');
                   }
                 }}
                 className="cursor-pointer bg-white text-[#5C3D2E] rounded-full px-3 sm:px-4 py-1.5 sm:py-2 font-sans font-bold text-[11px] sm:text-[12px] border-2 border-[#111111]/30 hover:border-[#111111] transition"
               >
-                🔄 Muat 8 Standar
+                🔄 Muat Menu Standar
               </button>
               <button
                 type="button"
@@ -4691,6 +4693,23 @@ Catatan Kurir: Pastikan posisi dus ditaruh datar agar mayo tidak tumpah ya kak.`
                     placeholder="087703397035"
                     className="w-full rounded-[14px] border-2 border-[#111111] px-4 py-2.5 font-mono font-bold text-sm bg-white focus:outline-none focus:border-[#FFD700]"
                   />
+                </div>
+
+                {/* Alamat Dapur Utama / Lokasi Pengambilan (Fleksibel Cabang) */}
+                <div className="sm:col-span-2">
+                  <label className="block font-sans text-xs font-bold text-[#111111] mb-1">
+                    Alamat Dapur Utama / Lokasi Pengambilan (Fleksibel jika Ada Cabang)
+                  </label>
+                  <input
+                    type="text"
+                    value={localConfig.pickupAddressNote || ''}
+                    onChange={(e) => setLocalConfig({ ...localConfig, pickupAddressNote: e.target.value })}
+                    placeholder="Contoh: Dapur Dulang - Sedati, Sidoarjo"
+                    className="w-full rounded-[14px] border-2 border-[#111111] px-4 py-2.5 font-sans text-sm bg-white focus:outline-none focus:border-[#FFD700]"
+                  />
+                  <p className="font-sans text-[11px] text-[#5C3D2E]/70 mt-1">
+                    Alamat ini otomatis tercetak di header struk kasir thermal, invoice resmi, dan petunjuk ambil mandiri bagi pembeli.
+                  </p>
                 </div>
               </div>
 
@@ -7837,9 +7856,35 @@ Catatan Kurir: Pastikan posisi dus ditaruh datar agar mayo tidak tumpah ya kak.`
                     </div>
                   )}
                   <div className="flex justify-between">
-                    <span>Metode:</span>
+                    <span>Metode Bayar:</span>
                     <span className="font-bold uppercase">{selectedOrderForReceipt.payment_method || 'TUNAI'}</span>
                   </div>
+                  <div className="flex justify-between">
+                    <span>Layanan:</span>
+                    <span className="font-bold">
+                      {selectedOrderForReceipt.delivery_method === 'delivery'
+                        ? '🛵 ANTAR KURIR'
+                        : '🍳 AMBIL DI DAPUR'}
+                    </span>
+                  </div>
+                  {selectedOrderForReceipt.delivery_method === 'delivery' ? (
+                    <div className="pt-1 text-[10px] text-gray-800 bg-amber-50/70 p-1.5 rounded border border-amber-200/80 mt-0.5">
+                      <div className="font-bold flex justify-between text-amber-950">
+                        <span>Tujuan Pengantaran:</span>
+                        <span>{selectedOrderForReceipt.shipping_district ? `Kec. ${selectedOrderForReceipt.shipping_district}` : 'Sidoarjo'}</span>
+                      </div>
+                      {selectedOrderForReceipt.notes && (
+                        <div className="text-gray-700 italic break-words mt-0.5 font-sans text-[10px]">
+                          {selectedOrderForReceipt.notes}
+                        </div>
+                      )}
+                    </div>
+                  ) : (
+                    <div className="flex justify-between text-[10px] text-gray-500">
+                      <span>Lokasi Ambil:</span>
+                      <span className="truncate max-w-[170px]">{storeConfig.pickupAddressNote || 'Sedati, Sidoarjo'}</span>
+                    </div>
+                  )}
                 </div>
 
                 {/* Gift Order Banner in Thermal Receipt */}
@@ -7868,8 +7913,8 @@ Catatan Kurir: Pastikan posisi dus ditaruh datar agar mayo tidak tumpah ya kak.`
                         <span className="font-bold">Rp {(it.harga * it.qty).toLocaleString('id-ID')}</span>
                       </div>
                       {it.pilihanOpsi && (
-                        <div className="text-[10px] text-gray-500 pl-3">
-                          + {it.pilihanOpsi}
+                        <div className="text-[10px] text-gray-700 pl-3 font-semibold">
+                          {it.qty > 1 ? `↳ Semua ${it.pilihanOpsi} (${it.qty} pcs)` : `↳ ${it.pilihanOpsi}`}
                         </div>
                       )}
                     </div>
@@ -7878,6 +7923,12 @@ Catatan Kurir: Pastikan posisi dus ditaruh datar agar mayo tidak tumpah ya kak.`
 
                 {/* Totals & Cash Calculation */}
                 <div className="py-2 border-b border-dashed border-gray-400 space-y-1 text-[11px]">
+                  {selectedOrderForReceipt.shipping_cost !== undefined && selectedOrderForReceipt.shipping_cost > 0 && (
+                    <div className="flex justify-between text-gray-600 text-[10px]">
+                      <span>Ongkir Kurir ({selectedOrderForReceipt.shipping_district || 'Sidoarjo'}):</span>
+                      <span>Rp {selectedOrderForReceipt.shipping_cost.toLocaleString('id-ID')}</span>
+                    </div>
+                  )}
                   <div className="flex justify-between font-bold text-sm">
                     <span>TOTAL:</span>
                     <span>Rp {selectedOrderForReceipt.total_price.toLocaleString('id-ID')}</span>

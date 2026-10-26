@@ -93,12 +93,22 @@ export const LandingView: React.FC<LandingViewProps> = ({
   }, []);
 
   // --- PAKET SNACK BOX / HAJATAN / ARISAN BUILDER STATE ---
+  const DULANG_SNACK_BOX_ITEMS = [
+    { name: 'Risol Mayo', tag: 'Gurih Lumer Smoked Beef', price: 3500 },
+    { name: 'Risol Rogut', tag: 'Ayam Wortel Creamy', price: 3500 },
+    { name: 'Lumpia Sayur', tag: 'Rebung Renyah Gurih', price: 2500 },
+    { name: 'Pisang Coklat', tag: 'Cokelat Lumer Manis', price: 2500 },
+    { name: 'Tahu Isi Pedas', tag: 'Sayur Pedas Renyah', price: 3000 },
+    { name: 'Ote-Ote', tag: 'Bakwan Sayur Renyah', price: 2000 },
+  ];
+
   const [isSnackBoxOpen, setIsSnackBoxOpen] = useState(false);
   const [sbType, setSbType] = useState<SnackBoxType>('standar_3');
+  // Default awal otomatis terisi gorengan favorit Dulang (Risol Mayo + Risol Rogut + Lumpia)
   const [sbSelectedItems, setSbSelectedItems] = useState<string[]>([
-    'Risoles Mayo Lumer',
-    'Risoles Rogout Ayam',
-    'Sosis Solo Ayam Gurih',
+    'Risol Mayo',
+    'Risol Rogut',
+    'Lumpia Sayur',
   ]);
   const [sbDrink, setSbDrink] = useState<SnackBoxDrink>('mineral');
   const [sbQty, setSbQty] = useState<number>(0);
@@ -112,9 +122,18 @@ export const LandingView: React.FC<LandingViewProps> = ({
   const [sbNotes, setSbNotes] = useState<string>('');
   const [sbOrderSentSuccess, setSbOrderSentSuccess] = useState<boolean>(false);
 
-  // Snack Box Capacity & Pricing
+  // Snack Box Capacity & Pricing: Pancingan harga paket minimal, bisa disesuaikan bila isian diganti
   const sbCapacity = sbType === 'mini_2' ? 2 : sbType === 'standar_3' ? 3 : 4;
-  const sbBaseItemPrice = sbType === 'mini_2' ? 8000 : sbType === 'standar_3' ? 11000 : 14000;
+  const minBasePrice = sbType === 'mini_2' ? 8000 : sbType === 'standar_3' ? 11000 : 14000;
+  
+  // Hitung total harga kue yang dipilih pembeli + kemasan dus & sekat bersih (Rp 1.500)
+  const itemsSum = sbSelectedItems.reduce((acc, name) => {
+    const it = DULANG_SNACK_BOX_ITEMS.find((d) => d.name === name);
+    return acc + (it ? it.price : 2500);
+  }, 0);
+  const packagingCost = 1500;
+  const sbBaseItemPrice = Math.max(minBasePrice, itemsSum + packagingCost);
+
   const sbDrinkPrice = sbDrink === 'mineral' ? 1000 : sbDrink === 'teh' ? 3500 : 0;
   const sbPricePerBox = sbBaseItemPrice + sbDrinkPrice;
   const sbGrossTotal = sbPricePerBox * sbQty;
@@ -151,7 +170,7 @@ export const LandingView: React.FC<LandingViewProps> = ({
       if (sbSelectedItems.length < sbCapacity) {
         setSbSelectedItems([...sbSelectedItems, itemName]);
       } else {
-        // Replace last item
+        // Ganti item terakhir agar kapasitas tetap pas
         setSbSelectedItems([...sbSelectedItems.slice(0, sbCapacity - 1), itemName]);
       }
     }
@@ -159,14 +178,13 @@ export const LandingView: React.FC<LandingViewProps> = ({
 
   const handleSbTypeChange = (newType: SnackBoxType) => {
     setSbType(newType);
-    const newCap = newType === 'mini_2' ? 2 : newType === 'standar_3' ? 3 : 4;
-    const defaultAvailable = [
-      'Risoles Mayo Lumer',
-      'Risoles Rogout Ayam',
-      'Sosis Solo Ayam Gurih',
-      'Pastel Sayur Telur',
-    ];
-    setSbSelectedItems(defaultAvailable.slice(0, newCap));
+    if (newType === 'mini_2') {
+      setSbSelectedItems(['Risol Mayo', 'Pisang Coklat']);
+    } else if (newType === 'standar_3') {
+      setSbSelectedItems(['Risol Mayo', 'Risol Rogut', 'Lumpia Sayur']);
+    } else {
+      setSbSelectedItems(['Risol Mayo', 'Risol Rogut', 'Lumpia Sayur', 'Pisang Coklat']);
+    }
   };
 
   const handleOrderSnackBoxWA = () => {
@@ -1059,20 +1077,20 @@ export const LandingView: React.FC<LandingViewProps> = ({
                     {
                       type: 'mini_2' as SnackBoxType,
                       name: 'Box Mini (2 Pcs)',
-                      price: 'Rp 8.000 / box',
+                      price: 'Mulai Rp 8.000 / box',
                       desc: 'Porsi santai / rapat kilat',
                     },
                     {
                       type: 'standar_3' as SnackBoxType,
                       name: 'Box Standar (3 Pcs)',
-                      price: 'Rp 11.000 / box',
+                      price: 'Mulai Rp 11.000 / box',
                       desc: 'Paling laris buat pengajian & arisan',
                       recommended: true,
                     },
                     {
                       type: 'lengkap_4' as SnackBoxType,
                       name: 'Box Lengkap (4 Pcs)',
-                      price: 'Rp 14.000 / box',
+                      price: 'Mulai Rp 14.000 / box',
                       desc: 'Mewah hajatan besar & syukuran',
                     },
                   ].map((b) => (
@@ -1125,32 +1143,31 @@ export const LandingView: React.FC<LandingViewProps> = ({
                 </div>
 
                 <div className="grid grid-cols-2 sm:grid-cols-3 gap-2.5">
-                  {[
-                    'Risoles Mayo Lumer',
-                    'Risoles Rogout Ayam',
-                    'Sosis Solo Ayam Gurih',
-                    'Pastel Sayur Telur',
-                    'Kue Lumpur Tradisional',
-                    'Lemper Ayam Bakar',
-                  ].map((item) => {
-                    const isSelected = sbSelectedItems.includes(item);
+                  {DULANG_SNACK_BOX_ITEMS.map((item) => {
+                    const isSelected = sbSelectedItems.includes(item.name);
                     return (
                       <button
-                        key={item}
+                        key={item.name}
                         type="button"
-                        onClick={() => toggleSbItem(item)}
-                        className={`cursor-pointer px-3 py-2.5 rounded-[14px] text-xs font-sans font-bold text-left border-2 transition flex items-center justify-between gap-1.5 ${
+                        onClick={() => toggleSbItem(item.name)}
+                        className={`cursor-pointer p-3 rounded-[16px] text-xs font-sans text-left border-2 transition flex items-center justify-between gap-1.5 ${
                           isSelected
                             ? 'bg-[#FFD700] text-[#111111] border-[#111111] shadow-[2px_2px_0_#111111]'
                             : 'bg-white text-[#5C3D2E] border-[#111111]/20 hover:border-[#111111]'
                         }`}
                       >
-                        <span className="truncate">{item}</span>
-                        <span className="text-sm shrink-0">{isSelected ? '✓' : '+'}</span>
+                        <div className="truncate">
+                          <div className="font-bold text-xs sm:text-[13px]">{item.name}</div>
+                          <div className="text-[10px] opacity-75">{item.tag} • Rp {item.price.toLocaleString('id-ID')}</div>
+                        </div>
+                        <span className="text-sm font-bold shrink-0">{isSelected ? '✓' : '+'}</span>
                       </button>
                     );
                   })}
                 </div>
+                <p className="text-[11px] text-[#5C3D2E]/70 italic mt-2">
+                  *Isian awal sudah otomatis terisi rekomendasi favorit Dulang. Kamu bebas mengganti kombinasinya sesuai selera!
+                </p>
               </div>
 
               {/* Step 3: Pilihan Minuman */}

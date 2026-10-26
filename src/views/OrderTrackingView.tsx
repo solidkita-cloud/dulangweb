@@ -382,8 +382,8 @@ export const OrderTrackingView: React.FC<OrderTrackingViewProps> = ({
                       )}
                     </div>
                     {item.pilihanOpsi && (
-                      <div className="text-xs text-[#5C3D2E]/60 pl-6">
-                        Opsi: {item.pilihanOpsi}
+                      <div className="text-xs text-[#5C3D2E]/80 pl-6 font-medium">
+                        {item.qty > 1 ? `↳ Semua ${item.pilihanOpsi} (${item.qty} pcs)` : `↳ ${item.pilihanOpsi}`}
                       </div>
                     )}
                   </div>
