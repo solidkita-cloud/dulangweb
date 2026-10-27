@@ -70,6 +70,10 @@ export const DEFAULT_STORE_CONFIG: StoreConfig = {
   receiptFooterNote: 'Matur suwun sanget sampun jajan di Dulang! Hangatkan kembali bila perlu yaa 🙏✨',
   isStoreClosed: false,
   closedReason: 'Maaf lagi nggak goreng dulu, hari ini masak di dapur sendiri ya. -Tim Dulang Indonesia',
+  autoOperatingHours: true,
+  openHour: '10:00',
+  closeHour: '20:00',
+  snackBoxMinOrder: 10,
   activeKloter: 'Kloter Siang (13.00) • Sedang Digoreng Panas 🔥',
   isTomorrowOrderOpen: true,
   tomorrowOrderNote: 'Amankan kuota risoles besok! Digulung & digoreng fresh besok subuh khusus pesananmu.',
@@ -430,3 +434,65 @@ export const DEFAULT_TESTIMONIALS: CustomerTestimonial[] = [];
 
 // --- DATA TRANSAKSI PENJUALAN AWAL (dimulai kosong untuk transaksi riil) ---
 export const DEFAULT_ORDERS: OrderRecord[] = [];
+
+/**
+ * Helper terpusat untuk mengecek status operasional buka/tutup toko
+ * Memadukan manual override dari owner dan jadwal jam operasional otomatis
+ */
+export function checkStoreOpenStatus(config?: Partial<StoreConfig>): {
+  isOpen: boolean;
+  reason: string;
+  isManualClosed: boolean;
+  openHour: string;
+  closeHour: string;
+  nextOpenText: string;
+} {
+  const openHour = config?.openHour || '10:00';
+  const closeHour = config?.closeHour || '20:00';
+  const autoHours = config?.autoOperatingHours ?? true;
+
+  // 1. Manual store closure override by owner
+  if (config?.isStoreClosed) {
+    return {
+      isOpen: false,
+      reason: config.closedReason || 'Maaf lagi nggak goreng dulu, hari ini masak di dapur sendiri ya. -Tim Dulang Indonesia',
+      isManualClosed: true,
+      openHour,
+      closeHour,
+      nextOpenText: 'Tutup manual oleh owner / libur',
+    };
+  }
+
+  // 2. Auto operating hours check if enabled
+  if (autoHours) {
+    const now = new Date();
+    const [oH, oM] = openHour.split(':').map((n) => parseInt(n, 10) || 0);
+    const [cH, cM] = closeHour.split(':').map((n) => parseInt(n, 10) || 0);
+
+    const nowMinutes = now.getHours() * 60 + now.getMinutes();
+    const openMinutes = oH * 60 + oM;
+    const closeMinutes = cH * 60 + cM;
+
+    const isWithinHours = nowMinutes >= openMinutes && nowMinutes < closeMinutes;
+    if (!isWithinHours) {
+      return {
+        isOpen: false,
+        reason: `Dapur saat ini sedang istirahat (Jam buka: ${openHour} - ${closeHour} WIB).`,
+        isManualClosed: false,
+        openHour,
+        closeHour,
+        nextOpenText: `Buka kembali jam ${openHour} WIB`,
+      };
+    }
+  }
+
+  return {
+    isOpen: true,
+    reason: `Dapur buka & siap goreng hangat (${openHour} - ${closeHour} WIB)`,
+    isManualClosed: false,
+    openHour,
+    closeHour,
+    nextOpenText: `Buka sampai jam ${closeHour} WIB`,
+  };
+}
+

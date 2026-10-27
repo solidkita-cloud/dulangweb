@@ -5350,7 +5350,7 @@ Catatan Kurir: Pastikan posisi dus ditaruh datar agar mayo tidak tumpah ya kak.`
               </p>
             </div>
 
-            <div className="grid sm:grid-cols-2 gap-4">
+            <div className="grid sm:grid-cols-2 lg:grid-cols-4 gap-4">
               <div>
                 <label className="block font-sans text-[11px] font-bold uppercase text-[#5C3D2E]/70 mb-1">
                   Jam Buka Ringkas (Header & Footer)
@@ -5366,16 +5366,67 @@ Catatan Kurir: Pastikan posisi dus ditaruh datar agar mayo tidak tumpah ya kak.`
 
               <div>
                 <label className="block font-sans text-[11px] font-bold uppercase text-[#5C3D2E]/70 mb-1">
-                  Catatan Sub-Badge Hero (Di Bawah Best Seller)
+                  Jam Buka Otomatis (WIB)
                 </label>
                 <input
-                  type="text"
-                  value={localConfig.heroHeadlineSub || ''}
-                  onChange={(e) => setLocalConfig({ ...localConfig, heroHeadlineSub: e.target.value })}
-                  placeholder="misal: digoreng jam 10 pagi, habis jam 8 malem"
-                  className="w-full rounded-full border-2 border-[#111111] px-4 py-2 font-sans text-sm focus:outline-none focus:border-[#FFD700]"
+                  type="time"
+                  value={localConfig.openHour || '10:00'}
+                  onChange={(e) => setLocalConfig({ ...localConfig, openHour: e.target.value })}
+                  className="w-full rounded-full border-2 border-[#111111] px-4 py-2 font-sans text-sm font-bold focus:outline-none focus:border-[#FFD700]"
                 />
               </div>
+
+              <div>
+                <label className="block font-sans text-[11px] font-bold uppercase text-[#5C3D2E]/70 mb-1">
+                  Jam Tutup Otomatis (WIB)
+                </label>
+                <input
+                  type="time"
+                  value={localConfig.closeHour || '20:00'}
+                  onChange={(e) => setLocalConfig({ ...localConfig, closeHour: e.target.value })}
+                  className="w-full rounded-full border-2 border-[#111111] px-4 py-2 font-sans text-sm font-bold focus:outline-none focus:border-[#FFD700]"
+                />
+              </div>
+
+              <div>
+                <label className="block font-sans text-[11px] font-bold uppercase text-[#5C3D2E]/70 mb-1">
+                  Min. Order Snack Box (Box)
+                </label>
+                <input
+                  type="number"
+                  min="5"
+                  max="100"
+                  value={localConfig.snackBoxMinOrder || 10}
+                  onChange={(e) => setLocalConfig({ ...localConfig, snackBoxMinOrder: Math.max(1, parseInt(e.target.value, 10) || 10) })}
+                  className="w-full rounded-full border-2 border-[#111111] px-4 py-2 font-sans text-sm font-bold focus:outline-none focus:border-[#FFD700]"
+                />
+              </div>
+            </div>
+
+            <div className="flex items-center gap-3 bg-[#FFF8E7] p-3 rounded-[16px] border border-[#111111]/20">
+              <input
+                type="checkbox"
+                id="autoHoursToggle"
+                checked={localConfig.autoOperatingHours ?? true}
+                onChange={(e) => setLocalConfig({ ...localConfig, autoOperatingHours: e.target.checked })}
+                className="w-4 h-4 accent-[#111111] cursor-pointer"
+              />
+              <label htmlFor="autoHoursToggle" className="text-xs font-sans font-bold text-[#111111] cursor-pointer">
+                Aktifkan Buka / Tutup Otomatis sesuai Jam (Jika di luar jam buka, pembeli otomatis diarahkan ke Pre-Order Besok)
+              </label>
+            </div>
+
+            <div>
+              <label className="block font-sans text-[11px] font-bold uppercase text-[#5C3D2E]/70 mb-1">
+                Catatan Sub-Badge Hero (Di Bawah Best Seller)
+              </label>
+              <input
+                type="text"
+                value={localConfig.heroHeadlineSub || ''}
+                onChange={(e) => setLocalConfig({ ...localConfig, heroHeadlineSub: e.target.value })}
+                placeholder="misal: digoreng jam 10 pagi, habis jam 8 malem"
+                className="w-full rounded-full border-2 border-[#111111] px-4 py-2 font-sans text-sm focus:outline-none focus:border-[#FFD700]"
+              />
             </div>
 
             {/* 4 Jadwal Sesi */}

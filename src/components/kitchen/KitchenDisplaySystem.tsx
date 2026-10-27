@@ -1,7 +1,12 @@
-import React, { useState, useEffect } from 'react';
+import React, { useState, useEffect, useRef } from 'react';
 import { OrderRecord, KitchenCookingStatus } from '../../types';
 import { storageService } from '../../services/storageService';
-import { playNewCustomerChime } from '../../lib/audioNotifier';
+import {
+  playNewCustomerChime,
+  unlockAudioContext,
+  isAudioContextUnlocked,
+  triggerKitchenVibration,
+} from '../../lib/audioNotifier';
 
 interface KitchenDisplaySystemProps {
   onShowToast: (msg: string) => void;
@@ -17,7 +22,9 @@ export const KitchenDisplaySystem: React.FC<KitchenDisplaySystemProps> = ({
   const [orders, setOrders] = useState<OrderRecord[]>(() => storageService.getKitchenOrders());
   const [filterTab, setFilterTab] = useState<'semua' | 'antre' | 'sedang_goreng' | 'packing' | 'siap' | 'selesai'>('semua');
   const [soundEnabled, setSoundEnabled] = useState<boolean>(true);
+  const [audioUnlocked, setAudioUnlocked] = useState<boolean>(() => isAudioContextUnlocked());
   const [currentTime, setCurrentTime] = useState<Date>(new Date());
+  const prevAntreCountRef = useRef<number>(orders.filter((o) => (o.kitchen_status || 'antre') === 'antre').length);
 
   // Clock tick every 10 seconds for elapsed timer calculations
   useEffect(() => {
@@ -28,13 +35,24 @@ export const KitchenDisplaySystem: React.FC<KitchenDisplaySystemProps> = ({
   // Listen to order & kitchen updates
   useEffect(() => {
     const refreshData = () => {
-      setOrders(storageService.getKitchenOrders());
+      const freshOrders = storageService.getKitchenOrders();
+      setOrders(freshOrders);
+
+      const currentAntre = freshOrders.filter((o) => (o.kitchen_status || 'antre') === 'antre').length;
+      if (currentAntre > prevAntreCountRef.current) {
+        if (soundEnabled) {
+          playNewCustomerChime();
+        }
+        triggerKitchenVibration();
+      }
+      prevAntreCountRef.current = currentAntre;
     };
 
     const handleKitchenUpdate = (e: any) => {
       refreshData();
       if (soundEnabled && e.detail?.kitchenStatus === 'antre') {
         playNewCustomerChime();
+        triggerKitchenVibration();
       }
     };
 
@@ -129,7 +147,17 @@ export const KitchenDisplaySystem: React.FC<KitchenDisplaySystemProps> = ({
             {/* Audio Toggle */}
             <button
               type="button"
-              onClick={() => setSoundEnabled(!soundEnabled)}
+              onClick={async () => {
+                if (!soundEnabled) {
+                  await unlockAudioContext();
+                  setAudioUnlocked(true);
+                  setSoundEnabled(true);
+                  onShowToast('🔊 Bel Dapur Aktif!');
+                } else {
+                  setSoundEnabled(false);
+                  onShowToast('🔕 Bel Dapur Senyap (Mute)');
+                }
+              }}
               className={`cursor-pointer px-3 py-1.5 rounded-full text-xs font-bold transition flex items-center gap-1.5 border ${
                 soundEnabled
                   ? 'bg-[#FFD700] text-[#111111] border-[#FFD700]'
@@ -151,6 +179,32 @@ export const KitchenDisplaySystem: React.FC<KitchenDisplaySystemProps> = ({
             )}
           </div>
         </div>
+
+        {/* Banner Aktivasi Audio jika belum di-unlock oleh klik pengguna */}
+        {!audioUnlocked && (
+          <div
+            onClick={async () => {
+              await unlockAudioContext();
+              setAudioUnlocked(true);
+              setSoundEnabled(true);
+              onShowToast('🔊 Audio Bel Dapur Aktif! Siap berbunyi otomatis saat ada pesanan.');
+            }}
+            className="mt-3 cursor-pointer bg-gradient-to-r from-amber-500 via-[#FFD700] to-amber-400 text-[#111111] p-3 rounded-[16px] border-2 border-[#111111] shadow-[3px_3px_0_#FFFFFF] flex items-center justify-between gap-3 animate-pulse hover:brightness-105 transition-all"
+          >
+            <div className="flex items-center gap-2.5 font-sans font-bold text-xs sm:text-sm">
+              <span className="text-xl">🔔</span>
+              <span>
+                <strong className="underline">Klik di sini sekali</strong> untuk aktifkan Suara Dapur (agar tidak di-mute oleh aturan browser)
+              </span>
+            </div>
+            <button
+              type="button"
+              className="bg-[#111111] text-[#FFD700] text-xs font-bold px-3 py-1.5 rounded-full whitespace-nowrap shadow-sm pointer-events-none"
+            >
+              Tes Suara 🔊
+            </button>
+          </div>
+        )}
 
         {/* Live Counters */}
         <div className="grid grid-cols-2 sm:grid-cols-5 gap-3 pt-4">
@@ -223,7 +277,17 @@ export const KitchenDisplaySystem: React.FC<KitchenDisplaySystemProps> = ({
             let headerBg = 'bg-[#2A2A2E]';
             let statusBadge = <span className="bg-white/10 text-white/80 px-2.5 py-0.5 rounded-full text-xs font-bold">⏳ Antre Masak</span>;
 
-            if (kStatus === 'sedang_goreng') {
+            if (kStatus === 'antre') {
+              if (elapsedOrder < 5) {
+                borderStyle = 'border-[#FFD700] ring-2 ring-[#FFD700]/50 shadow-[0_0_20px_rgba(255,215,0,0.35)] animate-pulse';
+                headerBg = 'bg-yellow-950/80 text-yellow-200';
+                statusBadge = <span className="bg-[#FFD700] text-[#111111] px-2.5 py-0.5 rounded-full text-xs font-black shadow-sm animate-bounce">🔔 Pesanan Baru!</span>;
+              } else {
+                borderStyle = 'border-amber-500/50 shadow-[0_0_12px_rgba(245,158,11,0.2)]';
+                headerBg = 'bg-amber-950/60 text-amber-200';
+                statusBadge = <span className="bg-amber-500/30 text-amber-300 border border-amber-400/40 px-2.5 py-0.5 rounded-full text-xs font-bold">⏳ Antre ({elapsedOrder} mnt)</span>;
+              }
+            } else if (kStatus === 'sedang_goreng') {
               borderStyle = 'border-orange-500 shadow-[0_0_15px_rgba(249,115,22,0.25)]';
               headerBg = 'bg-orange-950/60 text-orange-200';
               statusBadge = <span className="bg-orange-500 text-white px-2.5 py-0.5 rounded-full text-xs font-bold animate-pulse">🔥 Di Wajan ({elapsedCooking} mnt)</span>;

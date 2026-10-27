@@ -93,6 +93,10 @@ export interface StoreConfig {
   receiptFooterNote?: string; // Default: 'Matur suwun sanget sampun jajan! Hangatkan kembali bila perlu yaa 🙏✨'
   isStoreClosed?: boolean;
   closedReason?: string;
+  autoOperatingHours?: boolean; // Default true: otomatis buka/tutup sesuai jam
+  openHour?: string;            // Default: '10:00'
+  closeHour?: string;           // Default: '20:00'
+  snackBoxMinOrder?: number;    // Default: 10
   activeKloter?: string;
   isTomorrowOrderOpen?: boolean;
   tomorrowOrderNote?: string;

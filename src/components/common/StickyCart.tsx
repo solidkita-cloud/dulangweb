@@ -1,6 +1,6 @@
 import React, { useState, useEffect } from 'react';
 import { CartItem, Voucher, Customer, GoldenTicketRecord, StoreConfig } from '../../types';
-import { BRAND, LOCKED_COPY, DEFAULT_SIDOARJO_DELIVERY_RATES } from '../../lib/constants';
+import { BRAND, LOCKED_COPY, DEFAULT_SIDOARJO_DELIVERY_RATES, checkStoreOpenStatus } from '../../lib/constants';
 import { storageService } from '../../services/storageService';
 
 interface StickyCartProps {
@@ -104,9 +104,18 @@ export const StickyCart: React.FC<StickyCartProps> = ({
   const [giftRecipient, setGiftRecipient] = useState<string>('');
   const [giftMessage, setGiftMessage] = useState<string>('');
 
+  // Operating Status Check
+  const openStatus = checkStoreOpenStatus(storeConfig);
+
   // 3a: Jadwal Kirim (Hari Ini vs Pre-Order Besok)
-  const [deliveryDay, setDeliveryDay] = useState<'today' | 'tomorrow'>('today');
-  const [deliverySlot, setDeliverySlot] = useState<string>('Sekarang / Fresh Panas 🍳');
+  const [deliveryDay, setDeliveryDay] = useState<'today' | 'tomorrow'>(() => {
+    return checkStoreOpenStatus(storeConfig).isOpen ? 'today' : 'tomorrow';
+  });
+  const [deliverySlot, setDeliverySlot] = useState<string>(() => {
+    return checkStoreOpenStatus(storeConfig).isOpen
+      ? 'Sekarang / Fresh Panas 🍳'
+      : 'Subuh/Pagi (07.00 - 08.30) 🌅';
+  });
   const [customTimeInput, setCustomTimeInput] = useState<string>('');
 
   // Step 6 & 7: Sistem Voucher Diskon Unik ("Voucher Beranak")
@@ -170,7 +179,13 @@ export const StickyCart: React.FC<StickyCartProps> = ({
     } catch {}
 
     // Construct prefilled WhatsApp message with buyer identity + fulfillment + 3a & 3b Extra Options & Voucher
-    let message = `${LOCKED_COPY.waCheckout}!\n\n`;
+    let message = '';
+    if (!openStatus.isOpen) {
+      message += `🌙 *[PRE-ORDER TUTUP DAPUR - UNTUK BESOK]*\n`;
+      message += `Halo Dulang, karena dapur sedang istirahat, aku mau pre-order untuk besok yaa:\n\n`;
+    } else {
+      message += `${LOCKED_COPY.waCheckout}!\n\n`;
+    }
 
     if (buyerName.trim()) {
       message += `👤 *Nama Pemesan:* Kak ${buyerName.trim()}\n`;
@@ -349,6 +364,22 @@ export const StickyCart: React.FC<StickyCartProps> = ({
 
             {/* Scrollable Modal Content (Single smooth scroll, no nested clipping) */}
             <div className="overflow-y-auto px-4 sm:px-6 py-4 space-y-4 flex-1 overscroll-contain">
+              {!openStatus.isOpen && (
+                <div className="bg-amber-500/15 border-2 border-amber-400/60 rounded-[18px] p-3.5 text-[#111111] flex items-start gap-3">
+                  <span className="text-2xl mt-0.5 shrink-0">{openStatus.isManualClosed ? '🪧' : '🌙'}</span>
+                  <div className="text-xs font-sans">
+                    <div className="font-bold text-amber-950 text-sm mb-0.5">
+                      {openStatus.isManualClosed ? 'Dapur Sedang Libur' : 'Dapur Sedang Istirahat / Tutup'}
+                    </div>
+                    <p className="text-[#5C3D2E] leading-relaxed">
+                      {openStatus.isManualClosed
+                        ? openStatus.reason
+                        : `Jam operasional: ${openStatus.openHour} - ${openStatus.closeHour} WIB. Pesanan kamu otomatis kami jadwalkan untuk digoreng fresh besok pagi!`}
+                    </p>
+                  </div>
+                </div>
+              )}
+
               {/* List of Cart Items */}
               <div className="space-y-2.5">
                 {cart.map((c, i) => (
@@ -582,7 +613,7 @@ export const StickyCart: React.FC<StickyCartProps> = ({
                         : 'bg-white text-[#111111] border-[#111111]/40 hover:bg-gray-50'
                     }`}
                   >
-                    <span>🍳</span> Kloter Hari Ini
+                    <span>🍳</span> Kloter Hari Ini {!openStatus.isOpen ? '(Dapur Tutup)' : ''}
                   </button>
 
                   <button

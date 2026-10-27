@@ -21,6 +21,43 @@ export function setAudioEnabled(enabled: boolean): void {
   }
 }
 
+export function isAudioContextUnlocked(): boolean {
+  if (typeof window === 'undefined') return false;
+  return !!audioCtx && audioCtx.state === 'running';
+}
+
+/**
+ * Explicit user interaction trigger to bypass browser autoplay restrictions.
+ * Resumes suspended AudioContext and plays a gentle activation chime.
+ */
+export async function unlockAudioContext(): Promise<boolean> {
+  try {
+    const ctx = getAudioContext();
+    if (!ctx) return false;
+    if (ctx.state === 'suspended') {
+      await ctx.resume();
+    }
+    playNewCustomerChime();
+    return ctx.state === 'running';
+  } catch (err) {
+    console.warn('Unlock audio context error:', err);
+    return false;
+  }
+}
+
+/**
+ * Triggers haptic feedback / vibration on mobile & tablet devices for new orders
+ */
+export function triggerKitchenVibration(): void {
+  if (typeof window !== 'undefined' && 'navigator' in window && typeof navigator.vibrate === 'function') {
+    try {
+      navigator.vibrate([250, 100, 250]);
+    } catch {
+      // Ignored if device does not permit vibration
+    }
+  }
+}
+
 function getAudioContext(): AudioContext | null {
   if (typeof window === 'undefined') return null;
   if (!audioCtx) {

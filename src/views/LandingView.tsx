@@ -1,6 +1,6 @@
 import React, { useState, useEffect } from 'react';
 import { MenuItem, StoreConfig, CustomerTestimonial, Customer, SnackBoxType, SnackBoxDrink } from '../types';
-import { BRAND, LOCKED_COPY, DEFAULT_STORE_CONFIG } from '../lib/constants';
+import { BRAND, LOCKED_COPY, DEFAULT_STORE_CONFIG, checkStoreOpenStatus } from '../lib/constants';
 import { PolaroidMenuCard } from '../components/common/PolaroidMenuCard';
 import { CuteQRCard } from '../components/common/CuteQRCard';
 import { MixMatchBoxModal } from '../components/common/MixMatchBoxModal';
@@ -92,7 +92,17 @@ export const LandingView: React.FC<LandingViewProps> = ({
     };
   }, []);
 
+  // Operating Hours Status (Real-time)
+  const openStatus = checkStoreOpenStatus(storeConfig);
+
   // --- PAKET SNACK BOX / HAJATAN / ARISAN BUILDER STATE ---
+  const minSnackBoxOrder = storeConfig.snackBoxMinOrder || 10;
+  const minEventDateStr = React.useMemo(() => {
+    const d = new Date();
+    d.setDate(d.getDate() + 1); // minimal H-1
+    return d.toISOString().split('T')[0];
+  }, []);
+
   const DULANG_SNACK_BOX_ITEMS = [
     { name: 'Risol Mayo', tag: 'Gurih Lumer Smoked Beef', price: 3500 },
     { name: 'Risol Rogut', tag: 'Ayam Wortel Creamy', price: 3500 },
@@ -111,7 +121,7 @@ export const LandingView: React.FC<LandingViewProps> = ({
     'Lumpia Sayur',
   ]);
   const [sbDrink, setSbDrink] = useState<SnackBoxDrink>('mineral');
-  const [sbQty, setSbQty] = useState<number>(0);
+  const [sbQty, setSbQty] = useState<number>(20);
   const [sbEventDate, setSbEventDate] = useState<string>(() => {
     const d = new Date();
     d.setDate(d.getDate() + 2);
@@ -188,8 +198,8 @@ export const LandingView: React.FC<LandingViewProps> = ({
   };
 
   const handleOrderSnackBoxWA = () => {
-    if (sbQty <= 0) {
-      alert('Silakan tentukan jumlah pesanan box terlebih dahulu (misal: 20 atau 30 box).');
+    if (sbQty < minSnackBoxOrder) {
+      alert(`Minimal pemesanan Paket Snack Box Acara adalah ${minSnackBoxOrder} box.`);
       return;
     }
 
@@ -393,26 +403,28 @@ export const LandingView: React.FC<LandingViewProps> = ({
         </div>
       )}
 
-      {/* Closed Kitchen Banner If Closed */}
-      {storeConfig.isStoreClosed && (
+      {/* Operating Status Banner: If Manual Closed or Auto Closed Outside Operating Hours */}
+      {!openStatus.isOpen && (
         <div
           onClick={onOpenClosedNotice}
-          className="cursor-pointer bg-[#FFD700] text-[#111111] border-2 border-[#111111] rounded-[22px] p-4 sm:p-5 shadow-[4px_4px_0_#111111] flex flex-col sm:flex-row sm:items-center justify-between gap-3 mt-4 hover:brightness-105 transition-all"
+          className="cursor-pointer bg-gradient-to-r from-[#FFD700] to-amber-300 text-[#111111] border-2 border-[#111111] rounded-[22px] p-4 sm:p-5 shadow-[4px_4px_0_#111111] flex flex-col sm:flex-row sm:items-center justify-between gap-3 mt-4 hover:brightness-105 transition-all"
         >
           <div className="flex items-center gap-3.5">
-            <span className="text-3xl">🪧</span>
+            <span className="text-3xl">{openStatus.isManualClosed ? '🪧' : '🌙'}</span>
             <div>
               <div className="inline-flex items-center gap-1.5 bg-[#111111] text-[#FFD700] px-2.5 py-0.5 rounded-full text-[10px] font-bold uppercase tracking-wider mb-1">
                 <span className="w-1.5 h-1.5 rounded-full bg-red-400 animate-ping" />
-                Dapur Sedang Libur Goreng
+                {openStatus.isManualClosed ? 'Dapur Sedang Libur Goreng' : 'Dapur Sedang Istirahat / Tutup'}
               </div>
-              <p className="font-hand font-bold text-[22px] sm:text-[24px] leading-tight text-[#111111]">
-                {storeConfig.closedReason || 'Maaf lagi nggak goreng dulu, hari ini masak di dapur sendiri ya.'}
+              <p className="font-hand font-bold text-[20px] sm:text-[23px] leading-tight text-[#111111]">
+                {openStatus.isManualClosed
+                  ? (storeConfig.closedReason || 'Maaf lagi nggak goreng dulu, hari ini masak di dapur sendiri ya.')
+                  : `${openStatus.reason} Tetap bisa pesan untuk diantar besok subuh/pagi!`}
               </p>
             </div>
           </div>
           <span className="font-sans text-xs font-bold underline bg-white border border-[#111111] px-3 py-1.5 rounded-full shadow-sm shrink-0 text-center">
-            Buka Pengumuman 📖
+            {openStatus.isManualClosed ? 'Buka Pengumuman 📖' : 'Jadwal Buka & Pre-Order 🥟'}
           </span>
         </div>
       )}
@@ -423,10 +435,24 @@ export const LandingView: React.FC<LandingViewProps> = ({
           {/* Left Column: Big Black Card */}
           <div className="relative">
             <div className="bg-[#111111] text-[#FFF8E7] rounded-[24px] sm:rounded-[28px] p-5 sm:p-7 lg:p-10 pb-8 sm:pb-10 lg:pb-28 sm:rotate-[-1.2deg] polaroid-shadow border-2 border-[#111111] relative overflow-hidden">
-              {/* Hot Pill */}
-              <div className="inline-flex items-center gap-2 bg-[#FFD700] text-[#111111] rounded-full px-3.5 sm:px-4 py-1.5 text-[10px] sm:text-[11px] font-bold tracking-widest uppercase font-sans mb-4 sm:mb-6 sm:rotate-[1deg] border border-[#111111]">
-                <span className="w-1.5 h-1.5 bg-[#111111] rounded-full animate-pulse" />
-                {LOCKED_COPY.pillHot}
+              {/* Pills Bar */}
+              <div className="flex flex-wrap items-center gap-2 mb-4 sm:mb-6">
+                <div className="inline-flex items-center gap-2 bg-[#FFD700] text-[#111111] rounded-full px-3.5 sm:px-4 py-1.5 text-[10px] sm:text-[11px] font-bold tracking-widest uppercase font-sans sm:rotate-[1deg] border border-[#111111]">
+                  <span className="w-1.5 h-1.5 bg-[#111111] rounded-full animate-pulse" />
+                  {LOCKED_COPY.pillHot}
+                </div>
+
+                {openStatus.isOpen ? (
+                  <div className="inline-flex items-center gap-1.5 bg-emerald-500/20 text-emerald-300 border border-emerald-400/40 rounded-full px-3 py-1.5 text-[10px] sm:text-[11px] font-bold font-sans">
+                    <span className="w-2 h-2 rounded-full bg-emerald-400 animate-pulse" />
+                    Dapur Buka • {openStatus.openHour} - {openStatus.closeHour} WIB
+                  </div>
+                ) : (
+                  <div className="inline-flex items-center gap-1.5 bg-amber-400/20 text-[#FFD700] border border-[#FFD700]/40 rounded-full px-3 py-1.5 text-[10px] sm:text-[11px] font-bold font-sans">
+                    <span>🌙</span>
+                    Dapur Tutup • Pre-Order Besok
+                  </div>
+                )}
               </div>
 
               {/* Locked H1 Headline */}
@@ -1217,7 +1243,7 @@ export const LandingView: React.FC<LandingViewProps> = ({
 
                 {/* Quick Pick Buttons */}
                 <div className="flex flex-wrap gap-2 mb-3">
-                  {[0, 20, 30, 50, 75, 100, 150].map((num) => (
+                  {[10, 20, 30, 50, 75, 100, 150].map((num) => (
                     <button
                       key={num}
                       type="button"
@@ -1228,7 +1254,7 @@ export const LandingView: React.FC<LandingViewProps> = ({
                           : 'bg-white text-[#5C3D2E] border-[#111111]/20 hover:border-[#111111]'
                       }`}
                     >
-                      {num === 0 ? 'Reset (0 Box)' : `${num} Box`}
+                      {`${num} Box`}
                     </button>
                   ))}
                 </div>
@@ -1236,13 +1262,19 @@ export const LandingView: React.FC<LandingViewProps> = ({
                 {/* Slider */}
                 <input
                   type="range"
-                  min="0"
+                  min={minSnackBoxOrder}
                   max="300"
                   step="5"
                   value={sbQty}
                   onChange={(e) => setSbQty(Number(e.target.value))}
                   className="w-full accent-[#111111] cursor-pointer"
                 />
+
+                {sbQty < minSnackBoxOrder && (
+                  <div className="mt-2 p-2.5 bg-red-500/10 border border-red-500/30 rounded-[12px] text-red-600 text-xs font-sans font-bold text-center">
+                    ⚠️ Minimal pemesanan paket custom hajatan/arisan adalah {minSnackBoxOrder} box.
+                  </div>
+                )}
 
                 {/* Tier Discount Badges */}
                 <div className="mt-3 grid grid-cols-1 sm:grid-cols-3 gap-2">
@@ -1295,10 +1327,14 @@ export const LandingView: React.FC<LandingViewProps> = ({
                     </label>
                     <input
                       type="date"
+                      min={minEventDateStr}
                       value={sbEventDate}
                       onChange={(e) => setSbEventDate(e.target.value)}
                       className="w-full bg-[#FFFDF4] border-2 border-[#111111] rounded-[12px] px-3 py-2 text-xs font-sans font-bold"
                     />
+                    <span className="text-[10px] text-[#5C3D2E]/70 block mt-1">
+                      *Minimal H-1 dari hari ini agar adonan dan dus disiapkan maksimal.
+                    </span>
                   </div>
                   <div>
                     <label className="font-sans text-[11px] font-bold text-[#5C3D2E] block mb-1">
@@ -1457,8 +1493,8 @@ export const LandingView: React.FC<LandingViewProps> = ({
                   <button
                     type="button"
                     onClick={() => {
-                      if (sbQty <= 0) {
-                        alert('Silakan pilih jumlah pesanan box terlebih dahulu (misal: 20 atau 30 box).');
+                      if (sbQty < minSnackBoxOrder) {
+                        alert(`Minimal pemesanan Paket Snack Box Acara adalah ${minSnackBoxOrder} box.`);
                         return;
                       }
                       const boxTitle =
