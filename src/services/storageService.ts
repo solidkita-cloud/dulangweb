@@ -97,10 +97,23 @@ export const storageService = {
               hasChanges = true;
             }
 
+            const defMatch = DEFAULT_MENUS.find((dm) => dm.id === m.id);
+            const defaultStokHarian = defMatch?.stokHarian ?? null;
+            let stokHarian = m.stokHarian;
+            let sisaStok = m.sisaStok;
+
+            if ((stokHarian === undefined || stokHarian === null) && defaultStokHarian !== null) {
+              stokHarian = defaultStokHarian;
+              sisaStok = defaultStokHarian;
+              hasChanges = true;
+            }
+
             return {
               ...m,
               servingType: st,
               variantType: (m.variantType || (st === 'frozen_only' ? 'frozen' : 'matang')),
+              stokHarian: stokHarian ?? null,
+              sisaStok: sisaStok ?? null,
             };
           });
 
@@ -234,18 +247,23 @@ export const storageService = {
     this.saveMenus(updated);
   },
 
-  deductStockForOrder(orderItems: { menu_id?: string; nama: string; qty: number }[]): void {
+  deductStockForOrder(orderItems: { menu_id?: string; nama: string; qty: number; pilihanOpsi?: string }[]): void {
     const menus = this.getMenus();
     let hasChanges = false;
 
-    orderItems.forEach((item) => {
-      const idx = menus.findIndex(
-        (m) => (item.menu_id && m.id === item.menu_id) || m.nama.toLowerCase() === item.nama.toLowerCase()
-      );
+    // Helper untuk memotong stok pada 1 menu item
+    const deductFromMenu = (menuIdentifier: string, qtyToDeduct: number) => {
+      const cleanIdent = menuIdentifier.toLowerCase().replace(/\s*\(.*\)/g, '').trim();
+      const idx = menus.findIndex((m) => {
+        if (m.id && m.id.toLowerCase() === menuIdentifier.toLowerCase()) return true;
+        const mClean = m.nama.toLowerCase().replace(/\s*\(.*\)/g, '').trim();
+        return mClean === cleanIdent || m.nama.toLowerCase() === cleanIdent;
+      });
+
       if (idx >= 0) {
         const m = menus[idx];
         if (m.sisaStok !== undefined && m.sisaStok !== null) {
-          const newSisa = Math.max(0, m.sisaStok - item.qty);
+          const newSisa = Math.max(0, m.sisaStok - qtyToDeduct);
           menus[idx] = {
             ...m,
             sisaStok: newSisa,
@@ -253,6 +271,82 @@ export const storageService = {
           };
           hasChanges = true;
         }
+      }
+    };
+
+    orderItems.forEach((item) => {
+      const lowerName = item.nama.toLowerCase();
+      const isSnackBox =
+        (item.menu_id && item.menu_id.startsWith('snack_box')) ||
+        lowerName.includes('snack box');
+
+      if (isSnackBox) {
+        // Jika snack box: potong stok masing-masing gorengan di dalam dus
+        // Pilihan opsi biasanya berisi format: "Isi: Risol Mayo + Risol Rogut + Lumpia Sayur..."
+        const boxQty = item.qty || 1;
+        const searchPool = `${item.pilihanOpsi || ''} ${item.nama}`.toLowerCase();
+        menus.forEach((m) => {
+          const cleanMenuName = m.nama.toLowerCase().replace(/\s*\(.*\)/g, '').trim();
+          if (searchPool.includes(cleanMenuName)) {
+            deductFromMenu(m.id, boxQty);
+          }
+        });
+      } else {
+        // Menu reguler (matang / frozen)
+        deductFromMenu(item.menu_id || item.nama, item.qty);
+      }
+    });
+
+    if (hasChanges) {
+      this.saveMenus(menus);
+    }
+  },
+
+  restoreStockForOrder(orderItems: { menu_id?: string; nama: string; qty: number; pilihanOpsi?: string }[]): void {
+    const menus = this.getMenus();
+    let hasChanges = false;
+
+    // Helper untuk mengembalikan stok pada 1 menu item
+    const restoreToMenu = (menuIdentifier: string, qtyToRestore: number) => {
+      const cleanIdent = menuIdentifier.toLowerCase().replace(/\s*\(.*\)/g, '').trim();
+      const idx = menus.findIndex((m) => {
+        if (m.id && m.id.toLowerCase() === menuIdentifier.toLowerCase()) return true;
+        const mClean = m.nama.toLowerCase().replace(/\s*\(.*\)/g, '').trim();
+        return mClean === cleanIdent || m.nama.toLowerCase() === cleanIdent;
+      });
+
+      if (idx >= 0) {
+        const m = menus[idx];
+        if (m.sisaStok !== undefined && m.sisaStok !== null) {
+          const maxCap = m.stokHarian !== null && m.stokHarian !== undefined ? m.stokHarian : 9999;
+          const newSisa = Math.min(maxCap, m.sisaStok + qtyToRestore);
+          menus[idx] = {
+            ...m,
+            sisaStok: newSisa,
+            tersedia: newSisa > 0 ? true : m.tersedia,
+          };
+          hasChanges = true;
+        }
+      }
+    };
+
+    orderItems.forEach((item) => {
+      const lowerName = item.nama.toLowerCase();
+      const isSnackBox =
+        (item.menu_id && item.menu_id.startsWith('snack_box')) ||
+        lowerName.includes('snack box');
+
+      if (isSnackBox) {
+        const boxQty = item.qty || 1;
+        const searchPool = `${item.pilihanOpsi || ''} ${item.nama}`.toLowerCase();
+        menus.forEach((m) => {
+          const cleanMenuName = m.nama.toLowerCase().replace(/\s*\(.*\)/g, '').trim();
+          if (searchPool.includes(cleanMenuName)) {
+            restoreToMenu(m.id, boxQty);
+          }
+        });
+      } else {
+        restoreToMenu(item.menu_id || item.nama, item.qty);
       }
     });
 
@@ -1301,7 +1395,12 @@ ${lines.join('\n')}
 
   async deleteOrder(orderId: string): Promise<boolean> {
     try {
-      const list = this.getOrders().filter((o) => o.id !== orderId);
+      const orders = this.getOrders();
+      const target = orders.find((o) => o.id === orderId);
+      if (target && target.status !== 'batal' && target.items && target.items.length > 0) {
+        this.restoreStockForOrder(target.items);
+      }
+      const list = orders.filter((o) => o.id !== orderId);
       this.saveOrders(list);
 
       // Catat ID ke daftar tombstone agar sinkronisasi cloud tidak memunculkannya lagi
@@ -1686,6 +1785,18 @@ ${lines.join('\n')}
     if (idx < 0) return null;
 
     const existing = list[idx];
+
+    // Otomatisasi pengembalian/pemotongan stok saat status order batal atau diaktifkan kembali
+    if (status === 'batal' && existing.status !== 'batal') {
+      if (existing.items && existing.items.length > 0) {
+        this.restoreStockForOrder(existing.items);
+      }
+    } else if (existing.status === 'batal' && status !== 'batal') {
+      if (existing.items && existing.items.length > 0) {
+        this.deductStockForOrder(existing.items);
+      }
+    }
+
     const updatedOrder: OrderRecord = {
       ...existing,
       status,

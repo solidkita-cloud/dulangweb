@@ -1387,6 +1387,48 @@ Catatan Kurir: Pastikan posisi dus ditaruh datar agar mayo tidak tumpah ya kak.`
     onShowToast('Semua kuota porsi menu hari ini berhasil diisi penuh! 🌅🥟');
   };
 
+  const handleBulkSetStock = () => {
+    const matangStr = window.prompt(
+      'Masukkan kuota stok harian untuk SEMUA menu matang/goreng (contoh: 30):',
+      '30'
+    );
+    if (matangStr === null) return;
+    const matangQty = Number(matangStr);
+    if (isNaN(matangQty) || matangQty < 0) {
+      alert('Mohon masukkan angka kuota yang valid.');
+      return;
+    }
+
+    const frozenStr = window.prompt(
+      'Masukkan kuota stok harian untuk SEMUA menu frozen (contoh: 15):',
+      '15'
+    );
+    if (frozenStr === null) return;
+    const frozenQty = Number(frozenStr);
+    if (isNaN(frozenQty) || frozenQty < 0) {
+      alert('Mohon masukkan angka kuota yang valid.');
+      return;
+    }
+
+    const currentMenus = storageService.getMenus();
+    const updated = currentMenus.map((m) => {
+      const isFrozen =
+        m.variantType === 'frozen' ||
+        m.servingType === 'frozen_only' ||
+        m.nama.toLowerCase().includes('frozen');
+      const targetQty = isFrozen ? frozenQty : matangQty;
+      return {
+        ...m,
+        stokHarian: targetQty,
+        sisaStok: targetQty,
+        tersedia: targetQty > 0 ? true : false,
+      };
+    });
+    storageService.saveMenus(updated);
+    onUpdateMenus(updated);
+    onShowToast(`Kuota stok harian berhasil diset: ${matangQty} porsi (matang) & ${frozenQty} pack (frozen)! 🥟❄️`);
+  };
+
   // --- BACKUP & RESTORE DATABASE OFFLINE (.JSON) ---
   const handleExportBackup = () => {
     const backupData = storageService.exportDatabaseBackup();
@@ -1938,6 +1980,24 @@ Catatan Kurir: Pastikan posisi dus ditaruh datar agar mayo tidak tumpah ya kak.`
               </button>
               <button
                 type="button"
+                onClick={handleRefillAllStock}
+                className="cursor-pointer bg-emerald-50 text-emerald-800 rounded-full px-3 sm:px-4 py-1.5 sm:py-2 font-sans font-bold text-[11px] sm:text-[12px] border-2 border-emerald-500/40 hover:border-emerald-600 transition flex items-center gap-1"
+                title="Isi penuh kembali sisa stok seluruh menu ke kuota porsi harian masing-masing"
+              >
+                <span>🔄</span>
+                <span>Isi Penuh Stok</span>
+              </button>
+              <button
+                type="button"
+                onClick={handleBulkSetStock}
+                className="cursor-pointer bg-amber-50 text-[#5C3D2E] rounded-full px-3 sm:px-4 py-1.5 sm:py-2 font-sans font-bold text-[11px] sm:text-[12px] border-2 border-amber-500/40 hover:border-[#111111] transition flex items-center gap-1"
+                title="Atur kuota porsi harian untuk seluruh menu sekaligus"
+              >
+                <span>⚡</span>
+                <span>Set Kuota Masal</span>
+              </button>
+              <button
+                type="button"
                 onClick={() => {
                   const conf = window.confirm(
                     'Muat ulang seluruh menu standar Dapur Dulang (termasuk varian Gorengan Matang & Frozen Pack)?'
@@ -1950,7 +2010,7 @@ Catatan Kurir: Pastikan posisi dus ditaruh datar agar mayo tidak tumpah ya kak.`
                 }}
                 className="cursor-pointer bg-white text-[#5C3D2E] rounded-full px-3 sm:px-4 py-1.5 sm:py-2 font-sans font-bold text-[11px] sm:text-[12px] border-2 border-[#111111]/30 hover:border-[#111111] transition"
               >
-                🔄 Muat Menu Standar
+                Muat Standar
               </button>
               <button
                 type="button"

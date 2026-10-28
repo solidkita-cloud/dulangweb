@@ -160,6 +160,29 @@ export function App() {
     qty: number = 1
   ) => {
     const addQty = Math.max(1, qty);
+
+    // Ambil menu live terkini untuk memeriksa batasan stok porsi
+    const liveMenu = menus.find((m) => m.id === item.id) || item;
+    const hasLimit = liveMenu.sisaStok !== null && liveMenu.sisaStok !== undefined;
+
+    if (hasLimit) {
+      if ((liveMenu.sisaStok as number) <= 0) {
+        showToast(`Maaf, "${liveMenu.nama}" sudah habis! 🙏`);
+        return;
+      }
+      const existingInCart = cart.find(
+        (c) =>
+          c.item.id === item.id &&
+          (c.pilihanOpsi || '') === (pilihanOpsi || '') &&
+          (c.variantType || 'matang') === variantType
+      );
+      const currentQty = existingInCart ? existingInCart.qty : 0;
+      if (currentQty + addQty > (liveMenu.sisaStok as number)) {
+        showToast(`Stok "${liveMenu.nama}" tersisa ${liveMenu.sisaStok} porsi.`);
+        return;
+      }
+    }
+
     setCart((prev) => {
       const existing = prev.find(
         (c) =>
@@ -176,7 +199,7 @@ export function App() {
             : c
         );
       }
-      return [...prev, { item, qty: addQty, pilihanOpsi, variantType }];
+      return [...prev, { item: liveMenu, qty: addQty, pilihanOpsi, variantType }];
     });
     const opsiText = pilihanOpsi ? ` (${pilihanOpsi})` : '';
     const variantText = variantType === 'frozen' ? ' [Frozen ❄️]' : ' [Goreng 🍳]';
@@ -198,7 +221,16 @@ export function App() {
             (c.variantType || 'matang') === variantType
           ) {
             const safeDelta = Number.isFinite(delta) ? Math.floor(delta) : 0;
-            const newQty = Math.min(999, Math.max(0, c.qty + safeDelta));
+            const liveMenu = menus.find((m) => m.id === itemId) || c.item;
+            const hasLimit = liveMenu.sisaStok !== null && liveMenu.sisaStok !== undefined;
+
+            let targetQty = c.qty + safeDelta;
+            if (safeDelta > 0 && hasLimit && targetQty > (liveMenu.sisaStok as number)) {
+              showToast(`Maksimal pesanan sesuai sisa stok (${liveMenu.sisaStok} porsi).`);
+              targetQty = liveMenu.sisaStok as number;
+            }
+
+            const newQty = Math.min(999, Math.max(0, targetQty));
             return newQty > 0 ? { ...c, qty: newQty } : null;
           }
           return c;

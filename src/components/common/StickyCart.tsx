@@ -166,6 +166,25 @@ export const StickyCart: React.FC<StickyCartProps> = ({
   };
 
   const handleCheckoutWA = async () => {
+    // Validasi ketersediaan stok live sebelum checkout agar tidak overbooking
+    const liveMenus = storageService.getMenus();
+    for (const c of cart) {
+      const match = liveMenus.find(
+        (m) => m.id === c.item.id || m.nama.toLowerCase() === c.item.nama.toLowerCase()
+      );
+      if (match && match.sisaStok !== null && match.sisaStok !== undefined) {
+        if (match.sisaStok <= 0) {
+          alert(`Maaf Kak, "${match.nama}" baru saja habis/sold out. Silakan hapus menu ini dari keranjang untuk melanjutkan.`);
+          return;
+        }
+        if (c.qty > match.sisaStok) {
+          alert(`Maaf Kak, stok "${match.nama}" tersisa ${match.sisaStok} porsi. Jumlah di keranjang otomatis kami sesuaikan.`);
+          onUpdateQty(c.item.id, match.sisaStok - c.qty, c.pilihanOpsi, c.variantType);
+          return;
+        }
+      }
+    }
+
     // Save buyer profile locally for effortless repeat checkout
     try {
       localStorage.setItem(
@@ -407,8 +426,19 @@ export const StickyCart: React.FC<StickyCartProps> = ({
                           {c.qty > 1 ? `Semua ${c.pilihanOpsi} (${c.qty} pcs)` : `Opsi: ${c.pilihanOpsi}`}
                         </span>
                       )}
-                      <p className="font-sans text-[11px] sm:text-xs text-[#5C3D2E] font-medium">
-                        Rp {c.item.harga.toLocaleString('id-ID')} / porsi
+                      <p className="font-sans text-[11px] sm:text-xs text-[#5C3D2E] font-medium flex items-center gap-1.5">
+                        <span>Rp {c.item.harga.toLocaleString('id-ID')} / porsi</span>
+                        {c.item.sisaStok !== null && c.item.sisaStok !== undefined && (
+                          <span
+                            className={`text-[9px] font-sans font-bold px-1.5 py-0.2 rounded-full ${
+                              c.item.sisaStok <= 5
+                                ? 'bg-red-100 text-red-700 border border-red-300 animate-pulse'
+                                : 'bg-emerald-100 text-emerald-800'
+                            }`}
+                          >
+                            Sisa {c.item.sisaStok}
+                          </span>
+                        )}
                       </p>
                     </div>
 

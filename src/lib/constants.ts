@@ -284,7 +284,7 @@ export const ALL_DELIVERY_AREAS: string[] = DELIVERY_REGIONS.flatMap((r) => r.ar
 export const SIDOARJO_AREAS = CITY_DISTRICTS['Kabupaten Sidoarjo'];
 
 
-// Default Menus Riil Dapur Dulang Indonesia (8 Menu Utama)
+// Default Menus Riil Dapur Dulang Indonesia (8 Menu Utama + 5 Menu Frozen)
 export const DEFAULT_MENUS: MenuItem[] = [
   {
     id: 'menu-1',
@@ -294,6 +294,8 @@ export const DEFAULT_MENUS: MenuItem[] = [
     tersedia: true,
     opsi: ['Saos Pedas', 'Saos Tidak Pedas', 'cabai aja'],
     servingType: 'both',
+    stokHarian: 40,
+    sisaStok: 40,
   },
   {
     id: 'menu-2',
@@ -303,6 +305,8 @@ export const DEFAULT_MENUS: MenuItem[] = [
     tersedia: true,
     opsi: ['Saos Pedas', 'Saos Tidak Pedas', 'cabai aja'],
     servingType: 'both',
+    stokHarian: 40,
+    sisaStok: 40,
   },
   {
     id: 'menu-3',
@@ -312,6 +316,8 @@ export const DEFAULT_MENUS: MenuItem[] = [
     tersedia: true,
     opsi: ['komplit', 'daun bawang aja', 'cabai aja'],
     servingType: 'matang_only',
+    stokHarian: 30,
+    sisaStok: 30,
   },
   {
     id: 'menu-4',
@@ -320,6 +326,8 @@ export const DEFAULT_MENUS: MenuItem[] = [
     deskripsi: 'Pisang manis legit berbalut cokelat premium yang meletus di mulut. Luar renyah, dalam melted.',
     tersedia: true,
     servingType: 'matang_only',
+    stokHarian: 30,
+    sisaStok: 30,
   },
   {
     id: 'menu-5',
@@ -329,6 +337,8 @@ export const DEFAULT_MENUS: MenuItem[] = [
     tersedia: true,
     opsi: ['Pedas', 'Tidak Pedas', 'cabai aja'],
     servingType: 'matang_only',
+    stokHarian: 25,
+    sisaStok: 25,
   },
   {
     id: 'menu-6',
@@ -337,6 +347,8 @@ export const DEFAULT_MENUS: MenuItem[] = [
     deskripsi: 'Bakwan sayur / ote-ote khas Jawa Timur yang renyah di luar, lembut dan gurih di dalam.',
     tersedia: true,
     servingType: 'matang_only',
+    stokHarian: 25,
+    sisaStok: 25,
   },
   {
     id: 'menu-7',
@@ -346,6 +358,8 @@ export const DEFAULT_MENUS: MenuItem[] = [
     tersedia: true,
     opsi: ['Pedas', 'Sedang', 'Tidak Pedas'],
     servingType: 'matang_only',
+    stokHarian: 20,
+    sisaStok: 20,
   },
   {
     id: 'menu-8',
@@ -355,6 +369,8 @@ export const DEFAULT_MENUS: MenuItem[] = [
     tersedia: true,
     opsi: ['Pedas', 'Sedang', 'Tidak Pedas'],
     servingType: 'matang_only',
+    stokHarian: 15,
+    sisaStok: 15,
   },
   {
     id: 'menu-9',
@@ -364,6 +380,8 @@ export const DEFAULT_MENUS: MenuItem[] = [
     tersedia: true,
     variantType: 'frozen',
     servingType: 'frozen_only',
+    stokHarian: 15,
+    sisaStok: 15,
   },
   {
     id: 'menu-10',
@@ -373,6 +391,8 @@ export const DEFAULT_MENUS: MenuItem[] = [
     tersedia: true,
     variantType: 'frozen',
     servingType: 'frozen_only',
+    stokHarian: 15,
+    sisaStok: 15,
   },
   {
     id: 'menu-11',
@@ -382,6 +402,8 @@ export const DEFAULT_MENUS: MenuItem[] = [
     tersedia: true,
     variantType: 'frozen',
     servingType: 'frozen_only',
+    stokHarian: 15,
+    sisaStok: 15,
   },
   {
     id: 'menu-12',
@@ -391,6 +413,8 @@ export const DEFAULT_MENUS: MenuItem[] = [
     tersedia: true,
     variantType: 'frozen',
     servingType: 'frozen_only',
+    stokHarian: 10,
+    sisaStok: 10,
   },
   {
     id: 'menu-13',
@@ -400,6 +424,8 @@ export const DEFAULT_MENUS: MenuItem[] = [
     tersedia: true,
     variantType: 'frozen',
     servingType: 'frozen_only',
+    stokHarian: 10,
+    sisaStok: 10,
   },
 ];
 

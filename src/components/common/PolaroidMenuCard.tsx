@@ -312,10 +312,18 @@ export const PolaroidMenuCard: React.FC<PolaroidMenuCardProps> = ({
             )}
 
             {/* Stepper Jumlah Porsi */}
+            {/* Stepper Jumlah Porsi */}
             <div className="flex items-center justify-between pt-1">
-              <span className="font-sans font-bold text-xs text-[#111111] uppercase tracking-wider">
-                Jumlah Porsi:
-              </span>
+              <div>
+                <span className="font-sans font-bold text-xs text-[#111111] uppercase tracking-wider block">
+                  Jumlah Porsi:
+                </span>
+                {hasStockLimit && (
+                  <span className="text-[10px] text-amber-700 font-semibold block">
+                    Tersisa {item.sisaStok} porsi
+                  </span>
+                )}
+              </div>
               <div className="flex items-center gap-3 bg-[#FFF8E7] px-3 py-1.5 rounded-full border border-amber-300">
                 <button
                   type="button"
@@ -329,8 +337,17 @@ export const PolaroidMenuCard: React.FC<PolaroidMenuCardProps> = ({
                 </span>
                 <button
                   type="button"
-                  onClick={() => setOrderQty(orderQty + 1)}
-                  className="cursor-pointer w-7 h-7 rounded-full bg-[#111111] hover:bg-black text-[#FFD700] border border-[#111111] font-bold text-sm flex items-center justify-center active:scale-95"
+                  disabled={hasStockLimit && orderQty >= (item.sisaStok as number)}
+                  onClick={() => {
+                    const maxQty = hasStockLimit ? (item.sisaStok as number) : 999;
+                    if (orderQty < maxQty) setOrderQty(orderQty + 1);
+                  }}
+                  className={`w-7 h-7 rounded-full font-bold text-sm flex items-center justify-center active:scale-95 transition ${
+                    hasStockLimit && orderQty >= (item.sisaStok as number)
+                      ? 'bg-gray-300 text-gray-500 cursor-not-allowed border border-gray-400'
+                      : 'cursor-pointer bg-[#111111] hover:bg-black text-[#FFD700] border border-[#111111]'
+                  }`}
+                  title={hasStockLimit && orderQty >= (item.sisaStok as number) ? 'Maksimal stok tercapai' : 'Tambah'}
                 >
                   +
                 </button>
