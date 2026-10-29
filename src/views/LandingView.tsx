@@ -280,7 +280,7 @@ export const LandingView: React.FC<LandingViewProps> = ({
   const isCustBdayThisMonth = recognizedCustomer?.birth_month === curMonth;
 
   return (
-    <div className="space-y-16 lg:space-y-24 pb-20">
+    <div className="space-y-7 sm:space-y-16 lg:space-y-24 pb-20">
       {/* Birthday Celebration Banner for Recognized Customer (Item 8) */}
       {recognizedCustomer && (isCustBdayToday || isCustBdayThisMonth) && (
         <div className="bg-gradient-to-r from-[#FFD700] via-[#FFF2B2] to-[#FFD700] text-[#111111] border-2 border-[#111111] rounded-[24px] p-5 sm:p-6 shadow-[5px_5px_0_#111111] relative overflow-hidden animate-in zoom-in-95 duration-300">
@@ -430,14 +430,17 @@ export const LandingView: React.FC<LandingViewProps> = ({
       )}
 
       {/* HERO SECTION - Brand Book Locked */}
-      <section className="mt-4 sm:mt-6 lg:mt-14 relative">
+      <section className="mt-2 sm:mt-6 lg:mt-14 relative">
         <div className="grid lg:grid-cols-[1.15fr_0.85fr] gap-6 lg:gap-12 items-start">
-          {/* Left Column: Big Black Card */}
+          {/* Left Column: Big Black Canopy (Full-Bleed di HP mentok kanan-kiri agar tulisan bernapas lega) */}
           <div className="relative">
-            <div className="bg-[#111111] text-[#FFF8E7] rounded-[24px] sm:rounded-[28px] p-5 sm:p-7 lg:p-10 pb-8 sm:pb-10 lg:pb-28 sm:rotate-[-1.2deg] polaroid-shadow border-2 border-[#111111] relative overflow-hidden">
+            <div className="-mx-4 sm:mx-0 bg-[#111111] text-[#FFF8E7] rounded-none sm:rounded-[28px] rounded-b-[28px] px-6 py-7 sm:p-7 lg:p-10 pb-9 sm:pb-10 lg:pb-28 sm:rotate-[-1.2deg] shadow-[0_4px_16px_rgba(0,0,0,0.18)] sm:shadow-[5px_5px_0_#111111] border-b-2 sm:border-2 border-[#111111] relative overflow-hidden transition-transform">
+              {/* Cute Washi Tape Pin Accent (Tampil di Laptop) */}
+              <div className="tape absolute -top-3 left-8 w-24 h-5 bg-[#FFD700] rotate-[-2deg] border border-[#111111]/20 shadow-xs pointer-events-none hidden sm:block" />
+
               {/* Pills Bar */}
               <div className="flex flex-wrap items-center gap-2 mb-4 sm:mb-6">
-                <div className="inline-flex items-center gap-2 bg-[#FFD700] text-[#111111] rounded-full px-3.5 sm:px-4 py-1.5 text-[10px] sm:text-[11px] font-bold tracking-widest uppercase font-sans sm:rotate-[1deg] border border-[#111111]">
+                <div className="inline-flex items-center gap-2 bg-[#FFD700] text-[#111111] rounded-full px-3.5 sm:px-4 py-1.5 text-[10px] sm:text-[11px] font-bold tracking-widest uppercase font-sans rotate-[0.8deg] sm:rotate-[1deg] border border-[#111111]">
                   <span className="w-1.5 h-1.5 bg-[#111111] rounded-full animate-pulse" />
                   {LOCKED_COPY.pillHot}
                 </div>
@@ -455,8 +458,8 @@ export const LandingView: React.FC<LandingViewProps> = ({
                 )}
               </div>
 
-              {/* Locked H1 Headline */}
-              <h1 className="leading-[0.95] tracking-tight">
+              {/* Locked H1 Headline (Lega dengan padding px-6, tidak mepet tepi) */}
+              <h1 className="leading-[0.98] tracking-tight">
                 <span className="font-hand font-bold text-[36px] sm:text-[44px] lg:text-[64px] block text-white">
                   Sudah makan?
                 </span>
@@ -469,21 +472,21 @@ export const LandingView: React.FC<LandingViewProps> = ({
 
               {/* Best Seller Sub-badge */}
               <div className="mt-5 sm:mt-6 flex flex-wrap sm:flex-nowrap items-start gap-2.5 sm:gap-3">
-                <div className="bg-[#FFD700] text-[#111111] px-3.5 sm:px-4 py-1.5 sm:py-2 rounded-[12px] sm:rounded-[14px] sm:rotate-[-1deg] font-hand font-bold text-[19px] sm:text-[22px] leading-none border border-[#111111]">
+                <div className="bg-[#FFD700] text-[#111111] px-3.5 sm:px-4 py-1.5 sm:py-2 rounded-[12px] sm:rounded-[14px] rotate-[-1deg] font-hand font-bold text-[19px] sm:text-[22px] leading-none border border-[#111111]">
                   RISOLES MAYO LUMER
                 </div>
-                <div className="font-hand text-[#FFF8E7]/70 text-[14px] sm:text-[15px] leading-tight pt-1 whitespace-pre-line">
+                <div className="font-hand text-[#FFF8E7]/70 text-[13px] sm:text-[15px] leading-tight pt-1 whitespace-pre-line">
                   {storeConfig.heroHeadlineSub || 'digoreng jam 10 pagi\nhabis jam 8 malem'}
                 </div>
               </div>
 
               {/* Paragraph with safe max-width so it never collides with sticky note */}
-              <p className="font-sans text-[13px] sm:text-[14px] leading-[1.6] text-[#FFF8E7]/80 mt-5 sm:mt-6 max-w-full sm:max-w-[340px] xl:max-w-[390px]">
+              <p className="font-sans text-[13px] sm:text-[14px] leading-[1.6] text-[#FFF8E7]/80 mt-4 sm:mt-6 max-w-full sm:max-w-[340px] xl:max-w-[390px]">
                 {LOCKED_COPY.heroSub}
               </p>
 
               {/* Decorative Pills */}
-              <div className="mt-5 sm:mt-6 flex gap-2">
+              <div className="mt-4 sm:mt-6 flex gap-2">
                 <div className="h-[3px] w-12 bg-[#FFD700] rounded-full" />
                 <div className="h-[3px] w-6 bg-[#FFF8E7]/30 rounded-full" />
                 <div className="h-[3px] w-6 bg-[#FFF8E7]/20 rounded-full" />
@@ -491,18 +494,18 @@ export const LandingView: React.FC<LandingViewProps> = ({
             </div>
 
             {/* Floating Sticky Note: "tunggu agak dingin dulu..." */}
-            <div className="relative lg:absolute lg:-bottom-8 lg:-right-4 xl:-right-6 mt-3 sm:mt-4 lg:mt-0 z-20 flex justify-start lg:justify-end">
-              <div className="relative bg-white rounded-[16px] p-4 sm:p-5 w-full sm:w-[310px] sm:rotate-[1.5deg] polaroid-shadow border-2 border-[#111111]">
+            <div className="relative lg:absolute lg:-bottom-8 lg:-right-4 xl:-right-6 -mt-4 sm:mt-4 lg:mt-0 z-20 flex justify-end px-2 sm:px-0">
+              <div className="relative bg-white rounded-[18px] p-4 sm:p-5 w-full sm:w-[310px] max-w-[340px] rotate-[1.5deg] polaroid-shadow border-2 border-[#111111] shadow-[4px_4px_0_#111111]">
 
                 {/* Yellow Tape */}
                 <div className="tape absolute -top-3 left-1/2 -translate-x-1/2 w-[88px] h-[22px] rotate-[-3deg] rounded-[2px] border border-[#111111]/20" />
 
-                <div className="font-hand text-[17px] sm:text-[19px] leading-[1.3] text-[#111111]">
+                <div className="font-hand text-[16px] sm:text-[19px] leading-[1.3] text-[#111111]">
                   <div className="text-[#5C3D2E] font-bold">ps: makannya jangan buru-buru ya</div>
                   <div className="mt-1 font-bold text-[#111111]">
                     {LOCKED_COPY.psWajib}
                   </div>
-                  <div className="mt-2.5 sm:mt-3 text-[11px] sm:text-[12px] text-[#5C3D2E]/60 font-sans">
+                  <div className="mt-2 sm:mt-3 text-[11px] sm:text-[12px] text-[#5C3D2E]/60 font-sans">
                     — dari dapur Dulang ♡
                   </div>
                 </div>
@@ -514,12 +517,12 @@ export const LandingView: React.FC<LandingViewProps> = ({
 
           {/* Right Column: Hero Visual Frame + Callout */}
           <div
-            className="relative lg:pt-2 group"
+            className="relative lg:pt-2 group mt-3 lg:mt-0"
             onMouseEnter={() => setIsHeroHovered(true)}
             onMouseLeave={() => setIsHeroHovered(false)}
           >
-            <div className="relative rounded-[24px] sm:rounded-[28px] bg-white p-3.5 sm:p-4 sm:rotate-[1deg] polaroid-shadow border-2 border-[#111111]">
-              <div className="rounded-[18px] sm:rounded-[20px] overflow-hidden bg-[#FFEEC2] aspect-[4/3] relative grid place-items-center border border-[#111111]/10">
+            <div className="relative rounded-[22px] sm:rounded-[28px] bg-white p-2.5 sm:p-4 rotate-[0.8deg] sm:rotate-[1deg] polaroid-shadow border-2 border-[#111111] transition-transform">
+              <div className="rounded-[16px] sm:rounded-[20px] overflow-hidden bg-[#FFEEC2] aspect-[16/10] sm:aspect-[4/3] max-h-[220px] sm:max-h-none relative grid place-items-center border border-[#111111]/10">
                 <div className="absolute inset-0 bg-[radial-gradient(ellipse_at_30%_20%,#FFF8E7_0%,#FFE6A0_45%,#FFD36B_100%)]" />
 
                 {heroPhotoList.length > 0 ? (
@@ -553,7 +556,7 @@ export const LandingView: React.FC<LandingViewProps> = ({
                           type="button"
                           onClick={(e) => {
                             e.stopPropagation();
-                            setActiveHeroIdx((prev) => (prev + 1) % heroPhotoList.length);
+                            setActiveHeroIdx((prev) => (prev - 1 + heroPhotoList.length) % heroPhotoList.length);
                           }}
                           className="cursor-pointer absolute right-2 sm:right-3 top-1/2 -translate-y-1/2 z-25 w-7 h-7 sm:w-8 sm:h-8 rounded-full bg-black/60 hover:bg-black text-[#FFD700] hover:text-white flex items-center justify-center font-bold text-base sm:text-lg backdrop-blur-xs transition shadow-md border border-white/20 active:scale-90"
                           title="Foto selanjutnya"
@@ -607,12 +610,12 @@ export const LandingView: React.FC<LandingViewProps> = ({
             </div>
 
             {/* Side Callout Note - Repositioned to top-left corner */}
-            <div className="mt-4 sm:mt-5 lg:mt-0 lg:absolute lg:-top-14 lg:-left-8 xl:-left-12 relative z-30 pointer-events-none sm:pointer-events-auto">
-              <div className="relative bg-[#FFD700] border-2 border-[#111111] rounded-[16px] px-3.5 sm:px-4 py-2.5 sm:py-3 sm:rotate-[-3deg] shadow-[3px_3px_0_#111111] sm:shadow-[4px_4px_0_#111111] max-w-[215px]">
+            <div className="-mt-3 mb-1 sm:mt-5 lg:mt-0 lg:absolute lg:-top-14 lg:-left-8 xl:-left-12 relative z-30 pointer-events-none sm:pointer-events-auto">
+              <div className="relative bg-[#FFD700] border-2 border-[#111111] rounded-[16px] px-3.5 sm:px-4 py-2 sm:py-3 rotate-[-2.5deg] sm:rotate-[-3deg] shadow-[3px_3px_0_#111111] sm:shadow-[4px_4px_0_#111111] max-w-[215px]">
                 {/* Cute masking tape accent */}
                 <div className="tape absolute -top-2.5 left-6 w-[52px] h-[14px] bg-white/70 rotate-[-5deg] rounded-[1px] border border-[#111111]/20 z-10" />
 
-                <div className="font-hand font-bold text-[17px] sm:text-[18px] leading-[1.2] text-[#111111]">
+                <div className="font-hand font-bold text-[16px] sm:text-[18px] leading-[1.2] text-[#111111]">
                   ini beneran lumer ↳
                   <br />
                   bisa nglelehin hati
@@ -629,49 +632,66 @@ export const LandingView: React.FC<LandingViewProps> = ({
       </section>
 
       {/* SCHEDULE & ROUTINE SECTION */}
-      <section className="mt-12 sm:mt-20 lg:mt-24">
-        <div className="flex flex-wrap items-baseline gap-2 sm:gap-3">
-          <h2 className="font-hand font-bold text-[28px] sm:text-[36px] lg:text-[46px] leading-none text-[#111111]">
-            tempat ngumpul, bukan cuma jualan
-          </h2>
-          <span className="font-sans text-[11px] sm:text-[12px] px-3 sm:px-3.5 py-1 rounded-full bg-white border border-[#111111]/15 font-semibold text-[#5C3D2E]">
-            sejak 2020 • {storeConfig.jamBukaTeks || 'masih pake wajan yang sama'}
+      <section className="mt-4 sm:mt-16 lg:mt-24">
+        {/* Mobile View: Compact Badge Strip (Memangkas Jarak Scrolling ke Menu!) */}
+        <div className="sm:hidden bg-white border-2 border-[#111111] rounded-2xl p-3 shadow-[3px_3px_0_#111111] flex items-center justify-between gap-2">
+          <div className="flex items-center gap-2 min-w-0">
+            <span className="text-xl">🍳</span>
+            <div className="min-w-0">
+              <div className="font-bold text-[11px] text-[#111111] uppercase tracking-wider">Jam Masak Panas Dulang</div>
+              <div className="font-mono text-[11px] text-[#5C3D2E] truncate font-semibold">10:00 • 13:00 • 16:30 • 20:00 WIB</div>
+            </div>
+          </div>
+          <span className="text-[10px] font-sans font-bold bg-[#FFD700] text-[#111111] px-2 py-1 rounded-full border border-[#111111] shrink-0">
+            Fresh Wajan 🔥
           </span>
         </div>
 
-        <div className="mt-6 sm:mt-8 grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-3.5 sm:gap-4">
-          {(storeConfig.schedules && storeConfig.schedules.length > 0
-            ? storeConfig.schedules
-            : DEFAULT_STORE_CONFIG.schedules
-          ).map((item, idx) => {
-            return (
-              <div
-                key={idx}
-                className={`bg-white rounded-[18px] sm:rounded-[20px] p-4 sm:p-5 polaroid-shadow border-2 border-[#111111]/10 ${
-                  idx % 4 === 0
-                    ? 'sm:-rotate-1'
-                    : idx % 4 === 1
-                    ? 'sm:rotate-1'
-                    : idx % 4 === 2
-                    ? 'sm:-rotate-1'
-                    : 'sm:rotate-1'
-                }`}
-              >
-                <div className="inline-flex bg-[#111111] text-[#FFD700] px-3 py-1 rounded-full text-[11px] sm:text-[12px] font-bold font-sans tracking-widest border border-[#111111]">
-                  {item.jam}
+        {/* Desktop View: Full 4-Card Polaroid Grid */}
+        <div className="hidden sm:block">
+          <div className="flex flex-wrap items-baseline gap-2 sm:gap-3">
+            <h2 className="font-hand font-bold text-[28px] sm:text-[36px] lg:text-[46px] leading-none text-[#111111]">
+              tempat ngumpul, bukan cuma jualan
+            </h2>
+            <span className="font-sans text-[11px] sm:text-[12px] px-3 sm:px-3.5 py-1 rounded-full bg-white border border-[#111111]/15 font-semibold text-[#5C3D2E]">
+              sejak 2020 • {storeConfig.jamBukaTeks || 'masih pake wajan yang sama'}
+            </span>
+          </div>
+
+          <div className="mt-6 sm:mt-8 grid grid-cols-2 lg:grid-cols-4 gap-3.5 sm:gap-4">
+            {(storeConfig.schedules && storeConfig.schedules.length > 0
+              ? storeConfig.schedules
+              : DEFAULT_STORE_CONFIG.schedules
+            ).map((item, idx) => {
+              return (
+                <div
+                  key={idx}
+                  className={`bg-white rounded-[18px] sm:rounded-[20px] p-4 sm:p-5 polaroid-shadow border-2 border-[#111111] shadow-[2px_2px_0_#111111] ${
+                    idx % 4 === 0
+                      ? '-rotate-1'
+                      : idx % 4 === 1
+                      ? 'rotate-1'
+                      : idx % 4 === 2
+                      ? '-rotate-1'
+                      : 'rotate-1'
+                  } transition-transform`}
+                >
+                  <div className="inline-flex bg-[#111111] text-[#FFD700] px-3 py-1 rounded-full text-[11px] sm:text-[12px] font-bold font-sans tracking-widest border border-[#111111]">
+                    {item.jam}
+                  </div>
+                  <p className="mt-3 font-sans text-[12px] sm:text-[13px] leading-[1.6] text-[#5C3D2E]">
+                    {item.teks}
+                  </p>
+                  <div className="mt-3.5 sm:mt-4 h-[2px] w-10 bg-[#FFD700] rounded-full" />
                 </div>
-                <p className="mt-3 font-sans text-[12px] sm:text-[13px] leading-[1.6] text-[#5C3D2E]">
-                  {item.teks}
-                </p>
-                <div className="mt-3.5 sm:mt-4 h-[2px] w-10 bg-[#FFD700] rounded-full" />
-              </div>
-            );
-          })}
+              );
+            })}
+          </div>
         </div>
       </section>
 
       {/* MENU CATALOG SECTION (3a: Hari Ini vs Menu Besok) */}
-      <section id="menu-section" className="mt-20 space-y-6">
+      <section id="menu-section" className="mt-6 sm:mt-20 space-y-4 sm:space-y-6">
         {/* Tab Switcher & Header */}
         <div className="flex flex-col md:flex-row md:items-end justify-between gap-4 border-b-2 border-[#111111]/15 pb-5">
           <div>
@@ -765,7 +785,7 @@ export const LandingView: React.FC<LandingViewProps> = ({
           </div>
         )}
 
-        {/* Serving Mode Filter (Semua Sajian | 🍳 Siap Santap / Matang | ❄️ Stok Frozen / Beku) */}
+        {/* Serving Mode Filter (Segmented Control: 100% Pas di Layar HP Tanpa Perlu Digulir) */}
         {(() => {
           const activeMenusList = menuTab === 'today' ? menus : menus.filter((m) => m.tersediaBesok !== false);
           const countMatang = activeMenusList.filter((item) => {
@@ -778,51 +798,51 @@ export const LandingView: React.FC<LandingViewProps> = ({
           }).length;
 
           return (
-            <div className="flex items-center gap-1.5 overflow-x-auto pb-1 pt-1 no-scrollbar -mx-1 px-1">
-              <div className="inline-flex items-center gap-1 p-1 bg-white rounded-full border-2 border-[#111111] shadow-[2px_2px_0_#111111] shrink-0">
+            <div className="w-full">
+              <div className="grid grid-cols-3 gap-1 p-1 bg-white rounded-full sm:rounded-[20px] border-2 border-[#111111] shadow-[2px_2px_0_#111111]">
                 <button
                   type="button"
                   onClick={() => setServingFilter('all')}
-                  className={`cursor-pointer px-3 sm:px-3.5 py-1.5 rounded-full font-sans font-bold text-xs transition flex items-center gap-1.5 active:scale-95 whitespace-nowrap ${
+                  className={`cursor-pointer px-1 sm:px-3.5 py-2 rounded-full font-sans font-bold text-[11px] sm:text-xs transition flex items-center justify-center gap-1 active:scale-95 text-center ${
                     servingFilter === 'all'
-                      ? 'bg-[#111111] text-[#FFD700]'
+                      ? 'bg-[#111111] text-[#FFD700] shadow-xs'
                       : 'text-[#5C3D2E] hover:text-[#111111]'
                   }`}
                 >
                   <span>✨</span>
-                  <span>Semua Sajian ({activeMenusList.length})</span>
+                  <span className="truncate">Semua ({activeMenusList.length})</span>
                 </button>
                 <button
                   type="button"
                   onClick={() => setServingFilter('matang')}
-                  className={`cursor-pointer px-3 sm:px-3.5 py-1.5 rounded-full font-sans font-bold text-xs transition flex items-center gap-1.5 active:scale-95 whitespace-nowrap ${
+                  className={`cursor-pointer px-1 sm:px-3.5 py-2 rounded-full font-sans font-bold text-[11px] sm:text-xs transition flex items-center justify-center gap-1 active:scale-95 text-center ${
                     servingFilter === 'matang'
                       ? 'bg-[#FFD700] text-[#111111] shadow-xs'
                       : 'text-[#5C3D2E] hover:text-[#111111]'
                   }`}
                 >
                   <span>🍳</span>
-                  <span>Siap Santap / Matang ({countMatang})</span>
+                  <span className="truncate">Siap Santap ({countMatang})</span>
                 </button>
                 <button
                   type="button"
                   onClick={() => setServingFilter('frozen')}
-                  className={`cursor-pointer px-3 sm:px-3.5 py-1.5 rounded-full font-sans font-bold text-xs transition flex items-center gap-1.5 active:scale-95 whitespace-nowrap ${
+                  className={`cursor-pointer px-1 sm:px-3.5 py-2 rounded-full font-sans font-bold text-[11px] sm:text-xs transition flex items-center justify-center gap-1 active:scale-95 text-center ${
                     servingFilter === 'frozen'
                       ? 'bg-sky-600 text-white shadow-xs'
                       : 'text-[#5C3D2E] hover:text-[#111111]'
                   }`}
                 >
                   <span>❄️</span>
-                  <span>Stok Kulkas / Frozen ({countFrozen})</span>
+                  <span className="truncate">Frozen ({countFrozen})</span>
                 </button>
               </div>
             </div>
           );
         })()}
 
-        {/* Category Filter Pills (Horizontal Scroll on Mobile) */}
-        <div className="flex items-center gap-2 overflow-x-auto pb-1 pt-1 no-scrollbar -mx-1 px-1">
+        {/* Category Filter Pills (Horizontal Scroll on Mobile dengan Padding Samping Rapi) */}
+        <div className="flex items-center gap-2 overflow-x-auto pb-1 pt-1 no-scrollbar -mx-4 px-4 sm:mx-0 sm:px-0">
           {MENU_CATEGORIES.map((cat) => {
             const isSelected = selectedCategory === cat.id;
             const activeMenusList = menuTab === 'today' ? menus : menus.filter((m) => m.tersediaBesok !== false);
@@ -941,7 +961,8 @@ export const LandingView: React.FC<LandingViewProps> = ({
         )}
 
         {/* Fitur 3: Bikin Dus Campur Sendiri Banner Card */}
-        <div className="bg-gradient-to-r from-[#FFF8E7] via-[#FFFDF4] to-[#FFEEC2] rounded-[22px] p-4 sm:p-5 border-2 border-[#111111] shadow-[3px_3px_0_#111111] flex flex-col sm:flex-row sm:items-center justify-between gap-3">
+        <div className="bg-gradient-to-r from-[#FFF8E7] via-[#FFFDF4] to-[#FFEEC2] rounded-[22px] p-4 sm:p-5 border-2 border-[#111111] shadow-[3px_3px_0_#111111] flex flex-col sm:flex-row sm:items-center justify-between gap-3 sm:rotate-[-0.8deg] relative overflow-hidden transition-transform">
+          <div className="tape absolute -top-2.5 right-10 w-24 h-4 bg-[#FFD700] rotate-[3deg] border border-[#111111]/20 shadow-xs pointer-events-none" />
           <div className="flex items-start sm:items-center gap-3">
             <div className="w-12 h-12 rounded-2xl bg-[#111111] text-[#FFD700] border-2 border-[#111111] flex items-center justify-center text-2xl shrink-0 shadow-xs rotate-[-2deg]">
               📦
@@ -964,7 +985,7 @@ export const LandingView: React.FC<LandingViewProps> = ({
           <button
             type="button"
             onClick={() => setIsMixMatchOpen(true)}
-            className="cursor-pointer bg-[#111111] hover:bg-[#222222] text-[#FFD700] hover:brightness-110 border-2 border-[#111111] px-5 py-2.5 rounded-full font-sans font-bold text-xs shadow-[2px_2px_0_#FFD700] active:translate-y-0.5 transition flex items-center justify-center gap-2 shrink-0 self-start sm:self-auto"
+            className="cursor-pointer bg-[#111111] hover:bg-[#222222] text-[#FFD700] hover:brightness-110 border-2 border-[#111111] px-5 py-2.5 rounded-full font-sans font-bold text-xs shadow-[2px_2px_0_#FFD700] active:scale-95 transition flex items-center justify-center gap-2 shrink-0 self-start sm:self-auto"
           >
             <span>✨</span>
             <span>Racik Dus Sekarang</span>
@@ -1034,7 +1055,7 @@ export const LandingView: React.FC<LandingViewProps> = ({
           }
 
           return (
-            <div className="grid grid-cols-2 sm:grid-cols-3 lg:grid-cols-4 gap-3 sm:gap-4 lg:gap-5 pt-1">
+            <div className="grid grid-cols-2 sm:grid-cols-3 lg:grid-cols-4 gap-3 sm:gap-4 lg:gap-5 pt-3 pb-2">
               {filteredMenus.map((item, idx) => (
                 <PolaroidMenuCard
                   key={item.id}

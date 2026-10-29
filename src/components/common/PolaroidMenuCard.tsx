@@ -11,6 +11,7 @@ interface PolaroidMenuCardProps {
 
 export const PolaroidMenuCard: React.FC<PolaroidMenuCardProps> = ({
   item,
+  index = 0,
   onAddToCart,
   cartQty = 0,
   isTomorrow = false,
@@ -39,14 +40,35 @@ export const PolaroidMenuCard: React.FC<PolaroidMenuCardProps> = ({
   const isOutOfStock = hasStockLimit && (item.sisaStok as number) <= 0;
   const isAvailable = isTomorrow ? item.tersediaBesok !== false : (item.tersedia && !isOutOfStock);
   const isLowStock = hasStockLimit && (item.sisaStok as number) > 0 && (item.sisaStok as number) <= 5;
+  const [isWiggling, setIsWiggling] = useState(false);
+
+  // Default lurus rapi (0deg) agar garis border bersih, tajam & tidak patah-patah di layar HP
+  // Efek goyang kenyal dinamis aktif saat kartu disentuh / disenggol!
+  const rotDeg = 0;
+
+  const triggerWiggle = () => {
+    setIsWiggling(true);
+    try {
+      if (typeof navigator !== 'undefined' && navigator.vibrate) {
+        navigator.vibrate(30);
+      }
+    } catch {}
+    setTimeout(() => {
+      setIsWiggling(false);
+    }, 420);
+  };
 
   const handleOpenSheet = () => {
     if (!isAvailable) return;
+    triggerWiggle();
     setOrderQty(1);
     if (effectiveServingType === 'frozen_only') setSelectedVariant('frozen');
     else if (effectiveServingType === 'matang_only') setSelectedVariant('matang');
     else setSelectedVariant(item.variantType || 'matang');
-    setIsSheetOpen(true);
+    // Jeda 280ms agar pembeli BENAR-BENAR MELIHAT kartunya meliuk-liuk goyang sebelum drawer naik
+    setTimeout(() => {
+      setIsSheetOpen(true);
+    }, 280);
   };
 
   const handleConfirmOrder = () => {
@@ -57,15 +79,40 @@ export const PolaroidMenuCard: React.FC<PolaroidMenuCardProps> = ({
 
   return (
     <>
-      {/* KARTU MENU ETALASE (Grid 2 Kolom di HP, Rapi & Proporsional) */}
+      {/* KARTU MENU POLAROID ETALASE (Organik, Lucu & Disenggol Goyang) */}
       <div
         onClick={handleOpenSheet}
-        className={`group relative bg-white rounded-[20px] sm:rounded-[22px] p-2.5 sm:p-3.5 border border-[#111111]/15 sm:border-2 sm:border-[#111111] shadow-[2px_2px_0_#111111] hover:shadow-[3px_3px_0_#FFD700] transition-all duration-200 flex flex-col justify-between ${
+        style={{
+          '--base-rot': `${rotDeg}deg`,
+        } as React.CSSProperties}
+        className={`group relative bg-white rounded-[22px] sm:rounded-[24px] p-2.5 sm:p-3.5 border-2 border-[#111111] shadow-[3px_3px_0_#111111] hover:shadow-[4px_4px_0_#FFD700] transition-all duration-200 flex flex-col justify-between goyang-senggol select-none ${
+          isWiggling ? 'animate-senggol-wobble' : ''
+        } ${
           isAvailable
-            ? 'cursor-pointer active:scale-[0.98]'
+            ? 'cursor-pointer active:scale-95'
             : 'opacity-70 cursor-not-allowed'
         }`}
       >
+        {/* Stiker ajakan senggol lucu di kartu pertama */}
+        {index === 0 && (
+          <div className="absolute -top-4 -right-1 z-30 pointer-events-none animate-bounce">
+            <span className="bg-[#111111] text-[#FFD700] text-[10px] font-hand font-bold px-2 py-0.5 rounded-full border border-[#FFD700] shadow-[2px_2px_0_#FFD700] whitespace-nowrap rotate-[6deg] inline-block">
+              👈 senggol aku! 🥟
+            </span>
+          </div>
+        )}
+
+        {/* Masking Tape Stiker Lucu di Atas Foto Polaroid */}
+        <div
+          className={`tape absolute -top-2.5 left-1/2 -translate-x-1/2 w-12 sm:w-16 h-3.5 sm:h-4 rounded-[1px] border border-[#111111]/30 shadow-xs z-20 pointer-events-none transition-transform ${
+            index % 3 === 0
+              ? 'bg-[#FFD700] rotate-[-3deg] group-hover:rotate-0'
+              : index % 3 === 1
+              ? 'bg-amber-300 rotate-[3deg] group-hover:rotate-0'
+              : 'bg-white/95 rotate-[-1.5deg] group-hover:rotate-0'
+          }`}
+        />
+
         <div>
           {/* Foto Menu Kotak 1:1 Bersih */}
           <div className="relative aspect-square w-full rounded-[14px] sm:rounded-[16px] overflow-hidden bg-gradient-to-br from-amber-50 to-orange-50/50 border border-[#111111]/10">
@@ -146,7 +193,7 @@ export const PolaroidMenuCard: React.FC<PolaroidMenuCardProps> = ({
               e.stopPropagation();
               handleOpenSheet();
             }}
-            className={`cursor-pointer rounded-full font-sans font-bold text-xs transition flex items-center justify-center active:scale-90 ${
+            className={`cursor-pointer rounded-full font-sans font-bold text-xs transition flex items-center justify-center active:scale-85 active:rotate-12 ${
               isAvailable
                 ? cartQty > 0
                   ? 'bg-[#FFD700] hover:bg-[#FFE033] text-[#111111] px-2.5 py-1 border border-[#111111] shadow-xs'
