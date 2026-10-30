@@ -35,6 +35,9 @@ export function App() {
     storageService.syncMenusFromSupabase().then((synced) => {
       if (synced && synced.length > 0) setMenus(synced);
     });
+    storageService.syncStoreConfigFromSupabase().then((cfg) => {
+      if (cfg) setStoreConfig(cfg);
+    }).catch(() => {});
     storageService.syncOrdersFromSupabase().catch(() => {});
     setStoreConfig(storageService.getStoreConfig());
     setIsOwnerLoggedIn(storageService.isOwnerAuthenticated());

@@ -47,33 +47,65 @@ export const OrderTrackingView: React.FC<OrderTrackingViewProps> = ({
     };
 
     window.addEventListener('dulang_kitchen_updated', handleUpdate);
+    window.addEventListener('dulang_orders_updated', handleUpdate);
     window.addEventListener('storage', handleUpdate);
-    const interval = setInterval(handleUpdate, 3000); // 3-second live sync
+
+    // Polling live sync dari cloud setiap 4 detik agar status wajan penggorengan selalu mutakhir
+    const interval = setInterval(async () => {
+      handleUpdate();
+      if (inputOrderId) {
+        try {
+          const cloudOrder = await storageService.fetchOrderById(inputOrderId);
+          if (cloudOrder) {
+            setCurrentOrder(cloudOrder);
+          }
+        } catch {
+          // ignore
+        }
+      }
+    }, 4000);
 
     return () => {
       window.removeEventListener('dulang_kitchen_updated', handleUpdate);
+      window.removeEventListener('dulang_orders_updated', handleUpdate);
       window.removeEventListener('storage', handleUpdate);
       clearInterval(interval);
     };
   }, [inputOrderId]);
 
-  const findAndSetOrder = (id: string) => {
-    const orders = storageService.getOrders();
+  const findAndSetOrder = async (id: string) => {
     const clean = id.trim().toUpperCase();
+    if (!clean) return;
+
+    // Cek cache lokal terlebih dahulu
+    const orders = storageService.getOrders();
     const found = orders.find((o) => o.id.toUpperCase() === clean);
-    setCurrentOrder(found || null);
+    if (found) setCurrentOrder(found);
+
+    // Tarik status terkini langsung dari Cloud Supabase
+    try {
+      const cloudOrder = await storageService.fetchOrderById(clean);
+      if (cloudOrder) {
+        setCurrentOrder(cloudOrder);
+        setAllOrders(storageService.getOrders());
+      }
+    } catch {
+      // fallback ke lokal
+    }
   };
 
-  const handleManualSearch = (e: React.FormEvent) => {
+  const handleManualSearch = async (e: React.FormEvent) => {
     e.preventDefault();
     if (!inputOrderId.trim()) return;
-    findAndSetOrder(inputOrderId);
+    setIsRefreshing(true);
+    await findAndSetOrder(inputOrderId);
+    setIsRefreshing(false);
   };
 
-  const handleManualRefresh = () => {
+  const handleManualRefresh = async () => {
     setIsRefreshing(true);
-    findAndSetOrder(inputOrderId);
-    setTimeout(() => setIsRefreshing(false), 500);
+    await findAndSetOrder(inputOrderId);
+    setIsRefreshing(false);
   };
 
   // Determine active step index

@@ -61,6 +61,65 @@ const STORAGE_KEYS = {
 
 export const DEFAULT_EXPENSES: ExpenseRecord[] = [];
 
+const DULANG_META_PREFIX = '<!--DULANG_META:';
+const DULANG_META_SUFFIX = '-->';
+
+export interface OrderPackedMeta {
+  kitchen_status?: KitchenCookingStatus;
+  cooking_started_at?: string;
+  cooking_completed_at?: string;
+  delivery_schedule?: string;
+  delivery_slot?: string;
+  dp_amount?: number;
+  remaining_amount?: number;
+}
+
+export function packOrderNotes(cleanNotes: string | null | undefined, meta: OrderPackedMeta): string {
+  const base = (cleanNotes || '').trim();
+  const stripped = base.replace(/<!--DULANG_META:[\s\S]*?-->/g, '').trim();
+
+  const cleanMeta: Record<string, any> = {};
+  if (meta.kitchen_status) cleanMeta.k = meta.kitchen_status;
+  if (meta.cooking_started_at) cleanMeta.ks = meta.cooking_started_at;
+  if (meta.cooking_completed_at) cleanMeta.kc = meta.cooking_completed_at;
+  if (meta.delivery_schedule) cleanMeta.ds = meta.delivery_schedule;
+  if (meta.delivery_slot) cleanMeta.slot = meta.delivery_slot;
+  if (meta.dp_amount !== undefined && meta.dp_amount > 0) cleanMeta.dp = meta.dp_amount;
+  if (meta.remaining_amount !== undefined) cleanMeta.rem = meta.remaining_amount;
+
+  if (Object.keys(cleanMeta).length === 0) {
+    return stripped;
+  }
+
+  const jsonStr = JSON.stringify(cleanMeta);
+  return stripped ? `${stripped}\n${DULANG_META_PREFIX}${jsonStr}${DULANG_META_SUFFIX}` : `${DULANG_META_PREFIX}${jsonStr}${DULANG_META_SUFFIX}`;
+}
+
+export function unpackOrderNotes(rawNotes: string | null | undefined): { cleanNotes: string; meta: OrderPackedMeta } {
+  if (!rawNotes) {
+    return { cleanNotes: '', meta: {} };
+  }
+  const match = rawNotes.match(/<!--DULANG_META:([\s\S]*?)-->/);
+  const cleanNotes = rawNotes.replace(/<!--DULANG_META:[\s\S]*?-->/g, '').trim();
+  if (!match) {
+    return { cleanNotes, meta: {} };
+  }
+  try {
+    const parsed = JSON.parse(match[1]);
+    const meta: OrderPackedMeta = {};
+    if (parsed.k) meta.kitchen_status = parsed.k;
+    if (parsed.ks) meta.cooking_started_at = parsed.ks;
+    if (parsed.kc) meta.cooking_completed_at = parsed.kc;
+    if (parsed.ds) meta.delivery_schedule = parsed.ds;
+    if (parsed.slot) meta.delivery_slot = parsed.slot;
+    if (parsed.dp !== undefined) meta.dp_amount = Number(parsed.dp);
+    if (parsed.rem !== undefined) meta.remaining_amount = Number(parsed.rem);
+    return { cleanNotes, meta };
+  } catch {
+    return { cleanNotes, meta: {} };
+  }
+}
+
 export const storageService = {
   // --- MENU MANAGEMENT ---
   getMenus(): MenuItem[] {
@@ -969,11 +1028,57 @@ ${lines.join('\n')}
     return DEFAULT_STORE_CONFIG;
   },
 
+  async syncStoreConfigFromSupabase(): Promise<StoreConfig> {
+    try {
+      const client = getSupabaseClient();
+      if (!client) return this.getStoreConfig();
+
+      const { data, error } = await client
+        .from('menus')
+        .select('deskripsi')
+        .eq('id', 'sys_store_config')
+        .single();
+
+      if (!error && data?.deskripsi) {
+        try {
+          const remoteConfig = JSON.parse(data.deskripsi);
+          const current = this.getStoreConfig();
+          const merged: StoreConfig = { ...current, ...remoteConfig };
+          localStorage.setItem('dulang_store_config', JSON.stringify(merged));
+          if (typeof window !== 'undefined') {
+            window.dispatchEvent(new Event('dulang_store_config_updated'));
+          }
+          return merged;
+        } catch (e) {
+          console.warn('Failed to parse remote store config:', e);
+        }
+      }
+    } catch (err) {
+      console.warn('Failed to sync store config from Supabase:', err);
+    }
+    return this.getStoreConfig();
+  },
+
   saveStoreConfig(config: StoreConfig): void {
     try {
       localStorage.setItem('dulang_store_config', JSON.stringify(config));
       if (typeof window !== 'undefined') {
         window.dispatchEvent(new Event('dulang_store_config_updated'));
+      }
+
+      // Sync ke Supabase Cloud agar langsung terupdate di seluruh HP pembeli & kasir
+      const client = getSupabaseClient();
+      if (client) {
+        client
+          .from('menus')
+          .upsert({
+            id: 'sys_store_config',
+            nama: 'SYSTEM_STORE_CONFIG',
+            harga: 0,
+            deskripsi: JSON.stringify(config),
+            tersedia: true,
+          })
+          .then();
       }
     } catch (e) {
       console.error('Failed to save store config:', e);
@@ -1337,9 +1442,44 @@ ${lines.join('\n')}
       // Keep local orders that haven't been deleted
       localOrders.forEach((o) => map.set(o.id, o));
 
+      const KITCHEN_STAGE_WEIGHT: Record<string, number> = {
+        antre: 1,
+        sedang_goreng: 2,
+        tiriskan: 3,
+        siap: 4,
+        selesai: 5,
+      };
+
       // Merge remote orders from Supabase (skip any that were deleted)
       data.forEach((r: any) => {
         if (!deletedIds.has(r.id)) {
+          const { cleanNotes, meta } = unpackOrderNotes(r.notes);
+          const existingLocal = map.get(r.id);
+
+          const remoteKitchen = (r.kitchen_status as KitchenCookingStatus) || meta.kitchen_status;
+          let finalKitchen = remoteKitchen;
+          let finalCookingStarted = r.cooking_started_at || meta.cooking_started_at;
+          let finalCookingCompleted = r.cooking_completed_at || meta.cooking_completed_at;
+
+          // Jangan pernah menurunkan progress wajan yang sudah digoreng secara lokal
+          if (existingLocal?.kitchen_status) {
+            const localWeight = KITCHEN_STAGE_WEIGHT[existingLocal.kitchen_status] || 0;
+            const remoteWeight = KITCHEN_STAGE_WEIGHT[remoteKitchen || ''] || 0;
+            if (localWeight > remoteWeight) {
+              finalKitchen = existingLocal.kitchen_status;
+              finalCookingStarted = existingLocal.cooking_started_at || finalCookingStarted;
+              finalCookingCompleted = existingLocal.cooking_completed_at || finalCookingCompleted;
+            }
+          }
+
+          const remoteStatus = (r.status as OrderStatus) || 'menunggu';
+          let finalStatus = remoteStatus;
+          let finalCompletedAt = r.completed_at || undefined;
+          if (existingLocal?.status === 'lunas' && remoteStatus !== 'lunas') {
+            finalStatus = 'lunas';
+            finalCompletedAt = existingLocal.completed_at || new Date().toISOString();
+          }
+
           map.set(r.id, {
             id: r.id,
             customer_name: r.customer_name || 'Pelanggan Web',
@@ -1348,21 +1488,21 @@ ${lines.join('\n')}
             items: Array.isArray(r.items) ? r.items : [],
             total_price: Number(r.total_price || 0),
             payment_method: (r.payment_method as PaymentMethod) || 'tunai',
-            status: (r.status as OrderStatus) || 'menunggu',
+            status: finalStatus,
             delivery_method: r.delivery_method === 'delivery' ? 'delivery' : 'pickup',
             shipping_cost: Number(r.shipping_cost || 0),
             shipping_district: r.shipping_district || undefined,
-            delivery_schedule: r.delivery_schedule || undefined,
-            delivery_slot: r.delivery_slot || undefined,
-            dp_amount: r.dp_amount ? Number(r.dp_amount) : undefined,
-            remaining_amount: r.remaining_amount ? Number(r.remaining_amount) : undefined,
+            delivery_schedule: r.delivery_schedule || meta.delivery_schedule || undefined,
+            delivery_slot: r.delivery_slot || meta.delivery_slot || undefined,
+            dp_amount: r.dp_amount ? Number(r.dp_amount) : meta.dp_amount,
+            remaining_amount: r.remaining_amount ? Number(r.remaining_amount) : meta.remaining_amount,
             channel: r.channel || 'web_wa',
-            notes: r.notes || undefined,
-            kitchen_status: r.kitchen_status || undefined,
-            cooking_started_at: r.cooking_started_at || undefined,
-            cooking_completed_at: r.cooking_completed_at || undefined,
+            notes: cleanNotes || undefined,
+            kitchen_status: finalKitchen,
+            cooking_started_at: finalCookingStarted,
+            cooking_completed_at: finalCookingCompleted,
             created_at: r.created_at || new Date().toISOString(),
-            completed_at: r.completed_at || undefined,
+            completed_at: finalCompletedAt,
           });
         }
       });
@@ -1379,6 +1519,85 @@ ${lines.join('\n')}
     } catch (err) {
       console.warn('Failed to sync orders from Supabase:', err);
       return this.getOrders();
+    }
+  },
+
+  async fetchOrderById(orderId: string): Promise<OrderRecord | null> {
+    try {
+      const cleanId = orderId.trim();
+      if (!cleanId) return null;
+
+      const localList = this.getOrders();
+      const local = localList.find((o) => o.id.toUpperCase() === cleanId.toUpperCase());
+
+      const client = getSupabaseClient();
+      if (!client) return local || null;
+
+      const { data, error } = await client
+        .from('orders')
+        .select('*')
+        .ilike('id', cleanId)
+        .single();
+
+      if (error || !data) return local || null;
+
+      const { cleanNotes, meta } = unpackOrderNotes(data.notes);
+      const remoteKitchen = (data.kitchen_status as KitchenCookingStatus) || meta.kitchen_status;
+
+      const KITCHEN_STAGE_WEIGHT: Record<string, number> = {
+        antre: 1,
+        sedang_goreng: 2,
+        tiriskan: 3,
+        siap: 4,
+        selesai: 5,
+      };
+
+      let finalKitchen = remoteKitchen;
+      if (local?.kitchen_status) {
+        const localWeight = KITCHEN_STAGE_WEIGHT[local.kitchen_status] || 0;
+        const remoteWeight = KITCHEN_STAGE_WEIGHT[remoteKitchen || ''] || 0;
+        if (localWeight > remoteWeight) finalKitchen = local.kitchen_status;
+      }
+
+      const fetchedOrder: OrderRecord = {
+        id: data.id,
+        customer_name: data.customer_name || 'Pelanggan Web',
+        customer_wa: data.customer_wa || undefined,
+        customer_qr_id: data.customer_qr_id || undefined,
+        items: Array.isArray(data.items) ? data.items : [],
+        total_price: Number(data.total_price || 0),
+        payment_method: (data.payment_method as PaymentMethod) || 'tunai',
+        status: (data.status as OrderStatus) || (local?.status || 'menunggu'),
+        delivery_method: data.delivery_method === 'delivery' ? 'delivery' : 'pickup',
+        shipping_cost: Number(data.shipping_cost || 0),
+        shipping_district: data.shipping_district || undefined,
+        delivery_schedule: data.delivery_schedule || meta.delivery_schedule || undefined,
+        delivery_slot: data.delivery_slot || meta.delivery_slot || undefined,
+        dp_amount: data.dp_amount ? Number(data.dp_amount) : meta.dp_amount,
+        remaining_amount: data.remaining_amount ? Number(data.remaining_amount) : meta.remaining_amount,
+        channel: data.channel || 'web_wa',
+        notes: cleanNotes || undefined,
+        kitchen_status: finalKitchen,
+        cooking_started_at: data.cooking_started_at || meta.cooking_started_at || local?.cooking_started_at,
+        cooking_completed_at: data.cooking_completed_at || meta.cooking_completed_at || local?.cooking_completed_at,
+        created_at: data.created_at || new Date().toISOString(),
+        completed_at: data.completed_at || local?.completed_at,
+      };
+
+      const existingIdx = localList.findIndex((o) => o.id.toUpperCase() === fetchedOrder.id.toUpperCase());
+      let updatedList: OrderRecord[];
+      if (existingIdx >= 0) {
+        updatedList = [...localList];
+        updatedList[existingIdx] = fetchedOrder;
+      } else {
+        updatedList = [fetchedOrder, ...localList];
+      }
+      this.saveOrders(updatedList);
+
+      return fetchedOrder;
+    } catch (err) {
+      console.warn('Failed to fetch order by ID:', err);
+      return this.getOrders().find((o) => o.id.toUpperCase() === orderId.trim().toUpperCase()) || null;
     }
   },
 
@@ -1458,6 +1677,14 @@ ${lines.join('\n')}
     try {
       const client = getSupabaseClient();
       if (client) {
+        const packedNotes = packOrderNotes(newOrder.notes, {
+          kitchen_status: newOrder.kitchen_status,
+          delivery_schedule: newOrder.delivery_schedule,
+          delivery_slot: newOrder.delivery_slot,
+          dp_amount: newOrder.dp_amount,
+          remaining_amount: newOrder.remaining_amount,
+        });
+
         client.from('orders').insert({
           id: newOrder.id,
           customer_name: newOrder.customer_name,
@@ -1471,7 +1698,7 @@ ${lines.join('\n')}
           shipping_cost: newOrder.shipping_cost || 0,
           shipping_district: newOrder.shipping_district || null,
           channel: newOrder.channel || 'web_wa',
-          notes: newOrder.notes || null,
+          notes: packedNotes || null,
           created_at: newOrder.created_at,
           completed_at: newOrder.completed_at || null,
         }).then(({ error }: any) => {
@@ -1809,6 +2036,16 @@ ${lines.join('\n')}
     updatedList[idx] = updatedOrder;
     this.saveOrders(updatedList);
 
+    const packedNotes = packOrderNotes(existing.notes, {
+      kitchen_status: updatedOrder.kitchen_status,
+      cooking_started_at: updatedOrder.cooking_started_at,
+      cooking_completed_at: updatedOrder.cooking_completed_at,
+      delivery_schedule: updatedOrder.delivery_schedule,
+      delivery_slot: updatedOrder.delivery_slot,
+      dp_amount: updatedOrder.dp_amount,
+      remaining_amount: updatedOrder.remaining_amount,
+    });
+
     // Sync status perubahan ke Supabase Cloud
     try {
       const client = getSupabaseClient();
@@ -1819,6 +2056,7 @@ ${lines.join('\n')}
             status: updatedOrder.status,
             payment_method: updatedOrder.payment_method,
             completed_at: updatedOrder.completed_at || null,
+            notes: packedNotes,
           })
           .eq('id', orderId)
           .then();
@@ -1859,19 +2097,48 @@ ${lines.join('\n')}
     updatedList[idx] = updatedOrder;
     this.saveOrders(updatedList);
 
+    const packedNotes = packOrderNotes(existing.notes, {
+      kitchen_status: kitchenStatus,
+      cooking_started_at: updatedOrder.cooking_started_at,
+      cooking_completed_at: updatedOrder.cooking_completed_at,
+      delivery_schedule: updatedOrder.delivery_schedule,
+      delivery_slot: updatedOrder.delivery_slot,
+      dp_amount: updatedOrder.dp_amount,
+      remaining_amount: updatedOrder.remaining_amount,
+    });
+
     // Sync status perubahan ke Supabase Cloud jika aktif
     try {
       const client = getSupabaseClient();
       if (client) {
+        // 1. Selalu perbarui 'notes' (memuat metadata terenkapsulasi yang dijamin sukses tanpa migrasi DDL)
         client
           .from('orders')
           .update({
-            kitchen_status: updatedOrder.kitchen_status,
-            cooking_started_at: updatedOrder.cooking_started_at || null,
-            cooking_completed_at: updatedOrder.cooking_completed_at || null,
+            notes: packedNotes,
+            ...(kitchenStatus === 'selesai' ? { completed_at: now } : {}),
           })
           .eq('id', orderId)
-          .then();
+          .then(
+            () => {
+              // 2. Jika kolom kitchen_status sudah ada di Supabase, update juga secara native
+              client
+                .from('orders')
+                .update({
+                  kitchen_status: updatedOrder.kitchen_status,
+                  cooking_started_at: updatedOrder.cooking_started_at || null,
+                  cooking_completed_at: updatedOrder.cooking_completed_at || null,
+                })
+                .eq('id', orderId)
+                .then(
+                  () => {},
+                  () => {}
+                );
+            },
+            (err: any) => {
+              console.warn('Update order notes to Supabase error:', err);
+            }
+          );
       }
     } catch (e) {
       console.warn('Update order kitchen_status to Supabase error:', e);

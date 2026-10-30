@@ -66,6 +66,15 @@ create table if not exists public.orders (
   completed_at timestamptz
 );
 
+-- Migrasi Kolom KDS & Jadwal Kloter jika tabel orders sudah ada sebelumnya
+alter table public.orders add column if not exists kitchen_status text;
+alter table public.orders add column if not exists cooking_started_at timestamptz;
+alter table public.orders add column if not exists cooking_completed_at timestamptz;
+alter table public.orders add column if not exists delivery_schedule text;
+alter table public.orders add column if not exists delivery_slot text;
+alter table public.orders add column if not exists dp_amount int;
+alter table public.orders add column if not exists remaining_amount int;
+
 create table if not exists public.expenses (
   id text primary key,
   tanggal text not null,

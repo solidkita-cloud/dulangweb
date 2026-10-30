@@ -12,7 +12,7 @@ import {
   ExpenseCategory,
   StaffRole,
 } from '../types';
-import { SIDOARJO_AREAS, INDONESIA_CITIES, CITY_DISTRICTS, MONTHS_INDONESIA, DEFAULT_SIDOARJO_DELIVERY_RATES } from '../lib/constants';
+import { SIDOARJO_AREAS, INDONESIA_CITIES, CITY_DISTRICTS, MONTHS_INDONESIA, DEFAULT_SIDOARJO_DELIVERY_RATES, checkStoreOpenStatus } from '../lib/constants';
 import { getSupabaseCredentials, saveSupabaseCredentials, clearSupabaseCredentials } from '../lib/supabase';
 import { storageService } from '../services/storageService';
 import { playNewCustomerChime, isAudioEnabled, setAudioEnabled } from '../lib/audioNotifier';
@@ -259,11 +259,56 @@ export const OwnerDashboardView: React.FC<OwnerDashboardViewProps> = ({
   // --- SETTINGS FORM STATE ---
   const [localConfig, setLocalConfig] = useState<StoreConfig>({ ...storeConfig });
   const [showClosedPreview, setShowClosedPreview] = useState(false);
+  const [isQuickEditReasonOpen, setIsQuickEditReasonOpen] = useState(false);
+  const [quickReasonInput, setQuickReasonInput] = useState('');
   const [activePin, setActivePin] = useState(() => storageService.getOwnerPin());
   const [oldPin, setOldPin] = useState('');
   const [newPin, setNewPin] = useState('');
   const [confirmPin, setConfirmPin] = useState('');
   const [securityLogs, setSecurityLogs] = useState<SecurityAuditEntry[]>(() => getSecurityAuditLogs());
+
+  const openStatus = checkStoreOpenStatus(localConfig);
+
+  const handleQuickHoursChange = (openHour: string, closeHour: string) => {
+    const updated: StoreConfig = {
+      ...localConfig,
+      openHour,
+      closeHour,
+      jamBukaTeks: `${openHour} - ${closeHour} WIB`,
+    };
+    setLocalConfig(updated);
+    onUpdateStoreConfig(updated);
+    storageService.saveStoreConfig(updated);
+    onShowToast(`Jam buka disetel: ${openHour} - ${closeHour} WIB ✓`);
+  };
+
+  const handleQuickAutoHoursToggle = (auto: boolean) => {
+    const updated: StoreConfig = {
+      ...localConfig,
+      autoOperatingHours: auto,
+    };
+    setLocalConfig(updated);
+    onUpdateStoreConfig(updated);
+    storageService.saveStoreConfig(updated);
+    onShowToast(
+      auto
+        ? 'Buka/Tutup otomatis aktif sesuai jam operasional ✓'
+        : 'Mode buka/tutup otomatis dinonaktifkan (Manual) ✓'
+    );
+  };
+
+  const handleSaveQuickReason = (e: React.FormEvent) => {
+    e.preventDefault();
+    const updated: StoreConfig = {
+      ...localConfig,
+      closedReason: quickReasonInput.trim() || localConfig.closedReason,
+    };
+    setLocalConfig(updated);
+    onUpdateStoreConfig(updated);
+    storageService.saveStoreConfig(updated);
+    setIsQuickEditReasonOpen(false);
+    onShowToast('Pesan pengumuman libur berhasil disimpan! ✓');
+  };
 
   useEffect(() => {
     const handleSecLogs = () => {
@@ -1811,6 +1856,224 @@ Catatan Kurir: Pastikan posisi dus ditaruh datar agar mayo tidak tumpah ya kak.`
           </div>
         </div>
       )}
+
+      {/* ==============================================================================
+          MERCHANT TOP BAR: QUICK BUKA / TUTUP & ATUR JAM OPERASIONAL (ALA SHOPEEFOOD)
+          Berada di posisi paling atas dashboard agar pemilik / kasir langsung bisa atur
+          buka/tutup toko dan jam operasional dalam 1 klik tanpa masuk ke menu pengaturan.
+      ============================================================================== */}
+      <div className="bg-white rounded-[22px] sm:rounded-[26px] border-2 border-[#111111] p-3.5 sm:p-5 shadow-[4px_4px_0_#111111] space-y-3.5 transition-all">
+        <div className="flex flex-col lg:flex-row lg:items-center justify-between gap-3 sm:gap-4">
+          {/* SISI KIRI: STATUS BUKA / TUTUP TOKO */}
+          <div className="flex-1 min-w-0">
+            <div className="flex flex-wrap items-center gap-2 mb-1.5">
+              <span className="text-[10px] sm:text-[11px] font-sans font-bold uppercase tracking-wider text-[#5C3D2E]/70">
+                Status Operasional Toko:
+              </span>
+              {localConfig.isStoreClosed ? (
+                <span className="inline-flex items-center gap-1.5 bg-red-500 text-white px-3 py-0.5 rounded-full text-xs font-bold font-sans shadow-xs animate-pulse">
+                  <span className="w-2 h-2 rounded-full bg-white" />
+                  🔴 SEDANG TUTUP (LIBUR GORENG)
+                </span>
+              ) : openStatus.isOpen ? (
+                <span className="inline-flex items-center gap-1.5 bg-emerald-500 text-white px-3 py-0.5 rounded-full text-xs font-bold font-sans shadow-xs">
+                  <span className="w-2 h-2 rounded-full bg-white animate-pulse" />
+                  🟢 DAPUR BUKA (NORMAL & SIAP GORENG)
+                </span>
+              ) : (
+                <span className="inline-flex items-center gap-1.5 bg-amber-500 text-[#111111] px-3 py-0.5 rounded-full text-xs font-bold font-sans shadow-xs">
+                  <span>🌙</span>
+                  TUTUP OTOMATIS (DI LUAR JAM KERJA)
+                </span>
+              )}
+            </div>
+
+            <p className="font-sans text-xs text-[#5C3D2E]/80 line-clamp-2">
+              {localConfig.isStoreClosed
+                ? `Pop-up libur aktif di HP pembeli: "${localConfig.closedReason || 'Dapur sedang libur goreng'}"`
+                : openStatus.isOpen
+                ? `Dapur siap menerima orderan masak panas (Jam buka: ${localConfig.openHour || '10:00'} - ${localConfig.closeHour || '20:00'} WIB).`
+                : `Di luar jam kerja (${localConfig.openHour || '10:00'} - ${localConfig.closeHour || '20:00'} WIB). Pembeli diarahkan ikut Pre-Order besok.`}
+            </p>
+          </div>
+
+          {/* TOMBOL TOGGLE STATUS 1-KLIK (ALA MERCHANT APP) */}
+          <div className="flex flex-wrap items-center gap-2 shrink-0">
+            {localConfig.isStoreClosed ? (
+              <button
+                type="button"
+                onClick={() => handleToggleStoreClosed(false)}
+                className="cursor-pointer bg-emerald-500 hover:bg-emerald-600 text-white px-4 sm:px-5 py-2 sm:py-2.5 rounded-full font-sans font-bold text-xs sm:text-sm border-2 border-[#111111] shadow-[2px_2px_0_#111111] hover:shadow-none hover:translate-x-0.5 hover:translate-y-0.5 transition flex items-center gap-1.5"
+              >
+                <span>🍳</span>
+                <span>Buka Dapur Sekarang</span>
+              </button>
+            ) : (
+              <button
+                type="button"
+                onClick={() => handleToggleStoreClosed(true)}
+                className="cursor-pointer bg-red-500 hover:bg-red-600 text-white px-4 sm:px-5 py-2 sm:py-2.5 rounded-full font-sans font-bold text-xs sm:text-sm border-2 border-[#111111] shadow-[2px_2px_0_#111111] hover:shadow-none hover:translate-x-0.5 hover:translate-y-0.5 transition flex items-center gap-1.5"
+              >
+                <span>💤</span>
+                <span>Tutup / Libur Goreng</span>
+              </button>
+            )}
+
+            <button
+              type="button"
+              onClick={() => {
+                setQuickReasonInput(
+                  localConfig.closedReason ||
+                    'Maaf lagi nggak goreng dulu, hari ini masak di dapur sendiri ya. -Tim Dulang Indonesia'
+                );
+                setIsQuickEditReasonOpen((prev) => !prev);
+              }}
+              className="cursor-pointer bg-[#FFF8E7] hover:bg-[#FFEEC2] text-[#111111] px-3 sm:px-4 py-2 sm:py-2.5 rounded-full font-sans font-bold text-xs border border-[#111111] shadow-xs transition flex items-center gap-1"
+              title="Edit kalimat pop-up pengumuman saat toko libur"
+            >
+              <span>✍️</span>
+              <span className="hidden xs:inline">Pesan Libur</span>
+            </button>
+          </div>
+        </div>
+
+        {/* SISI BAWAH: ATUR JAM OPERASIONAL & BUKA OTOMATIS */}
+        <div className="pt-3 border-t border-[#111111]/10 flex flex-col md:flex-row md:items-center justify-between gap-3">
+          <div className="flex flex-wrap items-center gap-2 sm:gap-3 text-xs font-sans">
+            <span className="font-bold text-[#111111] flex items-center gap-1">
+              <span>⏰</span> Jam Operasional:
+            </span>
+            <div className="inline-flex items-center gap-1.5 bg-[#FFF8E7] px-2.5 py-1 rounded-full border border-[#111111]/20">
+              <span className="text-[11px] text-[#5C3D2E]/70 font-semibold">Buka:</span>
+              <input
+                type="time"
+                value={localConfig.openHour || '10:00'}
+                onChange={(e) => handleQuickHoursChange(e.target.value, localConfig.closeHour || '20:00')}
+                className="bg-white border border-[#111111]/30 rounded-md px-1.5 py-0.5 text-xs font-bold text-[#111111] focus:outline-none focus:border-[#111111]"
+              />
+              <span className="text-[11px] text-[#5C3D2E]/70 font-semibold">s/d</span>
+              <input
+                type="time"
+                value={localConfig.closeHour || '20:00'}
+                onChange={(e) => handleQuickHoursChange(localConfig.openHour || '10:00', e.target.value)}
+                className="bg-white border border-[#111111]/30 rounded-md px-1.5 py-0.5 text-xs font-bold text-[#111111] focus:outline-none focus:border-[#111111]"
+              />
+              <span className="text-[11px] font-bold text-[#5C3D2E]/70">WIB</span>
+            </div>
+
+            {/* Quick Presets */}
+            <div className="hidden sm:flex items-center gap-1">
+              <button
+                type="button"
+                onClick={() => handleQuickHoursChange('10:00', '20:00')}
+                className="cursor-pointer text-[10px] font-bold bg-white hover:bg-[#FFF8E7] border border-[#111111]/20 px-2 py-1 rounded-full transition"
+              >
+                10:00-20:00 (Normal)
+              </button>
+              <button
+                type="button"
+                onClick={() => handleQuickHoursChange('07:00', '17:00')}
+                className="cursor-pointer text-[10px] font-bold bg-white hover:bg-[#FFF8E7] border border-[#111111]/20 px-2 py-1 rounded-full transition"
+              >
+                07:00-17:00 (Pagi)
+              </button>
+              <button
+                type="button"
+                onClick={() => handleQuickHoursChange('13:00', '21:00')}
+                className="cursor-pointer text-[10px] font-bold bg-white hover:bg-[#FFF8E7] border border-[#111111]/20 px-2 py-1 rounded-full transition"
+              >
+                13:00-21:00 (Sore-Malam)
+              </button>
+            </div>
+          </div>
+
+          {/* Toggle Auto Hours Checkbox */}
+          <label className="flex items-center gap-2 cursor-pointer font-sans text-xs font-bold text-[#111111] select-none">
+            <input
+              type="checkbox"
+              checked={localConfig.autoOperatingHours ?? true}
+              onChange={(e) => handleQuickAutoHoursToggle(e.target.checked)}
+              className="w-4 h-4 accent-[#111111] rounded cursor-pointer"
+            />
+            <span>Buka/Tutup Otomatis sesuai Jam</span>
+          </label>
+        </div>
+
+        {/* EXPANDABLE QUICK HOLIDAY POPUP MESSAGE EDITOR */}
+        {isQuickEditReasonOpen && (
+          <form
+            onSubmit={handleSaveQuickReason}
+            className="pt-3 border-t-2 border-dashed border-[#111111]/20 space-y-2.5 animate-in slide-in-from-top duration-200"
+          >
+            <div className="flex items-center justify-between">
+              <label className="block font-sans text-[11px] font-bold uppercase text-[#5C3D2E]/80">
+                💬 Kalimat Pop-up Pengumuman Libur (Tampil di HP Pembeli):
+              </label>
+              <button
+                type="button"
+                onClick={() => setIsQuickEditReasonOpen(false)}
+                className="text-xs text-[#5C3D2E]/70 hover:text-black font-bold cursor-pointer"
+              >
+                Tutup ✕
+              </button>
+            </div>
+            <textarea
+              rows={2}
+              value={quickReasonInput}
+              onChange={(e) => setQuickReasonInput(e.target.value)}
+              placeholder="Contoh: Maaf ya rek, hari ini dapur Dulang lagi libur goreng dulu ada acara keluarga. Besok subuh kita mulai goreng anget lagi!"
+              className="w-full rounded-[14px] border-2 border-[#111111] p-2.5 font-sans text-xs focus:outline-none focus:border-[#FFD700] bg-[#FFF8E7]"
+            />
+            <div className="flex flex-wrap items-center justify-between gap-2">
+              <div className="flex flex-wrap items-center gap-1.5">
+                <span className="text-[10px] text-[#5C3D2E]/70 font-bold">Contoh Cepat:</span>
+                <button
+                  type="button"
+                  onClick={() =>
+                    setQuickReasonInput('Maaf ya rek, hari ini dapur Dulang lagi libur goreng dulu. Besok subuh kita mulai goreng anget lagi!')
+                  }
+                  className="cursor-pointer text-[10px] bg-white hover:bg-amber-100 border border-[#111111]/20 px-2 py-0.5 rounded-full"
+                >
+                  Libur Keluarga
+                </button>
+                <button
+                  type="button"
+                  onClick={() =>
+                    setQuickReasonInput('Hari ini dapur libur dulu ya rek, tim lagi belanja bahan baku segar ke pasar. Buka kembali besok!')
+                  }
+                  className="cursor-pointer text-[10px] bg-white hover:bg-amber-100 border border-[#111111]/20 px-2 py-0.5 rounded-full"
+                >
+                  Belanja Pasar
+                </button>
+                <button
+                  type="button"
+                  onClick={() =>
+                    setQuickReasonInput('Kuah mayo & kulit risoles ludes terjual lebih awal! Wajan istirahat dulu, ketemu besok jam 10 ya rek!')
+                  }
+                  className="cursor-pointer text-[10px] bg-white hover:bg-amber-100 border border-[#111111]/20 px-2 py-0.5 rounded-full"
+                >
+                  Sold Out Lebih Awal
+                </button>
+              </div>
+              <div className="flex items-center gap-2">
+                <button
+                  type="button"
+                  onClick={() => setShowClosedPreview(true)}
+                  className="cursor-pointer bg-white text-[#111111] hover:bg-[#FFF8E7] border border-[#111111] px-3 py-1.5 rounded-full font-sans font-bold text-xs"
+                >
+                  👀 Pratinjau
+                </button>
+                <button
+                  type="submit"
+                  className="cursor-pointer bg-[#111111] hover:bg-black text-[#FFD700] px-4 py-1.5 rounded-full font-sans font-bold text-xs shadow-xs border border-[#111111]"
+                >
+                  Simpan Pesan Pengumuman ✓
+                </button>
+              </div>
+            </div>
+          </form>
+        )}
+      </div>
 
       {/* Navigation Pills (Compact on Mobile, Full on Desktop) */}
       <div className="flex items-center gap-1.5 sm:gap-2 overflow-x-auto no-scrollbar py-1 sm:py-2 border-b border-[#111111]/10 sm:border-b-2">
