@@ -2168,22 +2168,83 @@ ${lines.join('\n')}
 
   generateWaTrackingMessage(order: OrderRecord): string {
     const trackingUrl = this.generateTrackingUrl(order.id);
-    let statusText = 'Antre Masak di Dapur ⏳';
-    if (order.kitchen_status === 'sedang_goreng') statusText = 'Sedang Digoreng Hangat di Wajan 🔥';
-    else if (order.kitchen_status === 'packing') statusText = 'Sedang Ditiriskan & Masuk Dus Kemasan 📦';
-    else if (order.kitchen_status === 'siap')
-      statusText = order.delivery_method === 'delivery' ? 'Siap Dikirim Kurir 🛵' : 'Siap Diambil di Dapur 🥟✨';
-    else if (order.kitchen_status === 'selesai') statusText = 'Pesanan Sudah Selesai / Diterima 🎉';
+    const kStatus = order.kitchen_status || 'antre';
 
     const itemsSummary = (order.items || [])
       .map((i) => `• ${i.qty}x ${i.nama} (${i.variantType === 'frozen' ? '❄️ Frozen' : '🔥 Matang'})`)
       .join('\n');
 
+    if (kStatus === 'sedang_goreng') {
+      return `*DAPUR DULANG UPDATE* 🔥
+━━━━━━━━━━━━━━━━━━━━━
+Halo Kak *${order.customer_name}*!
+Wajan menyala! Pesanan *#${order.id}* saat ini:
+👉 *Sedang Digoreng Hangat di Wajan Dulang 🔥*
+Kulit risoles digoreng keemasan hingga renyah krispi & mayonya meleleh lumer.
+
+*Rincian Menu:*
+${itemsSummary}
+
+📍 *Pantau proses wajan live di sini:*
+${trackingUrl}
+
+_Dapur Dulang Indonesia - Dibuat dengan wajan panas & tulisan tangan_`;
+    }
+
+    if (kStatus === 'packing') {
+      return `*DAPUR DULANG UPDATE* 📦
+━━━━━━━━━━━━━━━━━━━━━
+Halo Kak *${order.customer_name}*!
+Risoles sudah matang keemasan! Pesanan *#${order.id}* saat ini:
+👉 *Sedang Ditiriskan & Masuk Dus Kemasan Cantik 📦*
+
+*Rincian Menu:*
+${itemsSummary}
+
+📍 *Pantau kesiapan pesananmu di sini:*
+${trackingUrl}
+
+_Sebentar lagi siap diambil / diantar kurir yaa! 🙏✨_`;
+    }
+
+    if (kStatus === 'siap') {
+      const isDelivery = order.delivery_method === 'delivery';
+      return `*DAPUR DULANG UPDATE* 🥟✨
+━━━━━━━━━━━━━━━━━━━━━
+Halo Kak *${order.customer_name}*!
+Kabar gembira! Pesanan *#${order.id}* sudah:
+👉 *SIAP ${isDelivery ? 'DIKIRIM KURIR DULANG 🛵' : 'DIAMBIL DI DAPUR DULANG 🥟'}*
+
+${isDelivery ? `🛵 Kurir kami bersiap mengantar ke lokasi Kakak (${order.shipping_district || 'Sidoarjo'}).` : '📍 Wajan sudah selesai goreng! Silakan merapat ke Dapur Dulang (Pasar Payan) yaa.'}
+
+*Rincian Pesanan:*
+${itemsSummary}
+
+🔗 *Buka kartu resi & detail pesanan:*
+${trackingUrl}
+
+_Matur suwun sanget! Hangatkan kembali bila perlu yaa 🙏✨_`;
+    }
+
+    if (kStatus === 'selesai') {
+      return `*DAPUR DULANG* 🎉
+━━━━━━━━━━━━━━━━━━━━━
+Matur suwun sanget Kak *${order.customer_name}* sampun jajan di Dapur Dulang! 🙏✨
+
+Pesanan *#${order.id}* telah selesai diserahkan. Selamat menikmati selagi anget yaa! 🥟🔥
+
+⭐ *Bantu dapur kami dengan ulasan bintang 5 & klaim Kupon Diskon Repeat Order:*
+👉 ${trackingUrl}
+
+Sampai jumpa di wajan berikutnya rek! 💛`;
+    }
+
+    // Default antre
     return `*UPDATE MASAK DAPUR DULANG* 🥟✨
 ━━━━━━━━━━━━━━━━━━━━━
 Halo Kak *${order.customer_name}*!
-Pesanan *#${order.id}* saat ini:
-👉 *${statusText}*
+Pesanan *#${order.id}* saat ini sudah masuk sistem:
+👉 *Antre Masak di Dapur Dulang ⏳*
 
 *Rincian Menu:*
 ${itemsSummary}
@@ -2192,6 +2253,20 @@ Pantau proses penggorengan secara live di sini:
 🔗 ${trackingUrl}
 
 _Dapur Dulang Indonesia - Risoles & Katering Sidoarjo_`;
+  },
+
+  openWhatsAppStatusUpdate(order: OrderRecord, targetStatus?: KitchenCookingStatus): void {
+    const target = targetStatus ? { ...order, kitchen_status: targetStatus } : order;
+    const text = this.generateWaTrackingMessage(target);
+    const cleanWa = (order.customer_wa || '').replace(/\D/g, '');
+    let url = `https://wa.me/?text=${encodeURIComponent(text)}`;
+    if (cleanWa) {
+      const waNumber = cleanWa.startsWith('0') ? '62' + cleanWa.slice(1) : cleanWa;
+      url = `https://wa.me/${waNumber}?text=${encodeURIComponent(text)}`;
+    }
+    if (typeof window !== 'undefined') {
+      window.open(url, '_blank');
+    }
   },
 
   updateCustomerIntelligence(order: OrderRecord): void {

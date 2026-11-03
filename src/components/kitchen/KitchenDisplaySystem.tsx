@@ -1,4 +1,5 @@
 import React, { useState, useEffect, useRef } from 'react';
+import QRCode from 'qrcode';
 import { OrderRecord, KitchenCookingStatus } from '../../types';
 import { storageService } from '../../services/storageService';
 import {
@@ -12,12 +13,14 @@ interface KitchenDisplaySystemProps {
   onShowToast: (msg: string) => void;
   isStandalone?: boolean;
   onCloseStandalone?: () => void;
+  onPrintReceipt?: (order: OrderRecord) => void;
 }
 
 export const KitchenDisplaySystem: React.FC<KitchenDisplaySystemProps> = ({
   onShowToast,
   isStandalone = false,
   onCloseStandalone,
+  onPrintReceipt,
 }) => {
   const [orders, setOrders] = useState<OrderRecord[]>(() => storageService.getKitchenOrders());
   const [filterTab, setFilterTab] = useState<'semua' | 'antre' | 'sedang_goreng' | 'packing' | 'siap' | 'selesai'>('semua');
@@ -25,6 +28,23 @@ export const KitchenDisplaySystem: React.FC<KitchenDisplaySystemProps> = ({
   const [audioUnlocked, setAudioUnlocked] = useState<boolean>(() => isAudioContextUnlocked());
   const [currentTime, setCurrentTime] = useState<Date>(new Date());
   const prevAntreCountRef = useRef<number>(orders.filter((o) => (o.kitchen_status || 'antre') === 'antre').length);
+
+  // Standalone Thermal Receipt Modal State
+  const [standaloneReceiptOrder, setStandaloneReceiptOrder] = useState<OrderRecord | null>(null);
+  const [receiptPaperWidth, setReceiptPaperWidth] = useState<'58mm' | '80mm'>('58mm');
+  const [receiptQrDataUrl, setReceiptQrDataUrl] = useState<string>('');
+  const storeConfig = storageService.getStoreConfig();
+
+  useEffect(() => {
+    if (standaloneReceiptOrder) {
+      const trackUrl = storageService.generateTrackingUrl(standaloneReceiptOrder.id);
+      QRCode.toDataURL(trackUrl, { width: 140, margin: 1 })
+        .then((url) => setReceiptQrDataUrl(url))
+        .catch((err) => console.error('Failed to generate receipt QR:', err));
+    } else {
+      setReceiptQrDataUrl('');
+    }
+  }, [standaloneReceiptOrder]);
 
   // Clock tick every 10 seconds for elapsed timer calculations
   useEffect(() => {
@@ -461,15 +481,30 @@ export const KitchenDisplaySystem: React.FC<KitchenDisplaySystemProps> = ({
                     )}
                   </div>
 
-                  {/* Secondary Actions: WA Update & Direct Tracking Link */}
-                  <div className="flex items-center gap-2 pt-1">
+                  {/* Secondary Actions: WA Update & Cetak Struk & Tracking Link */}
+                  <div className="flex items-center gap-1.5 pt-1">
                     <button
                       type="button"
                       onClick={() => handleSendWaUpdate(ord)}
-                      className="cursor-pointer flex-1 py-1.5 px-3 rounded-lg bg-[#25D366]/20 hover:bg-[#25D366]/30 text-[#25D366] text-xs font-bold transition flex items-center justify-center gap-1.5 border border-[#25D366]/40"
+                      className="cursor-pointer flex-1 py-1.5 px-2.5 rounded-lg bg-[#25D366]/20 hover:bg-[#25D366]/30 text-[#25D366] text-xs font-bold transition flex items-center justify-center gap-1 border border-[#25D366]/40 truncate"
                       title="Kirim notifikasi status masak langsung ke WA pembeli"
                     >
-                      <span>📱 Update WA Pembeli</span>
+                      <span>📱 Update WA</span>
+                    </button>
+
+                    <button
+                      type="button"
+                      onClick={() => {
+                        if (onPrintReceipt) {
+                          onPrintReceipt(ord);
+                        } else {
+                          setStandaloneReceiptOrder(ord);
+                        }
+                      }}
+                      className="cursor-pointer py-1.5 px-2.5 rounded-lg bg-amber-500/20 hover:bg-amber-500/30 text-amber-300 text-xs font-bold transition flex items-center justify-center gap-1 border border-amber-400/40"
+                      title="Cetak struk kasir / thermal box slip"
+                    >
+                      <span>🧾 Struk</span>
                     </button>
 
                     <button
@@ -478,7 +513,7 @@ export const KitchenDisplaySystem: React.FC<KitchenDisplaySystemProps> = ({
                         const url = storageService.generateTrackingUrl(ord.id);
                         window.open(url, '_blank');
                       }}
-                      className="cursor-pointer px-3 py-1.5 rounded-lg bg-white/10 hover:bg-white/20 text-white/80 text-xs font-mono transition flex items-center gap-1"
+                      className="cursor-pointer px-2.5 py-1.5 rounded-lg bg-white/10 hover:bg-white/20 text-white/80 text-xs font-mono transition flex items-center gap-1"
                       title="Buka tampilan lacak pesanan live"
                     >
                       <span>🔗 Lacak</span>
@@ -488,6 +523,244 @@ export const KitchenDisplaySystem: React.FC<KitchenDisplaySystemProps> = ({
               </div>
             );
           })}
+        </div>
+      )}
+
+      {/* MODAL STRUK THERMAL STANDALONE KITCHEN */}
+      {standaloneReceiptOrder && (
+        <div className="fixed inset-0 z-50 bg-black/75 backdrop-blur-xs flex items-center justify-center p-4 overflow-y-auto">
+          <div className="bg-white rounded-[24px] max-w-md w-full border-2 border-[#111111] shadow-[8px_8px_0_#111111] overflow-hidden animate-in zoom-in-95 duration-200">
+            {/* Modal Header */}
+            <div className="bg-[#111111] text-[#FFD700] px-6 py-4 flex items-center justify-between">
+              <div className="flex items-center gap-2">
+                <span className="text-xl">🧾</span>
+                <span className="font-hand font-bold text-xl text-white">Struk & Slip Dapur</span>
+              </div>
+              <button
+                type="button"
+                onClick={() => setStandaloneReceiptOrder(null)}
+                className="cursor-pointer text-white/70 hover:text-white text-lg font-bold"
+              >
+                ✕
+              </button>
+            </div>
+
+            {/* Paper Width Selector */}
+            <div className="bg-[#FFF8E7] px-6 py-2.5 border-b border-[#111111]/15 flex items-center justify-between text-xs font-sans">
+              <span className="font-bold text-[#5C3D2E]">Format Kertas Thermal:</span>
+              <div className="flex items-center gap-1.5">
+                <button
+                  type="button"
+                  onClick={() => setReceiptPaperWidth('58mm')}
+                  className={`cursor-pointer px-3 py-1 rounded-full font-bold text-xs transition ${
+                    receiptPaperWidth === '58mm'
+                      ? 'bg-[#111111] text-[#FFD700]'
+                      : 'bg-white text-[#111111] border border-[#111111]/20'
+                  }`}
+                >
+                  58mm (Mini)
+                </button>
+                <button
+                  type="button"
+                  onClick={() => setReceiptPaperWidth('80mm')}
+                  className={`cursor-pointer px-3 py-1 rounded-full font-bold text-xs transition ${
+                    receiptPaperWidth === '80mm'
+                      ? 'bg-[#111111] text-[#FFD700]'
+                      : 'bg-white text-[#111111] border border-[#111111]/20'
+                  }`}
+                >
+                  80mm (Standar)
+                </button>
+              </div>
+            </div>
+
+            {/* Thermal Receipt Visual Preview */}
+            <div className="p-6 bg-gray-100 flex justify-center max-h-[60vh] overflow-y-auto">
+              <div
+                id="thermal-receipt-area"
+                className={`bg-white p-5 border border-dashed border-gray-400 font-mono text-xs text-gray-900 shadow-sm leading-tight ${
+                  receiptPaperWidth === '58mm' ? 'w-[280px]' : 'w-[360px]'
+                }`}
+              >
+                <div className="text-center pb-2 border-b border-dashed border-gray-400">
+                  <div className="font-bold text-sm">{(storeConfig.brandName || 'DAPUR DULANG INDONESIA').toUpperCase()}</div>
+                  <div className="text-[10px] text-gray-600">{storeConfig.brandTagline || 'Dibuat dengan wajan panas & tulisan tangan'}</div>
+                  <div className="text-[10px] text-gray-500">{storeConfig.pickupAddressNote || 'Sedati • Sidoarjo, Jawa Timur'}</div>
+                  <div className="text-[10px] text-gray-500">WA: {storeConfig.brandPhone || '0877-0339-7035'}</div>
+                </div>
+
+                <div className="py-2 border-b border-dashed border-gray-400 text-[11px] space-y-0.5">
+                  <div className="flex justify-between">
+                    <span>No. Pesanan:</span>
+                    <span className="font-bold">#{standaloneReceiptOrder.id}</span>
+                  </div>
+                  <div className="flex justify-between">
+                    <span>Waktu:</span>
+                    <span>
+                      {new Date(standaloneReceiptOrder.created_at).toLocaleDateString('id-ID', {
+                        day: 'numeric',
+                        month: 'short',
+                        hour: '2-digit',
+                        minute: '2-digit',
+                      })}
+                    </span>
+                  </div>
+                  <div className="flex justify-between">
+                    <span>Pelanggan:</span>
+                    <span className="font-bold truncate max-w-[150px]">{standaloneReceiptOrder.customer_name}</span>
+                  </div>
+                  {standaloneReceiptOrder.customer_wa && (
+                    <div className="flex justify-between text-[10px]">
+                      <span>WhatsApp:</span>
+                      <span>+{standaloneReceiptOrder.customer_wa}</span>
+                    </div>
+                  )}
+                  <div className="flex justify-between">
+                    <span>Metode Bayar:</span>
+                    <span className="font-bold uppercase">{standaloneReceiptOrder.payment_method || 'TUNAI'}</span>
+                  </div>
+                  <div className="flex justify-between">
+                    <span>Jenis Pesanan:</span>
+                    <span className="font-bold">
+                      {standaloneReceiptOrder.delivery_method === 'delivery'
+                        ? '🛵 DELIVERY'
+                        : '🥟 AMBIL DI DAPUR'}
+                    </span>
+                  </div>
+                  {standaloneReceiptOrder.delivery_method === 'delivery' ? (
+                    <div className="pt-1 text-[10px] text-gray-600">
+                      <div>Kecamatan: {standaloneReceiptOrder.shipping_district ? `Kec. ${standaloneReceiptOrder.shipping_district}` : 'Sidoarjo'}</div>
+                    </div>
+                  ) : null}
+                  {standaloneReceiptOrder.notes && (
+                    <div className="pt-1 text-[10px] text-amber-900 bg-amber-50 p-1 rounded border border-amber-200">
+                      <strong>Catatan:</strong> {standaloneReceiptOrder.notes}
+                    </div>
+                  )}
+                </div>
+
+                {/* Items */}
+                <div className="py-2 border-b border-dashed border-gray-400 space-y-1">
+                  {(standaloneReceiptOrder.items || []).map((it, idx) => (
+                    <div key={idx} className="flex justify-between items-start text-[11px]">
+                      <div className="flex-1 pr-2">
+                        <div className="font-bold">
+                          {it.qty}x {it.nama}
+                        </div>
+                        {it.pilihanOpsi && (
+                          <div className="text-[10px] text-gray-600 pl-2">↳ {it.pilihanOpsi}</div>
+                        )}
+                        {it.variantType && (
+                          <div className="text-[9px] text-gray-500 pl-2 font-mono uppercase">
+                            [{it.variantType}]
+                          </div>
+                        )}
+                      </div>
+                      <div className="font-bold text-right shrink-0">
+                        Rp {(it.harga * it.qty).toLocaleString('id-ID')}
+                      </div>
+                    </div>
+                  ))}
+                </div>
+
+                {/* Totals */}
+                <div className="py-2 border-b border-dashed border-gray-400 text-[11px] space-y-0.5">
+                  {standaloneReceiptOrder.shipping_cost !== undefined && standaloneReceiptOrder.shipping_cost > 0 && (
+                    <div className="flex justify-between text-gray-600 text-[10px]">
+                      <span>Ongkir Kurir:</span>
+                      <span>Rp {standaloneReceiptOrder.shipping_cost.toLocaleString('id-ID')}</span>
+                    </div>
+                  )}
+                  <div className="flex justify-between font-bold text-sm">
+                    <span>TOTAL:</span>
+                    <span>Rp {standaloneReceiptOrder.total_price.toLocaleString('id-ID')}</span>
+                  </div>
+                  <div className="text-[10px] text-center text-emerald-700 font-bold pt-1">
+                    *** LUNAS / SIAP AMBIL ***
+                  </div>
+                </div>
+
+                {/* Footer Quote */}
+                <div className="text-center pt-2 text-[10px] text-gray-600 space-y-0.5">
+                  <div>{storeConfig.receiptFooterNote || 'Matur suwun sanget sampun jajan! Hangatkan kembali bila perlu yaa 🙏✨'}</div>
+                </div>
+
+                {/* QR Code Resi Lacak Wajan */}
+                {receiptQrDataUrl && (
+                  <div className="pt-2 text-center flex flex-col items-center border-t border-dashed border-gray-400 mt-2">
+                    <img
+                      src={receiptQrDataUrl}
+                      alt="QR Resi Lacak Pesanan"
+                      className="w-24 h-24 mx-auto mb-1 border border-gray-300 rounded p-1 bg-white"
+                    />
+                    <div className="text-[9px] text-gray-700 font-sans font-bold">
+                      SCAN UNTUK LACAK STATUS WAJAN
+                    </div>
+                    <div className="text-[8px] text-gray-500 font-mono">
+                      {storageService.generateTrackingUrl(standaloneReceiptOrder.id).replace(/^https?:\/\//, '')}
+                    </div>
+                  </div>
+                )}
+              </div>
+            </div>
+
+            {/* Print CSS for Thermal Printer */}
+            <style>{`
+              @media print {
+                @page {
+                  size: ${receiptPaperWidth === '58mm' ? '58mm' : '80mm'} auto;
+                  margin: 0;
+                }
+                html, body {
+                  margin: 0 !important;
+                  padding: 0 !important;
+                  background: white !important;
+                }
+                body * {
+                  visibility: hidden !important;
+                }
+                #thermal-receipt-area, #thermal-receipt-area * {
+                  visibility: visible !important;
+                }
+                #thermal-receipt-area {
+                  position: absolute !important;
+                  left: 0 !important;
+                  top: 0 !important;
+                  width: ${receiptPaperWidth === '58mm' ? '58mm' : '80mm'} !important;
+                  max-width: 100% !important;
+                  margin: 0 !important;
+                  padding: ${receiptPaperWidth === '58mm' ? '1.5mm 2mm' : '2.5mm 3.5mm'} !important;
+                  border: none !important;
+                  box-shadow: none !important;
+                  font-family: monospace !important;
+                  font-size: ${receiptPaperWidth === '58mm' ? '10px' : '11px'} !important;
+                  line-height: 1.2 !important;
+                  background: white !important;
+                  color: black !important;
+                  -webkit-print-color-adjust: exact !important;
+                  print-color-adjust: exact !important;
+                }
+              }
+            `}</style>
+
+            {/* Action Buttons */}
+            <div className="p-4 bg-white border-t border-[#111111]/15 flex items-center justify-between gap-3">
+              <button
+                type="button"
+                onClick={() => setStandaloneReceiptOrder(null)}
+                className="cursor-pointer py-2.5 px-4 rounded-full font-sans text-xs text-gray-600 hover:text-black font-semibold border border-gray-300"
+              >
+                Tutup
+              </button>
+              <button
+                type="button"
+                onClick={() => window.print()}
+                className="cursor-pointer bg-[#111111] hover:bg-[#222222] text-[#FFD700] rounded-full py-2.5 px-6 font-sans font-bold text-xs flex items-center gap-1.5 shadow-[2px_2px_0_#FFD700] transition active:translate-y-0.5"
+              >
+                <span>🖨️</span> Cetak Thermal
+              </button>
+            </div>
+          </div>
         </div>
       )}
     </div>

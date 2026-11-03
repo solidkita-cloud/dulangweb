@@ -1,6 +1,8 @@
 {
   "name": "Dulang Indonesia — Dapur Risoles",
   "short_name": "Dulang",
+  "id": "/",
+  "scope": "/",
   "description": "Dulang Indonesia — dibuat dengan wajan panas & tulisan tangan sejak 2020",
   "start_url": "/",
   "display": "standalone",

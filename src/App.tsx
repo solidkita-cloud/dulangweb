@@ -6,6 +6,7 @@ import { StickyCart } from './components/common/StickyCart';
 import { Toast } from './components/common/Toast';
 import { OwnerLoginModal } from './components/common/OwnerLoginModal';
 import { StoreClosedModal } from './components/common/StoreClosedModal';
+import { PwaInstallBanner } from './components/common/PwaInstallBanner';
 import { LandingView } from './views/LandingView';
 import { SmartScanView } from './views/SmartScanView';
 import { OwnerDashboardView } from './views/OwnerDashboardView';
@@ -400,6 +401,9 @@ export function App() {
             }}
           />
         )}
+
+        {/* PWA Install Banner */}
+        <PwaInstallBanner onShowToast={showToast} />
 
         {/* Floating Notification Toast */}
         <Toast message={toastMessage} />

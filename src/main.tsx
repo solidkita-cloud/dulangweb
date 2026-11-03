@@ -10,7 +10,7 @@ ReactDOM.createRoot(document.getElementById('root') as HTMLElement).render(
 );
 
 // Register Service Worker for PWA (Android / iOS Install)
-if ('serviceWorker' in navigator && import.meta.env.PROD) {
+if ('serviceWorker' in navigator) {
   window.addEventListener('load', () => {
     navigator.serviceWorker.register('/sw.js').catch((err) => {
       console.log('SW registration error:', err);

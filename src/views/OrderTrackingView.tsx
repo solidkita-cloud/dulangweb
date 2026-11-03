@@ -17,6 +17,28 @@ export const OrderTrackingView: React.FC<OrderTrackingViewProps> = ({
   const [allOrders, setAllOrders] = useState<OrderRecord[]>(() => storageService.getOrders());
   const [isRefreshing, setIsRefreshing] = useState<boolean>(false);
 
+  // Review & Rating State
+  const [reviewRating, setReviewRating] = useState<number>(5);
+  const [reviewComment, setReviewComment] = useState<string>('');
+  const [selectedTags, setSelectedTags] = useState<string[]>([
+    '🔥 Kulit Krispi Renyah',
+    '🧀 Mayo Meleleh Lumer',
+  ]);
+  const [selectedFavMenu, setSelectedFavMenu] = useState<string>('');
+  const [isReviewed, setIsReviewed] = useState<boolean>(false);
+  const [rewardVoucher, setRewardVoucher] = useState<string | null>(null);
+  const [copiedVoucher, setCopiedVoucher] = useState<boolean>(false);
+  const [isSubmittingReview, setIsSubmittingReview] = useState<boolean>(false);
+
+  const REVIEW_TAGS = [
+    '🔥 Kulit Krispi Renyah',
+    '🧀 Mayo Meleleh Lumer',
+    '🥟 Isian Daging Padat',
+    '♨️ Tiba Masih Anget',
+    '📦 Kemasan Cantik & Rapi',
+    '⚡ Pelayanan Super Ramah',
+  ];
+
   // Parse order from query param or initial props
   useEffect(() => {
     const params = new URLSearchParams(window.location.search);
@@ -106,6 +128,78 @@ export const OrderTrackingView: React.FC<OrderTrackingViewProps> = ({
     setIsRefreshing(true);
     await findAndSetOrder(inputOrderId);
     setIsRefreshing(false);
+  };
+
+  // Check if current order already has a saved review
+  useEffect(() => {
+    if (!currentOrder) return;
+    const reviewedKey = `dulang_reviewed_${currentOrder.id}`;
+    const voucherKey = `dulang_reward_voucher_${currentOrder.id}`;
+    const alreadyReviewed = localStorage.getItem(reviewedKey) === 'true';
+    setIsReviewed(alreadyReviewed);
+    if (alreadyReviewed) {
+      setRewardVoucher(localStorage.getItem(voucherKey) || null);
+    }
+    if (currentOrder.items && currentOrder.items.length > 0 && !selectedFavMenu) {
+      setSelectedFavMenu(currentOrder.items[0].nama);
+    }
+  }, [currentOrder?.id]);
+
+  const toggleTag = (tag: string) => {
+    setSelectedTags((prev) =>
+      prev.includes(tag) ? prev.filter((t) => t !== tag) : [...prev, tag]
+    );
+  };
+
+  const handleCopyVoucher = (code: string) => {
+    navigator.clipboard.writeText(code);
+    setCopiedVoucher(true);
+    setTimeout(() => setCopiedVoucher(false), 2500);
+  };
+
+  const handleSubmitReview = async (e: React.FormEvent) => {
+    e.preventDefault();
+    if (!currentOrder) return;
+    setIsSubmittingReview(true);
+
+    try {
+      const tagStr = selectedTags.length > 0 ? selectedTags.join(', ') : '';
+      const finalComment = reviewComment.trim()
+        ? tagStr ? `${reviewComment.trim()} (${tagStr})` : reviewComment.trim()
+        : tagStr || 'Risoles Dulang super anget dan nagih!';
+
+      storageService.addTestimonial({
+        customer_name: currentOrder.customer_name || 'Pelanggan Dulang',
+        area: currentOrder.shipping_district || 'Sidoarjo',
+        comment: finalComment,
+        favorite_menu: selectedFavMenu || (currentOrder.items[0]?.nama || 'Risol Mayo Lumer'),
+        rating: reviewRating,
+        is_active: true,
+      });
+
+      // Bonus repeat order voucher Rp 5.000 (Min order Rp 30.000)
+      const numPart = currentOrder.id.replace(/\D/g, '') || Math.floor(1000 + Math.random() * 9000).toString();
+      const code = `SOBATDULANG-${numPart}`;
+      await storageService.saveVoucher({
+        code,
+        recipientName: currentOrder.customer_name || 'Pelanggan Dulang',
+        discountType: 'nominal',
+        discountValue: 5000,
+        minOrder: 30000,
+        description: `Kupon Traktiran Sobat Dulang (Ulasan Bintang ${reviewRating})`,
+        isUsed: false,
+        createdAt: new Date().toISOString(),
+      });
+
+      localStorage.setItem(`dulang_reviewed_${currentOrder.id}`, 'true');
+      localStorage.setItem(`dulang_reward_voucher_${currentOrder.id}`, code);
+      setRewardVoucher(code);
+      setIsReviewed(true);
+    } catch (err) {
+      console.warn('Failed to submit review:', err);
+    } finally {
+      setIsSubmittingReview(false);
+    }
   };
 
   // Determine active step index
@@ -452,6 +546,157 @@ export const OrderTrackingView: React.FC<OrderTrackingViewProps> = ({
                 Panaskan di atas wajan teflon api kecil <strong>tanpa minyak</strong> selama 3-4 menit sambil dibolak-balik perlahan. Kulitnya bakal renyah krispi lagi dan mayonya lumer maksimal seperti baru keluar dari wajan!
               </p>
             </div>
+
+            {/* RATING & TESTIMONI BINTANG 5 SAAT PESANAN SELESAI */}
+            {currentOrder.kitchen_status === 'selesai' && (
+              <div className="bg-gradient-to-br from-[#FFFDF4] to-[#FFF8E7] rounded-[22px] p-4 sm:p-5 border-2 border-[#111111] shadow-[4px_4px_0_#111111] space-y-3.5 animate-in slide-in-from-bottom duration-300">
+                {!isReviewed ? (
+                  <form onSubmit={handleSubmitReview} className="space-y-3">
+                    <div className="text-center space-y-1">
+                      <span className="text-2xl animate-bounce inline-block">⭐</span>
+                      <h4 className="font-hand font-bold text-2xl text-[#111111] leading-none">
+                        Gimana rasa risolesnya, Kak {currentOrder.customer_name}?
+                      </h4>
+                      <p className="font-sans text-xs text-[#5C3D2E]/80">
+                        Beri rating bintang & dapatkan <strong className="text-amber-800">Kupon Diskon Rp 5.000</strong> untuk pesanan berikutnya! 🎁
+                      </p>
+                    </div>
+
+                    {/* Star Rating Picker */}
+                    <div className="flex items-center justify-center gap-1.5 py-1">
+                      {[1, 2, 3, 4, 5].map((star) => (
+                        <button
+                          key={star}
+                          type="button"
+                          onClick={() => setReviewRating(star)}
+                          className={`cursor-pointer text-3xl sm:text-4xl transition-transform hover:scale-125 active:scale-95 ${
+                            star <= reviewRating
+                              ? 'text-amber-400 drop-shadow-[0_2px_4px_rgba(251,191,36,0.6)]'
+                              : 'text-gray-300 hover:text-amber-200'
+                          }`}
+                        >
+                          ★
+                        </button>
+                      ))}
+                    </div>
+
+                    {/* Quick Tags Chips */}
+                    <div className="space-y-1.5">
+                      <span className="block font-sans text-[11px] font-bold uppercase text-[#5C3D2E]/70 text-center">
+                        Apa yang paling kamu suka? (Pilih sesukamu)
+                      </span>
+                      <div className="flex flex-wrap items-center justify-center gap-1.5">
+                        {REVIEW_TAGS.map((tag) => {
+                          const isSel = selectedTags.includes(tag);
+                          return (
+                            <button
+                              key={tag}
+                              type="button"
+                              onClick={() => toggleTag(tag)}
+                              className={`cursor-pointer px-2.5 py-1 rounded-full font-sans text-xs font-bold transition-all border ${
+                                isSel
+                                  ? 'bg-[#111111] text-[#FFD700] border-[#111111] shadow-2xs'
+                                  : 'bg-white text-[#5C3D2E] border-[#111111]/20 hover:border-[#111111]'
+                              }`}
+                            >
+                              {tag}
+                            </button>
+                          );
+                        })}
+                      </div>
+                    </div>
+
+                    {/* Favorite Menu Selector */}
+                    {currentOrder.items && currentOrder.items.length > 1 && (
+                      <div className="space-y-1">
+                        <label className="block font-sans text-[11px] font-bold text-[#5C3D2E]/70 text-center uppercase">
+                          Menu Paling Juara:
+                        </label>
+                        <select
+                          value={selectedFavMenu}
+                          onChange={(e) => setSelectedFavMenu(e.target.value)}
+                          className="w-full bg-white border-2 border-[#111111] rounded-full px-4 py-2 text-xs font-sans font-bold text-[#111111] focus:outline-none focus:border-[#FFD700]"
+                        >
+                          {currentOrder.items.map((it, idx) => (
+                            <option key={idx} value={it.nama}>
+                              {it.nama}
+                            </option>
+                          ))}
+                        </select>
+                      </div>
+                    )}
+
+                    {/* Textarea for Honest Thoughts */}
+                    <textarea
+                      rows={2}
+                      value={reviewComment}
+                      onChange={(e) => setReviewComment(e.target.value)}
+                      placeholder="Tulis kesan manismu di sini... (misal: Mayonya melimpah banget, kulitnya kriuk nagih!)"
+                      className="w-full rounded-[14px] border-2 border-[#111111] p-3 font-sans text-xs bg-white focus:outline-none focus:border-[#FFD700]"
+                    />
+
+                    {/* Submit Button */}
+                    <button
+                      type="submit"
+                      disabled={isSubmittingReview}
+                      className="cursor-pointer w-full py-2.5 sm:py-3 rounded-full bg-[#111111] hover:bg-black text-[#FFD700] font-sans font-bold text-xs sm:text-sm shadow-[3px_3px_0_#FFD700] border-2 border-[#111111] transition active:scale-95 flex items-center justify-center gap-2"
+                    >
+                      <span>🎁</span>
+                      <span>Kirim Ulasan & Klaim Kupon Diskon</span>
+                    </button>
+                  </form>
+                ) : (
+                  /* REVIEW COMPLETED & REWARD DISPLAY */
+                  <div className="text-center space-y-3 py-2 animate-in zoom-in-95 duration-200">
+                    <div className="w-12 h-12 rounded-full bg-emerald-100 text-emerald-800 text-2xl mx-auto flex items-center justify-center border-2 border-emerald-500 shadow-xs">
+                      🎉
+                    </div>
+                    <div className="space-y-1">
+                      <h4 className="font-hand font-bold text-2xl text-[#111111] leading-none">
+                        Matur Suwun Sanget, Kak {currentOrder.customer_name}!
+                      </h4>
+                      <p className="font-sans text-xs text-[#5C3D2E]/80">
+                        Ulasan bintang {reviewRating} darimu sangat berharga bagi dapur kecil kami.
+                      </p>
+                    </div>
+
+                    {/* Bonus Voucher Card */}
+                    {rewardVoucher && (
+                      <div className="bg-white rounded-[16px] p-3.5 border-2 border-dashed border-[#111111] shadow-xs space-y-2 max-w-sm mx-auto">
+                        <div className="flex items-center justify-center gap-1.5 text-xs font-bold text-amber-900 uppercase">
+                          <span>🎟️</span>
+                          <span>Kupon Traktiran Repeat Order (Hemat Rp 5.000)</span>
+                        </div>
+                        <div className="flex items-center justify-center gap-2 bg-[#FFF8E7] p-2 rounded-xl border border-[#111111]/20">
+                          <span className="font-mono font-bold text-base text-[#111111] tracking-wider">
+                            {rewardVoucher}
+                          </span>
+                          <button
+                            type="button"
+                            onClick={() => handleCopyVoucher(rewardVoucher)}
+                            className="cursor-pointer bg-[#111111] hover:bg-black text-[#FFD700] px-3 py-1 rounded-full font-sans font-bold text-[11px] transition active:scale-95"
+                          >
+                            {copiedVoucher ? 'Tersalin! ✓' : 'Salin 📋'}
+                          </button>
+                        </div>
+                        <p className="font-sans text-[10px] text-[#5C3D2E]/70">
+                          Gunakan kupon ini saat checkout pesanan berikutnya di web Dulang (min. order Rp 30.000).
+                        </p>
+                      </div>
+                    )}
+
+                    <button
+                      type="button"
+                      onClick={onBackToMenu}
+                      className="cursor-pointer inline-flex items-center gap-1.5 px-4 py-2 rounded-full bg-[#FFD700] hover:bg-[#FFE033] text-[#111111] font-sans font-bold text-xs border border-[#111111] shadow-xs active:scale-95 transition"
+                    >
+                      <span>🥟</span>
+                      <span>Pesan Risol Lagi Pakai Kupon</span>
+                    </button>
+                  </div>
+                )}
+              </div>
+            )}
 
             {/* Direct WhatsApp Action to Kitchen */}
             <div className="pt-3 flex flex-col sm:flex-row gap-3">

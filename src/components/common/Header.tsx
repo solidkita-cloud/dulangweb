@@ -1,5 +1,7 @@
 import React from 'react';
 import { BRAND, LOCKED_COPY } from '../../lib/constants';
+import { usePWAInstall } from '../../hooks/usePWAInstall';
+import { PwaInstallModal } from './PwaInstallModal';
 
 export type NavMode = 'pembeli' | 'pemilik' | 'cetak' | 'scan' | 'kds' | 'track';
 
@@ -17,7 +19,10 @@ export const Header: React.FC<HeaderProps> = ({
   isOwnerLoggedIn,
   onLogout,
 }) => {
+  const { isInstalled, showIOSModal, setShowIOSModal, triggerInstall } = usePWAInstall();
+
   return (
+    <>
     <header className="sticky top-0 z-40 bg-[#FFF8E7]/90 backdrop-blur-md border-b-2 border-[#111111]/10">
       {/* Top Notification Pill Bar — HANYA MUNCUL JIKA PEMILIK SUDAH LOGIN */}
       {isOwnerLoggedIn && (
@@ -110,6 +115,19 @@ export const Header: React.FC<HeaderProps> = ({
         </div>
 
         <div className="flex items-center gap-2 sm:gap-3">
+          {/* Tombol Install PWA App */}
+          {!isInstalled && (
+            <button
+              type="button"
+              onClick={() => triggerInstall()}
+              className="cursor-pointer px-2.5 sm:px-3 py-1.5 rounded-full font-sans font-bold text-[11px] sm:text-[12px] bg-[#FFF8E7] hover:bg-[#FFD700] text-[#111111] border border-[#111111] shadow-2xs transition flex items-center gap-1 active:scale-95"
+              title="Pasang aplikasi Dulang di layar utama HP tanpa buka browser"
+            >
+              <span>📱</span>
+              <span className="hidden xs:inline">Pasang App</span>
+            </button>
+          )}
+
           <button
             type="button"
             onClick={() => onSelectMode('track')}
@@ -138,5 +156,8 @@ export const Header: React.FC<HeaderProps> = ({
         </div>
       </div>
     </header>
+
+    <PwaInstallModal isOpen={showIOSModal} onClose={() => setShowIOSModal(false)} />
+    </>
   );
 };

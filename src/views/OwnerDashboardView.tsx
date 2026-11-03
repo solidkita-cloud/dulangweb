@@ -1,4 +1,5 @@
 import React, { useState, useEffect, useRef, useMemo } from 'react';
+import QRCode from 'qrcode';
 import {
   MenuItem,
   Customer,
@@ -7,6 +8,7 @@ import {
   OrderRecord,
   PaymentMethod,
   OrderStatus,
+  KitchenCookingStatus,
   CustomerTestimonial,
   ExpenseRecord,
   ExpenseCategory,
@@ -155,8 +157,21 @@ export const OwnerDashboardView: React.FC<OwnerDashboardViewProps> = ({
   const [walkInCashReceived, setWalkInCashReceived] = useState<number | ''>('');
   const [selectedOrderForReceipt, setSelectedOrderForReceipt] = useState<OrderRecord | null>(null);
   const [receiptPaperWidth, setReceiptPaperWidth] = useState<'58mm' | '80mm'>('58mm');
+  const [receiptQrDataUrl, setReceiptQrDataUrl] = useState<string>('');
   const [quickWaOrderText, setQuickWaOrderText] = useState('');
   const [mobileActionOrder, setMobileActionOrder] = useState<OrderRecord | null>(null);
+
+  // Generate QR Code for thermal receipt
+  useEffect(() => {
+    if (selectedOrderForReceipt) {
+      const trackUrl = storageService.generateTrackingUrl(selectedOrderForReceipt.id);
+      QRCode.toDataURL(trackUrl, { width: 140, margin: 1 })
+        .then((url) => setReceiptQrDataUrl(url))
+        .catch((err) => console.error('Failed to generate receipt QR code:', err));
+    } else {
+      setReceiptQrDataUrl('');
+    }
+  }, [selectedOrderForReceipt]);
 
   // --- DULANG-2 KITCHEN COCKPIT & PROGRESSIVE DISCLOSURE STATE ---
   const [isMobileDrawerOpen, setIsMobileDrawerOpen] = useState<boolean>(false);
@@ -180,6 +195,14 @@ export const OwnerDashboardView: React.FC<OwnerDashboardViewProps> = ({
   const [expenseCategoryFilter, setExpenseCategoryFilter] = useState<'all' | ExpenseCategory>('all');
   const [expenseSearch, setExpenseSearch] = useState('');
   const [isAddingExpense, setIsAddingExpense] = useState(false);
+  const [expensePeriodFilter, setExpensePeriodFilter] = useState<{
+    month: number | 'all';
+    year: number;
+  }>({
+    month: new Date().getMonth() + 1,
+    year: new Date().getFullYear(),
+  });
+  const [isPrintingFinancialReport, setIsPrintingFinancialReport] = useState<boolean>(false);
 
   // New Expense Form State
   const [expDate, setExpDate] = useState(() => new Date().toISOString().split('T')[0]);
@@ -831,6 +854,225 @@ Catatan Kurir: Pastikan posisi dus ditaruh datar agar mayo tidak tumpah ya kak.`
     }
   };
 
+  // --- REKAP KEUANGAN BULANAN & ANALISA PROFIT HPP ---
+  const monthlyFinancialSummary = useMemo(() => {
+    const isOrderInPeriod = (dateStr: string) => {
+      if (!dateStr) return false;
+      const d = new Date(dateStr);
+      if (isNaN(d.getTime())) return false;
+      if (d.getFullYear() !== expensePeriodFilter.year) return false;
+      if (expensePeriodFilter.month !== 'all' && d.getMonth() + 1 !== expensePeriodFilter.month) return false;
+      return true;
+    };
+
+    const isExpenseInPeriod = (expDate: string, createdDate?: string) => {
+      if (expDate) {
+        const parts = expDate.split('-');
+        if (parts.length >= 2) {
+          const y = parseInt(parts[0], 10);
+          const m = parseInt(parts[1], 10);
+          if (y !== expensePeriodFilter.year) return false;
+          if (expensePeriodFilter.month !== 'all' && m !== expensePeriodFilter.month) return false;
+          return true;
+        }
+      }
+      if (createdDate) {
+        const d = new Date(createdDate);
+        if (!isNaN(d.getTime())) {
+          if (d.getFullYear() !== expensePeriodFilter.year) return false;
+          if (expensePeriodFilter.month !== 'all' && d.getMonth() + 1 !== expensePeriodFilter.month) return false;
+          return true;
+        }
+      }
+      return true;
+    };
+
+    const periodOrders = orders.filter((o) => isOrderInPeriod(o.created_at));
+    const periodPaidOrders = periodOrders.filter((o) => o.status === 'lunas');
+    const periodDpOrders = periodOrders.filter((o) => o.status === 'dp');
+
+    const totalOmsetKotor =
+      periodPaidOrders.reduce((sum, o) => sum + o.total_price, 0) +
+      periodDpOrders.reduce((sum, o) => sum + (o.dp_amount || 0), 0);
+
+    const periodExpenses = expenses.filter((e) => isExpenseInPeriod(e.tanggal, e.created_at));
+    const totalBelanjaDapur = periodExpenses.reduce((sum, e) => sum + e.nominal, 0);
+
+    const expenseByCategory = {
+      bahan_baku: periodExpenses.filter((e) => e.kategori === 'bahan_baku').reduce((s, e) => s + e.nominal, 0),
+      operasional: periodExpenses.filter((e) => e.kategori === 'operasional').reduce((s, e) => s + e.nominal, 0),
+      kemasan: periodExpenses.filter((e) => e.kategori === 'kemasan').reduce((s, e) => s + e.nominal, 0),
+      lainnya: periodExpenses.filter((e) => e.kategori === 'lainnya').reduce((s, e) => s + e.nominal, 0),
+    };
+
+    // Resep HPP calculation
+    const recipes = storageService.getMenuRecipes();
+    let totalHppBahan = 0;
+    let totalPcsTerjual = 0;
+
+    periodPaidOrders.concat(periodDpOrders).forEach((ord) => {
+      (ord.items || []).forEach((it) => {
+        totalPcsTerjual += it.qty;
+        const rec = recipes.find(
+          (r) => r.menuId === it.menu_id || r.menuName.toLowerCase() === it.nama.toLowerCase()
+        );
+        const itemHpp = rec?.calculatedHpp || 0;
+        totalHppBahan += itemHpp * it.qty;
+      });
+    });
+
+    const labaKotor = totalOmsetKotor - totalHppBahan;
+    const grossProfitMargin = totalOmsetKotor > 0 ? ((labaKotor / totalOmsetKotor) * 100).toFixed(1) : '0';
+
+    const netProfit = totalOmsetKotor - totalBelanjaDapur;
+    const netProfitMargin = totalOmsetKotor > 0 ? ((netProfit / totalOmsetKotor) * 100).toFixed(1) : '0';
+
+    const selectedMonthObj = MONTHS_INDONESIA.find((m) => m.value === expensePeriodFilter.month);
+    const periodLabel =
+      expensePeriodFilter.month === 'all'
+        ? `Sepanjang Tahun ${expensePeriodFilter.year}`
+        : `${selectedMonthObj ? selectedMonthObj.label : 'Bulan ' + expensePeriodFilter.month} ${expensePeriodFilter.year}`;
+
+    return {
+      periodOrders,
+      periodPaidOrders,
+      periodDpOrders,
+      periodExpenses,
+      totalOmsetKotor,
+      totalBelanjaDapur,
+      expenseByCategory,
+      totalHppBahan,
+      totalPcsTerjual,
+      labaKotor,
+      grossProfitMargin,
+      netProfit,
+      netProfitMargin,
+      periodLabel,
+    };
+  }, [orders, expenses, expensePeriodFilter]);
+
+  const handleExportExpensesCSV = () => {
+    const {
+      periodLabel,
+      totalOmsetKotor,
+      periodPaidOrders,
+      totalHppBahan,
+      totalPcsTerjual,
+      labaKotor,
+      grossProfitMargin,
+      totalBelanjaDapur,
+      periodExpenses,
+      netProfit,
+      netProfitMargin,
+      expenseByCategory,
+    } = monthlyFinancialSummary;
+
+    const categoryLabels: Record<ExpenseCategory, string> = {
+      bahan_baku: 'Bahan Baku & Isian',
+      operasional: 'Operasional & Gas',
+      kemasan: 'Kemasan & Dus Box',
+      lainnya: 'Lain-lain / Transport',
+    };
+
+    let csv = '\uFEFF';
+    csv += `"LAPORAN KEUANGAN & LABA BERSIH - ${(storeConfig.brandName || 'DAPUR DULANG').toUpperCase()}"\n`;
+    csv += `"Periode:","${periodLabel}"\n`;
+    csv += `"Tanggal Unduh:","${new Date().toLocaleString('id-ID')}"\n\n`;
+
+    // 1. Ringkasan Eksekutif
+    csv += `"=== RINGKASAN EKSEKUTIF KEUANGAN ==="\n`;
+    csv += `"Metrik Keuangan","Nominal (Rp)","Keterangan / Rasio"\n`;
+    csv += `"Omset Penjualan Bersih (Lunas)","${totalOmsetKotor}","${periodPaidOrders.length} transaksi penjualan"\n`;
+    csv += `"Estimasi HPP Bahan Terjual","${totalHppBahan}","Dihitung dari ${totalPcsTerjual} pcs gorengan/risoles terjual"\n`;
+    csv += `"Laba Kotor Produk (Gross Profit)","${labaKotor}","Gross Margin: ${grossProfitMargin}%"\n`;
+    csv += `"Total Belanja Kas Dapur","${totalBelanjaDapur}","${periodExpenses.length} transaksi pengeluaran"\n`;
+    csv += `"Laba Bersih Kas (Surplus)","${netProfit}","Net Margin: ${netProfitMargin}%"\n\n`;
+
+    // 2. Breakdown Belanja
+    csv += `"=== RINCIAN PENGELUARAN PER KATEGORI ==="\n`;
+    csv += `"Kategori","Nominal (Rp)","Persentase"\n`;
+    csv += `"Bahan Baku & Isian","${expenseByCategory.bahan_baku}","${totalBelanjaDapur > 0 ? ((expenseByCategory.bahan_baku / totalBelanjaDapur) * 100).toFixed(1) : 0}%"\n`;
+    csv += `"Operasional & Gas","${expenseByCategory.operasional}","${totalBelanjaDapur > 0 ? ((expenseByCategory.operasional / totalBelanjaDapur) * 100).toFixed(1) : 0}%"\n`;
+    csv += `"Kemasan & Dus Box","${expenseByCategory.kemasan}","${totalBelanjaDapur > 0 ? ((expenseByCategory.kemasan / totalBelanjaDapur) * 100).toFixed(1) : 0}%"\n`;
+    csv += `"Lain-lain / Transport","${expenseByCategory.lainnya}","${totalBelanjaDapur > 0 ? ((expenseByCategory.lainnya / totalBelanjaDapur) * 100).toFixed(1) : 0}%"\n\n`;
+
+    // 3. Detail Pengeluaran
+    csv += `"=== DAFTAR TRANSAKSI BELANJA KAS ==="\n`;
+    csv += `"No","Tanggal","Kategori","Nama Barang","Nominal (Rp)","Catatan"\n`;
+    periodExpenses.forEach((exp, idx) => {
+      const catText = categoryLabels[exp.kategori] || exp.kategori;
+      csv += `"${idx + 1}","${exp.tanggal}","${catText}","${exp.nama_item.replace(/"/g, '""')}","${exp.nominal}","${(exp.catatan || '').replace(/"/g, '""')}"\n`;
+    });
+    csv += `\n`;
+
+    // 4. Detail Penjualan
+    csv += `"=== DAFTAR TRANSAKSI PENJUALAN LUNAS ==="\n`;
+    csv += `"No. Order","Tanggal","Pelanggan","Metode Kirim","Metode Bayar","Rincian Menu","Total (Rp)"\n`;
+    periodPaidOrders.forEach((ord) => {
+      const itemDesc = (ord.items || []).map((i) => `${i.qty}x ${i.nama}`).join('; ');
+      csv += `"#${ord.id}","${new Date(ord.created_at).toLocaleDateString('id-ID')}","${ord.customer_name.replace(/"/g, '""')}","${ord.delivery_method}","${ord.payment_method}","${itemDesc.replace(/"/g, '""')}","${ord.total_price}"\n`;
+    });
+
+    const blob = new Blob([csv], { type: 'text/csv;charset=utf-8;' });
+    const url = URL.createObjectURL(blob);
+    const link = document.createElement('a');
+    link.href = url;
+    const cleanFileName = `Laporan_Keuangan_Dulang_${periodLabel.replace(/\s+/g, '_')}.csv`;
+    link.download = cleanFileName;
+    document.body.appendChild(link);
+    link.click();
+    document.body.removeChild(link);
+    URL.revokeObjectURL(url);
+    onShowToast(`📊 Berhasil unduh ${cleanFileName}!`);
+  };
+
+  const handleSendMonthlyReportWA = () => {
+    const {
+      periodLabel,
+      totalOmsetKotor,
+      periodPaidOrders,
+      totalHppBahan,
+      totalPcsTerjual,
+      labaKotor,
+      grossProfitMargin,
+      totalBelanjaDapur,
+      periodExpenses,
+      netProfit,
+      netProfitMargin,
+      expenseByCategory,
+    } = monthlyFinancialSummary;
+
+    const brandName = storeConfig.brandName || 'DAPUR DULANG INDONESIA';
+    const rawPhone = (storeConfig.brandPhone || '087703397035').replace(/[^0-9]/g, '');
+    const targetWa = rawPhone.startsWith('0') ? '62' + rawPhone.slice(1) : rawPhone;
+
+    const msg = [
+      `*📊 REKAP LABA BERSIH BULANAN*`,
+      `🏪 *${brandName.toUpperCase()}*`,
+      `📅 *Periode:* ${periodLabel}`,
+      `----------------------------------------`,
+      `💰 *OMSET PENJUALAN:* Rp ${totalOmsetKotor.toLocaleString('id-ID')}`,
+      `   ↳ _(${periodPaidOrders.length} pesanan lunas, ${totalPcsTerjual} pcs jajan)_`,
+      ``,
+      `🍳 *Estimasi HPP Bahan:* Rp ${totalHppBahan.toLocaleString('id-ID')}`,
+      `✨ *Laba Kotor Produk:* Rp ${labaKotor.toLocaleString('id-ID')} (${grossProfitMargin}%)`,
+      ``,
+      `🛒 *TOTAL BELANJA KAS:* Rp ${totalBelanjaDapur.toLocaleString('id-ID')} (${periodExpenses.length} transaksi belanja)`,
+      `   • 🥚 Bahan Baku: Rp ${expenseByCategory.bahan_baku.toLocaleString('id-ID')}`,
+      `   • ⚡ Operasional & Gas: Rp ${expenseByCategory.operasional.toLocaleString('id-ID')}`,
+      `   • 📦 Dus & Kemasan: Rp ${expenseByCategory.kemasan.toLocaleString('id-ID')}`,
+      `   • 🏷️ Lain-lain: Rp ${expenseByCategory.lainnya.toLocaleString('id-ID')}`,
+      `----------------------------------------`,
+      `🚀 *LABA BERSIH KAS (SURPLUS):*`,
+      `*${netProfit < 0 ? '-' : ''}Rp ${Math.abs(netProfit).toLocaleString('id-ID')}* (Margin: ${netProfitMargin}%)`,
+      `----------------------------------------`,
+      `_Laporan diekspor otomatis dari Sistem POS Dapur Dulang pada ${new Date().toLocaleDateString('id-ID', { day: 'numeric', month: 'long', year: 'numeric' })}._`,
+    ].join('\n');
+
+    window.open(`https://wa.me/${targetWa}?text=${encodeURIComponent(msg)}`, '_blank');
+    onShowToast('📲 Membuka WhatsApp untuk kirim Rekap Keuangan Bulanan!');
+  };
+
   const handleSaveSupabaseConfig = async (e: React.FormEvent) => {
     e.preventDefault();
     if (!inputDbUrl.trim() || !inputDbKey.trim()) {
@@ -891,6 +1133,24 @@ Catatan Kurir: Pastikan posisi dus ditaruh datar agar mayo tidak tumpah ya kak.`
         onShowToast(`Status pesanan #${orderId} diperbarui.`);
       }
     }
+  };
+
+  const handleUpdateKitchenStatus = (orderId: string, kitchenStatus: KitchenCookingStatus) => {
+    const updated = storageService.updateKitchenCookingStatus(orderId, kitchenStatus);
+    if (updated) {
+      setOrders(storageService.getOrders());
+      let label = 'Status wajan diperbarui';
+      if (kitchenStatus === 'sedang_goreng') label = `🔥 Pesanan #${orderId} masuk wajan penggorengan!`;
+      else if (kitchenStatus === 'packing') label = `📦 Pesanan #${orderId} ditiriskan & masuk dus kemasan.`;
+      else if (kitchenStatus === 'siap') label = `🥟 Pesanan #${orderId} SIAP diambil/dikirim!`;
+      else if (kitchenStatus === 'selesai') label = `🎉 Pesanan #${orderId} selesai diserahkan!`;
+      onShowToast(label);
+    }
+  };
+
+  const handleSendOrderWaUpdate = (order: OrderRecord, targetStatus?: KitchenCookingStatus) => {
+    storageService.openWhatsAppStatusUpdate(order, targetStatus);
+    onShowToast(`Membuka WhatsApp untuk update status #${order.id}... 📱`);
   };
 
   const handleDeleteOrder = async (orderId: string) => {
@@ -1934,6 +2194,18 @@ Catatan Kurir: Pastikan posisi dus ditaruh datar agar mayo tidak tumpah ya kak.`
               <span>✍️</span>
               <span className="hidden xs:inline">Pesan Libur</span>
             </button>
+
+            {!isAppInstalled && (
+              <button
+                type="button"
+                onClick={handleInstallPWA}
+                className="cursor-pointer bg-white hover:bg-[#FFD700] text-[#111111] px-3 sm:px-4 py-2 sm:py-2.5 rounded-full font-sans font-bold text-xs border border-[#111111] shadow-xs transition flex items-center gap-1.5 active:scale-95"
+                title="Pasang aplikasi Kasir / Dapur di layar HP tanpa browser"
+              >
+                <span>📱</span>
+                <span className="hidden xs:inline">Pasang di HP</span>
+              </button>
+            )}
           </div>
         </div>
 
@@ -4063,6 +4335,55 @@ Catatan Kurir: Pastikan posisi dus ditaruh datar agar mayo tidak tumpah ya kak.`
                           </div>
                         )}
 
+                        {/* Wajan Cooking Status Selector & 1-Klik Kirim WA Update */}
+                        <div className="bg-[#FFFDF4] rounded-[14px] p-2 sm:p-2.5 border border-[#111111]/20 flex flex-wrap items-center justify-between gap-2 text-xs">
+                          <div className="flex flex-wrap items-center gap-1.5">
+                            <span className="text-[10px] font-bold uppercase tracking-wider text-[#5C3D2E]/70 flex items-center gap-1">
+                              <span>🍳</span> Wajan:
+                            </span>
+                            <div className="inline-flex items-center gap-1 bg-white p-0.5 rounded-full border border-[#111111]/20 shadow-2xs">
+                              {(['antre', 'sedang_goreng', 'packing', 'siap', 'selesai'] as KitchenCookingStatus[]).map((st) => {
+                                const isActive = (ord.kitchen_status || 'antre') === st;
+                                const label =
+                                  st === 'antre'
+                                    ? '⏳ Antre'
+                                    : st === 'sedang_goreng'
+                                    ? '🔥 Goreng'
+                                    : st === 'packing'
+                                    ? '📦 Pack'
+                                    : st === 'siap'
+                                    ? '🥟 Siap'
+                                    : '✅ Selesai';
+                                return (
+                                  <button
+                                    key={st}
+                                    type="button"
+                                    onClick={() => handleUpdateKitchenStatus(ord.id, st)}
+                                    className={`cursor-pointer px-2 py-0.5 rounded-full font-sans font-bold text-[10px] transition ${
+                                      isActive
+                                        ? 'bg-[#111111] text-[#FFD700] shadow-xs'
+                                        : 'text-[#5C3D2E]/70 hover:text-[#111111] hover:bg-gray-100'
+                                    }`}
+                                  >
+                                    {label}
+                                  </button>
+                                );
+                              })}
+                            </div>
+                          </div>
+
+                          {/* Tombol 1-Klik Kirim WA Update */}
+                          <button
+                            type="button"
+                            onClick={() => handleSendOrderWaUpdate(ord)}
+                            className="cursor-pointer bg-[#25D366] hover:bg-[#20ba59] text-white px-3 py-1 rounded-full font-sans font-bold text-[11px] shadow-xs border border-emerald-800 transition flex items-center gap-1 active:scale-95"
+                            title="Kirim notifikasi update status ke WhatsApp pembeli"
+                          >
+                            <span>📲</span>
+                            <span>Kirim WA</span>
+                          </button>
+                        </div>
+
                         {/* Action Buttons: Clean & Ergonomic */}
                         {/* DESKTOP ACTIONS: FULL SUITE */}
                         <div className="hidden sm:flex flex-wrap items-center justify-between gap-2 pt-2 border-t border-[#111111]/10">
@@ -4509,13 +4830,20 @@ Catatan Kurir: Pastikan posisi dus ditaruh datar agar mayo tidak tumpah ya kak.`
 
       {/* TAB: BUKU KAS & PROFIT BERSIH DAPUR */}
       {activeTab === 'expenses' && (() => {
-        const paidOrders = orders.filter((o) => o.status === 'lunas');
-        const dpOrdersList = orders.filter((o) => o.status === 'dp');
-        const totalOmsetKotor = paidOrders.reduce((sum, o) => sum + o.total_price, 0) +
-          dpOrdersList.reduce((sum, o) => sum + (o.dp_amount || 0), 0);
-        const totalBelanjaDapur = expenses.reduce((sum, e) => sum + e.nominal, 0);
-        const netProfit = totalOmsetKotor - totalBelanjaDapur;
-        const netProfitMargin = totalOmsetKotor > 0 ? ((netProfit / totalOmsetKotor) * 100).toFixed(1) : '0';
+        const {
+          periodPaidOrders,
+          periodExpenses,
+          totalOmsetKotor,
+          totalBelanjaDapur,
+          expenseByCategory,
+          totalHppBahan,
+          totalPcsTerjual,
+          labaKotor,
+          grossProfitMargin,
+          netProfit,
+          netProfitMargin,
+          periodLabel,
+        } = monthlyFinancialSummary;
 
         const categoryLabels: Record<ExpenseCategory, { label: string; icon: string; bg: string }> = {
           bahan_baku: { label: 'Bahan Baku & Isian', icon: '🥚', bg: 'bg-amber-100 text-amber-900 border-amber-300' },
@@ -4524,14 +4852,7 @@ Catatan Kurir: Pastikan posisi dus ditaruh datar agar mayo tidak tumpah ya kak.`
           lainnya: { label: 'Lain-lain', icon: '🏷️', bg: 'bg-purple-100 text-purple-900 border-purple-300' },
         };
 
-        const expenseByCategory = {
-          bahan_baku: expenses.filter((e) => e.kategori === 'bahan_baku').reduce((s, e) => s + e.nominal, 0),
-          operasional: expenses.filter((e) => e.kategori === 'operasional').reduce((s, e) => s + e.nominal, 0),
-          kemasan: expenses.filter((e) => e.kategori === 'kemasan').reduce((s, e) => s + e.nominal, 0),
-          lainnya: expenses.filter((e) => e.kategori === 'lainnya').reduce((s, e) => s + e.nominal, 0),
-        };
-
-        const filteredExpenses = expenses.filter((e) => {
+        const filteredExpenses = periodExpenses.filter((e) => {
           const matchCat = expenseCategoryFilter === 'all' || e.kategori === expenseCategoryFilter;
           const matchSearch =
             e.nama_item.toLowerCase().includes(expenseSearch.toLowerCase()) ||
@@ -4575,6 +4896,122 @@ Catatan Kurir: Pastikan posisi dus ditaruh datar agar mayo tidak tumpah ya kak.`
               </div>
             </div>
 
+            {/* PERIODE FILTER & ACTIONS TOOLBAR */}
+            <div className="bg-[#FFFDF4] rounded-[22px] p-4 sm:p-5 border-2 border-[#111111] shadow-[3px_3px_0_#111111] flex flex-col lg:flex-row lg:items-center justify-between gap-4">
+              {/* Left: Period Selector */}
+              <div className="flex flex-wrap items-center gap-2.5">
+                <span className="font-sans text-xs font-bold uppercase tracking-wider text-[#5C3D2E] flex items-center gap-1.5">
+                  <span>📅</span> Filter Periode:
+                </span>
+
+                {/* Quick Pills */}
+                <div className="flex items-center gap-1.5">
+                  <button
+                    type="button"
+                    onClick={() => setExpensePeriodFilter({ month: new Date().getMonth() + 1, year: new Date().getFullYear() })}
+                    className={`cursor-pointer px-3 py-1 rounded-full text-xs font-bold font-sans transition ${
+                      expensePeriodFilter.month === (new Date().getMonth() + 1) && expensePeriodFilter.year === new Date().getFullYear()
+                        ? 'bg-[#111111] text-[#FFD700]'
+                        : 'bg-white text-[#111111] border border-[#111111]/20 hover:border-[#111111]'
+                    }`}
+                  >
+                    Bulan Ini
+                  </button>
+                  <button
+                    type="button"
+                    onClick={() => {
+                      const curM = new Date().getMonth() + 1;
+                      const curY = new Date().getFullYear();
+                      const prevM = curM === 1 ? 12 : curM - 1;
+                      const prevY = curM === 1 ? curY - 1 : curY;
+                      setExpensePeriodFilter({ month: prevM, year: prevY });
+                    }}
+                    className={`cursor-pointer px-3 py-1 rounded-full text-xs font-bold font-sans transition ${
+                      expensePeriodFilter.month === (new Date().getMonth() === 0 ? 12 : new Date().getMonth()) &&
+                      expensePeriodFilter.year === (new Date().getMonth() === 0 ? new Date().getFullYear() - 1 : new Date().getFullYear())
+                        ? 'bg-[#111111] text-[#FFD700]'
+                        : 'bg-white text-[#111111] border border-[#111111]/20 hover:border-[#111111]'
+                    }`}
+                  >
+                    Bulan Lalu
+                  </button>
+                  <button
+                    type="button"
+                    onClick={() => setExpensePeriodFilter({ month: 'all', year: expensePeriodFilter.year })}
+                    className={`cursor-pointer px-3 py-1 rounded-full text-xs font-bold font-sans transition ${
+                      expensePeriodFilter.month === 'all'
+                        ? 'bg-[#111111] text-[#FFD700]'
+                        : 'bg-white text-[#111111] border border-[#111111]/20 hover:border-[#111111]'
+                    }`}
+                  >
+                    Semua Bulan ({expensePeriodFilter.year})
+                  </button>
+                </div>
+
+                {/* Dropdowns */}
+                <div className="flex items-center gap-2">
+                  <select
+                    value={expensePeriodFilter.month}
+                    onChange={(e) => setExpensePeriodFilter({
+                      ...expensePeriodFilter,
+                      month: e.target.value === 'all' ? 'all' : parseInt(e.target.value, 10),
+                    })}
+                    className="rounded-xl border-2 border-[#111111] px-3 py-1.5 font-sans text-xs font-bold bg-white text-[#111111] shadow-xs cursor-pointer"
+                  >
+                    <option value="all">Semua Bulan</option>
+                    {MONTHS_INDONESIA.map((m) => (
+                      <option key={m.value} value={m.value}>
+                        {m.label}
+                      </option>
+                    ))}
+                  </select>
+
+                  <select
+                    value={expensePeriodFilter.year}
+                    onChange={(e) => setExpensePeriodFilter({
+                      ...expensePeriodFilter,
+                      year: parseInt(e.target.value, 10),
+                    })}
+                    className="rounded-xl border-2 border-[#111111] px-3 py-1.5 font-sans text-xs font-bold bg-white text-[#111111] shadow-xs cursor-pointer"
+                  >
+                    {[new Date().getFullYear() - 1, new Date().getFullYear(), new Date().getFullYear() + 1].map((y) => (
+                      <option key={y} value={y}>
+                        {y}
+                      </option>
+                    ))}
+                  </select>
+                </div>
+              </div>
+
+              {/* Right: Export & Report Actions */}
+              <div className="flex flex-wrap items-center gap-2">
+                <button
+                  type="button"
+                  onClick={handleExportExpensesCSV}
+                  className="cursor-pointer bg-white hover:bg-emerald-50 text-emerald-800 border-2 border-emerald-700 px-3.5 py-1.5 rounded-full font-sans text-xs font-bold transition flex items-center gap-1.5 shadow-xs active:translate-y-0.5"
+                  title="Download rekap transaksi dan laba rugi ke file Excel / CSV"
+                >
+                  <span>📊</span> Unduh Excel / CSV
+                </button>
+                <button
+                  type="button"
+                  onClick={() => setIsPrintingFinancialReport(true)}
+                  className="cursor-pointer bg-white hover:bg-gray-100 text-[#111111] border-2 border-[#111111] px-3.5 py-1.5 rounded-full font-sans text-xs font-bold transition flex items-center gap-1.5 shadow-xs active:translate-y-0.5"
+                  title="Cetak Laporan Keuangan resmi / Simpan PDF"
+                >
+                  <span>📄</span> Cetak Laporan
+                </button>
+                <button
+                  type="button"
+                  onClick={handleSendMonthlyReportWA}
+                  className="cursor-pointer bg-[#25D366] hover:bg-[#20ba59] text-white px-3.5 py-1.5 rounded-full font-sans text-xs font-bold transition flex items-center gap-1.5 border border-[#111111]/20 shadow-xs active:translate-y-0.5"
+                  title="Kirim ringkasan laba bersih bulanan langsung ke WhatsApp Owner"
+                >
+                  <span>📲</span> Kirim WA Owner
+                </button>
+              </div>
+            </div>
+
             {/* P&L METRIC CARDS (2x2 GRID ON MOBILE, 4 COLS ON DESKTOP) */}
             <div className="grid grid-cols-2 lg:grid-cols-4 gap-2.5 sm:gap-4">
               {/* Omset Penjualan Kotor */}
@@ -4589,7 +5026,7 @@ Catatan Kurir: Pastikan posisi dus ditaruh datar agar mayo tidak tumpah ya kak.`
                   Rp {totalOmsetKotor.toLocaleString('id-ID')}
                 </div>
                 <div className="font-sans text-[10px] sm:text-[11px] text-emerald-700 font-semibold mt-0.5 sm:mt-1 truncate">
-                  ✓ {paidOrders.length} transaksi
+                  ✓ {periodPaidOrders.length} transaksi ({periodLabel})
                 </div>
               </div>
 
@@ -4597,7 +5034,7 @@ Catatan Kurir: Pastikan posisi dus ditaruh datar agar mayo tidak tumpah ya kak.`
               <div className="bg-white rounded-[18px] sm:rounded-[22px] p-3.5 sm:p-5 border sm:border-2 border-[#111111] shadow-xs sm:shadow-[3px_3px_0_#111111] relative overflow-hidden">
                 <div className="flex items-center justify-between">
                   <span className="font-sans text-[10px] sm:text-xs font-bold uppercase tracking-wider text-[#5C3D2E]/80 truncate">
-                    Total Belanja
+                    Total Belanja Kas
                   </span>
                   <span className="text-base sm:text-xl">🛒</span>
                 </div>
@@ -4605,7 +5042,7 @@ Catatan Kurir: Pastikan posisi dus ditaruh datar agar mayo tidak tumpah ya kak.`
                   Rp {totalBelanjaDapur.toLocaleString('id-ID')}
                 </div>
                 <div className="font-sans text-[10px] sm:text-[11px] text-[#5C3D2E]/70 font-semibold mt-0.5 sm:mt-1 truncate">
-                  {expenses.length} pos belanja
+                  {periodExpenses.length} pos belanja
                 </div>
               </div>
 
@@ -4617,7 +5054,7 @@ Catatan Kurir: Pastikan posisi dus ditaruh datar agar mayo tidak tumpah ya kak.`
               >
                 <div className="flex items-center justify-between">
                   <span className="font-sans text-[10px] sm:text-xs font-bold uppercase tracking-wider text-[#111111] truncate">
-                    Laba Bersih
+                    Laba Bersih Kas
                   </span>
                   <span className="text-base sm:text-xl">{netProfit >= 0 ? '🚀' : '⚠️'}</span>
                 </div>
@@ -4625,7 +5062,7 @@ Catatan Kurir: Pastikan posisi dus ditaruh datar agar mayo tidak tumpah ya kak.`
                   {netProfit < 0 ? '-' : ''}Rp {Math.abs(netProfit).toLocaleString('id-ID')}
                 </div>
                 <div className="font-sans text-[10px] sm:text-[11px] font-bold text-[#111111]/85 mt-0.5 sm:mt-1 truncate">
-                  {netProfit >= 0 ? '✨ Surplus Untung' : '⚠️ Melebihi omset'}
+                  {netProfit >= 0 ? '✨ Surplus Kas' : '⚠️ Defisit Kas'}
                 </div>
               </div>
 
@@ -4633,7 +5070,7 @@ Catatan Kurir: Pastikan posisi dus ditaruh datar agar mayo tidak tumpah ya kak.`
               <div className="bg-[#111111] text-[#FFF8E7] rounded-[18px] sm:rounded-[22px] p-3.5 sm:p-5 border sm:border-2 border-[#111111] shadow-xs sm:shadow-[3px_3px_0_#FFD700] relative overflow-hidden">
                 <div className="flex items-center justify-between">
                   <span className="font-sans text-[10px] sm:text-xs font-bold uppercase tracking-wider text-[#FFD700] truncate">
-                    Margin Profit
+                    Margin Profit Kas
                   </span>
                   <span className="text-base sm:text-xl">📊</span>
                 </div>
@@ -4643,6 +5080,49 @@ Catatan Kurir: Pastikan posisi dus ditaruh datar agar mayo tidak tumpah ya kak.`
                 <div className="font-sans text-[10px] sm:text-[11px] text-white/70 font-semibold mt-0.5 sm:mt-1 truncate">
                   Rasio keuntungan
                 </div>
+              </div>
+            </div>
+
+            {/* HPP & LABA KOTOR PRODUK SUB-BAR */}
+            <div className="bg-white rounded-[20px] p-4 sm:p-5 border-2 border-[#111111] shadow-[3px_3px_0_#111111] flex flex-col md:flex-row md:items-center justify-between gap-4">
+              <div className="flex items-center gap-3">
+                <div className="w-10 h-10 rounded-full bg-orange-100 border border-orange-300 flex items-center justify-center text-xl shrink-0">
+                  🍳
+                </div>
+                <div>
+                  <div className="font-sans text-xs text-[#5C3D2E] font-bold">
+                    Estimasi HPP Bahan Baku Terjual:
+                  </div>
+                  <div className="font-hand font-bold text-2xl text-black">
+                    Rp {totalHppBahan.toLocaleString('id-ID')}
+                    <span className="font-sans text-xs font-normal text-gray-500 ml-2">
+                      ({totalPcsTerjual} pcs jajan terjual)
+                    </span>
+                  </div>
+                </div>
+              </div>
+
+              <div className="h-px md:h-10 w-full md:w-px bg-gray-200"></div>
+
+              <div className="flex items-center gap-3">
+                <div className="w-10 h-10 rounded-full bg-emerald-100 border border-emerald-300 flex items-center justify-center text-xl shrink-0">
+                  ✨
+                </div>
+                <div>
+                  <div className="font-sans text-xs text-[#5C3D2E] font-bold">
+                    Laba Kotor Produk (Gross Profit):
+                  </div>
+                  <div className="font-hand font-bold text-2xl text-emerald-800">
+                    Rp {labaKotor.toLocaleString('id-ID')}
+                    <span className="font-sans text-xs font-bold text-emerald-700 ml-2 bg-emerald-100 px-2 py-0.5 rounded-full">
+                      Margin: {grossProfitMargin}%
+                    </span>
+                  </div>
+                </div>
+              </div>
+
+              <div className="text-[11px] font-sans text-gray-500 max-w-xs">
+                💡 Dihitung otomatis dari resep bahan per pcs pesanan lunas pada <strong>{periodLabel}</strong>.
               </div>
             </div>
 
@@ -4934,7 +5414,10 @@ Catatan Kurir: Pastikan posisi dus ditaruh datar agar mayo tidak tumpah ya kak.`
 
       {/* TAB: LAYAR DAPUR & ANTREAN GORENG (KDS) */}
       {activeTab === 'kds' && (
-        <KitchenDisplaySystem onShowToast={onShowToast} />
+        <KitchenDisplaySystem
+          onShowToast={onShowToast}
+          onPrintReceipt={(order) => setSelectedOrderForReceipt(order)}
+        />
       )}
 
       {/* TAB 2: PENGATURAN TOKO & KEAMANAN */}
@@ -8328,12 +8811,38 @@ Catatan Kurir: Pastikan posisi dus ditaruh datar agar mayo tidak tumpah ya kak.`
                 <div className="text-center pt-2 text-[10px] text-gray-600 space-y-0.5">
                   <div>{storeConfig.receiptFooterNote || 'Matur suwun sanget sampun jajan! Hangatkan kembali bila perlu yaa 🙏✨'}</div>
                 </div>
+
+                {/* QR Code Resi Lacak Wajan */}
+                {receiptQrDataUrl && (
+                  <div className="pt-2 text-center flex flex-col items-center border-t border-dashed border-gray-400 mt-2">
+                    <img
+                      src={receiptQrDataUrl}
+                      alt="QR Resi Lacak Pesanan"
+                      className="w-24 h-24 mx-auto mb-1 border border-gray-300 rounded p-1 bg-white"
+                    />
+                    <div className="text-[9px] text-gray-700 font-sans font-bold">
+                      SCAN UNTUK LACAK STATUS WAJAN
+                    </div>
+                    <div className="text-[8px] text-gray-500 font-mono">
+                      {storageService.generateTrackingUrl(selectedOrderForReceipt.id).replace(/^https?:\/\//, '')}
+                    </div>
+                  </div>
+                )}
               </div>
             </div>
 
             {/* Print CSS for Thermal Printer */}
             <style>{`
               @media print {
+                @page {
+                  size: ${receiptPaperWidth === '58mm' ? '58mm' : '80mm'} auto;
+                  margin: 0;
+                }
+                html, body {
+                  margin: 0 !important;
+                  padding: 0 !important;
+                  background: white !important;
+                }
                 body * {
                   visibility: hidden !important;
                 }
@@ -8341,20 +8850,22 @@ Catatan Kurir: Pastikan posisi dus ditaruh datar agar mayo tidak tumpah ya kak.`
                   visibility: visible !important;
                 }
                 #thermal-receipt-area {
-                  position: fixed !important;
+                  position: absolute !important;
                   left: 0 !important;
                   top: 0 !important;
                   width: ${receiptPaperWidth === '58mm' ? '58mm' : '80mm'} !important;
                   max-width: 100% !important;
                   margin: 0 !important;
-                  padding: 2mm 3mm !important;
+                  padding: ${receiptPaperWidth === '58mm' ? '1.5mm 2mm' : '2.5mm 3.5mm'} !important;
                   border: none !important;
                   box-shadow: none !important;
                   font-family: monospace !important;
-                  font-size: 11px !important;
+                  font-size: ${receiptPaperWidth === '58mm' ? '10px' : '11px'} !important;
                   line-height: 1.2 !important;
                   background: white !important;
                   color: black !important;
+                  -webkit-print-color-adjust: exact !important;
+                  print-color-adjust: exact !important;
                 }
               }
             `}</style>
@@ -8740,6 +9251,241 @@ Catatan Kurir: Pastikan posisi dus ditaruh datar agar mayo tidak tumpah ya kak.`
         onShowToast={onShowToast}
       />
 
+      {/* MODAL CETAK LAPORAN KEUANGAN BULANAN RESMI */}
+      {isPrintingFinancialReport && (
+        <div className="fixed inset-0 z-50 bg-black/75 backdrop-blur-xs flex items-center justify-center p-3 sm:p-6 overflow-y-auto">
+          <div className="bg-white rounded-[26px] max-w-3xl w-full border-3 border-[#111111] shadow-[10px_10px_0_#111111] overflow-hidden animate-in zoom-in-95 duration-200">
+            {/* Top Toolbar (Non-printable) */}
+            <div className="bg-[#111111] text-[#FFD700] px-6 py-4 flex flex-wrap items-center justify-between gap-3 border-b-2 border-[#111111]">
+              <div className="flex items-center gap-2">
+                <span className="text-2xl">📄</span>
+                <div>
+                  <h3 className="font-hand font-bold text-xl sm:text-2xl text-white leading-tight">
+                    Laporan Keuangan & Laba Bersih
+                  </h3>
+                  <p className="font-sans text-xs text-[#FFD700]">
+                    Periode: {monthlyFinancialSummary.periodLabel}
+                  </p>
+                </div>
+              </div>
+              <div className="flex items-center gap-2">
+                <button
+                  type="button"
+                  onClick={() => window.print()}
+                  className="cursor-pointer bg-[#FFD700] hover:bg-[#ffe247] text-[#111111] px-4 py-2 rounded-full font-sans font-bold text-xs flex items-center gap-1.5 shadow-[2px_2px_0_white] transition active:translate-y-0.5"
+                >
+                  <span>🖨️</span> Cetak / Simpan PDF
+                </button>
+                <button
+                  type="button"
+                  onClick={() => setIsPrintingFinancialReport(false)}
+                  className="cursor-pointer bg-white/10 hover:bg-white/20 text-white px-3 py-2 rounded-full font-sans text-xs font-bold transition"
+                >
+                  ✕ Tutup
+                </button>
+              </div>
+            </div>
+
+            {/* Document Body Preview (Target for @media print) */}
+            <div className="p-6 sm:p-10 bg-white max-h-[75vh] overflow-y-auto">
+              <div id="financial-report-printable-area" className="text-gray-900 font-sans text-xs leading-relaxed space-y-6">
+                {/* Header Letterhead */}
+                <div className="flex items-start justify-between pb-4 border-b-2 border-gray-900 gap-4">
+                  <div className="space-y-1">
+                    <div className="font-bold text-xl font-hand uppercase tracking-wide text-black">
+                      {storeConfig.brandName || 'DAPUR DULANG INDONESIA'}
+                    </div>
+                    <div className="text-[11px] text-gray-600 font-sans">
+                      {storeConfig.brandTagline || 'Dibuat dengan wajan panas & tulisan tangan'}
+                    </div>
+                    <div className="text-[11px] text-gray-500">
+                      {storeConfig.pickupAddressNote || 'Sedati • Sidoarjo, Jawa Timur'} • WA: {storeConfig.brandPhone || '0877-0339-7035'}
+                    </div>
+                  </div>
+                  <div className="text-right shrink-0">
+                    <div className="inline-block bg-black text-[#FFD700] px-3 py-1 font-mono font-bold text-xs uppercase tracking-wider rounded">
+                      LAPORAN KEUANGAN
+                    </div>
+                    <div className="text-[11px] text-gray-600 mt-1 font-mono">
+                      Periode: {monthlyFinancialSummary.periodLabel}
+                    </div>
+                    <div className="text-[10px] text-gray-400">
+                      Dicetak: {new Date().toLocaleDateString('id-ID', { day: 'numeric', month: 'long', year: 'numeric' })}
+                    </div>
+                  </div>
+                </div>
+
+                {/* Section 1: Ringkasan Laba Rugi (P&L Summary Table) */}
+                <div className="space-y-2">
+                  <h4 className="font-bold text-sm uppercase tracking-wider text-black border-b border-gray-300 pb-1">
+                    I. RINGKASAN LABA RUGI & ARUS KAS
+                  </h4>
+                  <table className="w-full text-left border-collapse text-xs">
+                    <tbody>
+                      <tr className="border-b border-gray-200">
+                        <td className="py-1.5 font-semibold text-gray-700">Omset Penjualan Bersih (Lunas)</td>
+                        <td className="py-1.5 text-gray-500 text-[11px]">({monthlyFinancialSummary.periodPaidOrders.length} pesanan)</td>
+                        <td className="py-1.5 text-right font-bold text-black font-mono">
+                          Rp {monthlyFinancialSummary.totalOmsetKotor.toLocaleString('id-ID')}
+                        </td>
+                      </tr>
+                      <tr className="border-b border-gray-200 bg-gray-50">
+                        <td className="py-1.5 font-semibold text-gray-700 pl-2">Estimasi HPP Bahan Terjual (COGS)</td>
+                        <td className="py-1.5 text-gray-500 text-[11px]">({monthlyFinancialSummary.totalPcsTerjual} pcs jajan)</td>
+                        <td className="py-1.5 text-right font-mono text-red-700 font-semibold">
+                          -Rp {monthlyFinancialSummary.totalHppBahan.toLocaleString('id-ID')}
+                        </td>
+                      </tr>
+                      <tr className="border-b-2 border-gray-300 font-bold bg-amber-50/60">
+                        <td className="py-1.5 text-amber-950 pl-2">LABA KOTOR PRODUK (GROSS PROFIT)</td>
+                        <td className="py-1.5 text-amber-800 text-[11px]">Margin: {monthlyFinancialSummary.grossProfitMargin}%</td>
+                        <td className="py-1.5 text-right font-mono text-amber-950">
+                          Rp {monthlyFinancialSummary.labaKotor.toLocaleString('id-ID')}
+                        </td>
+                      </tr>
+                      <tr className="border-b border-gray-200">
+                        <td className="py-1.5 font-semibold text-gray-700">Total Belanja Kas Dapur (Pengeluaran)</td>
+                        <td className="py-1.5 text-gray-500 text-[11px]">({monthlyFinancialSummary.periodExpenses.length} pos belanja)</td>
+                        <td className="py-1.5 text-right font-mono text-red-700 font-semibold">
+                          -Rp {monthlyFinancialSummary.totalBelanjaDapur.toLocaleString('id-ID')}
+                        </td>
+                      </tr>
+                      <tr className="border-t-2 border-b-2 border-black font-bold text-sm bg-gray-100">
+                        <td className="py-2 text-black">LABA BERSIH KAS (NET SURPLUS)</td>
+                        <td className="py-2 text-gray-700 text-xs font-mono">Margin: {monthlyFinancialSummary.netProfitMargin}%</td>
+                        <td className="py-2 text-right font-mono text-black">
+                          {monthlyFinancialSummary.netProfit < 0 ? '-' : ''}Rp {Math.abs(monthlyFinancialSummary.netProfit).toLocaleString('id-ID')}
+                        </td>
+                      </tr>
+                    </tbody>
+                  </table>
+                </div>
+
+                {/* Section 2: Rincian Pengeluaran Per Kategori */}
+                <div className="space-y-2">
+                  <h4 className="font-bold text-sm uppercase tracking-wider text-black border-b border-gray-300 pb-1">
+                    II. RINCIAN BELANJA PER KATEGORI
+                  </h4>
+                  <div className="grid grid-cols-2 sm:grid-cols-4 gap-2">
+                    <div className="border border-gray-200 p-2.5 rounded bg-gray-50">
+                      <div className="text-[10px] text-gray-500 font-semibold uppercase">🥚 Bahan Baku & Isian</div>
+                      <div className="font-mono font-bold text-xs text-black mt-0.5">
+                        Rp {monthlyFinancialSummary.expenseByCategory.bahan_baku.toLocaleString('id-ID')}
+                      </div>
+                    </div>
+                    <div className="border border-gray-200 p-2.5 rounded bg-gray-50">
+                      <div className="text-[10px] text-gray-500 font-semibold uppercase">⚡ Operasional & Gas</div>
+                      <div className="font-mono font-bold text-xs text-black mt-0.5">
+                        Rp {monthlyFinancialSummary.expenseByCategory.operasional.toLocaleString('id-ID')}
+                      </div>
+                    </div>
+                    <div className="border border-gray-200 p-2.5 rounded bg-gray-50">
+                      <div className="text-[10px] text-gray-500 font-semibold uppercase">📦 Dus & Kemasan</div>
+                      <div className="font-mono font-bold text-xs text-black mt-0.5">
+                        Rp {monthlyFinancialSummary.expenseByCategory.kemasan.toLocaleString('id-ID')}
+                      </div>
+                    </div>
+                    <div className="border border-gray-200 p-2.5 rounded bg-gray-50">
+                      <div className="text-[10px] text-gray-500 font-semibold uppercase">🏷️ Lain-lain / Transport</div>
+                      <div className="font-mono font-bold text-xs text-black mt-0.5">
+                        Rp {monthlyFinancialSummary.expenseByCategory.lainnya.toLocaleString('id-ID')}
+                      </div>
+                    </div>
+                  </div>
+                </div>
+
+                {/* Section 3: Daftar Transaksi Pengeluaran */}
+                <div className="space-y-2">
+                  <h4 className="font-bold text-sm uppercase tracking-wider text-black border-b border-gray-300 pb-1">
+                    III. DAFTAR TRANSAKSI PENGELUARAN ({monthlyFinancialSummary.periodExpenses.length} ITEM)
+                  </h4>
+                  {monthlyFinancialSummary.periodExpenses.length === 0 ? (
+                    <div className="text-gray-400 italic text-center py-3">Tidak ada catatan pengeluaran pada periode ini.</div>
+                  ) : (
+                    <table className="w-full text-left border-collapse text-[11px]">
+                      <thead>
+                        <tr className="border-b border-gray-300 bg-gray-50 font-bold text-gray-700">
+                          <th className="py-1 px-1">Tgl</th>
+                          <th className="py-1 px-1">Kategori</th>
+                          <th className="py-1 px-1">Nama Item / Keperluan</th>
+                          <th className="py-1 px-1 text-right">Nominal</th>
+                        </tr>
+                      </thead>
+                      <tbody>
+                        {monthlyFinancialSummary.periodExpenses.map((exp, i) => (
+                          <tr key={exp.id || i} className="border-b border-gray-100">
+                            <td className="py-1 px-1 font-mono text-gray-600">{exp.tanggal}</td>
+                            <td className="py-1 px-1 capitalize text-gray-700">{exp.kategori.replace('_', ' ')}</td>
+                            <td className="py-1 px-1 font-medium text-black">
+                              {exp.nama_item}
+                              {exp.catatan && <span className="text-gray-400 italic text-[10px]"> — {exp.catatan}</span>}
+                            </td>
+                            <td className="py-1 px-1 text-right font-mono font-semibold text-red-800">
+                              Rp {exp.nominal.toLocaleString('id-ID')}
+                            </td>
+                          </tr>
+                        ))}
+                      </tbody>
+                    </table>
+                  )}
+                </div>
+
+                {/* Signatures */}
+                <div className="pt-8 grid grid-cols-2 text-center text-xs text-gray-700">
+                  <div>
+                    <div>Disiapkan Oleh,</div>
+                    <div className="h-14"></div>
+                    <div className="font-bold border-t border-gray-400 inline-block px-6 pt-1">
+                      Kasir / Tim Dapur Dulang
+                    </div>
+                  </div>
+                  <div>
+                    <div>Sidoarjo, {new Date().toLocaleDateString('id-ID', { day: 'numeric', month: 'long', year: 'numeric' })}</div>
+                    <div className="h-14"></div>
+                    <div className="font-bold border-t border-gray-400 inline-block px-6 pt-1">
+                      Owner Dapur Dulang
+                    </div>
+                  </div>
+                </div>
+              </div>
+            </div>
+
+            {/* Print CSS for A4 Financial Statement */}
+            <style>{`
+              @media print {
+                @page {
+                  size: A4 portrait;
+                  margin: 12mm 15mm;
+                }
+                html, body {
+                  margin: 0 !important;
+                  padding: 0 !important;
+                  background: white !important;
+                }
+                body * {
+                  visibility: hidden !important;
+                }
+                #financial-report-printable-area, #financial-report-printable-area * {
+                  visibility: visible !important;
+                }
+                #financial-report-printable-area {
+                  position: absolute !important;
+                  left: 0 !important;
+                  top: 0 !important;
+                  width: 100% !important;
+                  margin: 0 !important;
+                  padding: 0 !important;
+                  background: white !important;
+                  color: black !important;
+                  font-size: 11px !important;
+                  line-height: 1.3 !important;
+                }
+              }
+            `}</style>
+          </div>
+        </div>
+      )}
+
       {/* QRIS FULLSCREEN MODAL FOR CASHIER & CUSTOMERS */}
       {isQrisModalOpen && (
         <div className="fixed inset-0 z-50 flex items-center justify-center p-3 sm:p-4 bg-black/75 backdrop-blur-xs">
@@ -8911,6 +9657,58 @@ Catatan Kurir: Pastikan posisi dus ditaruh datar agar mayo tidak tumpah ya kak.`
                     <div className="font-sans font-bold text-xs text-amber-950">Resi Live WA</div>
                     <div className="text-[10px] text-amber-800">Lacak masak</div>
                   </div>
+                </button>
+              </div>
+
+              {/* Status Masak Wajan & Kirim WA */}
+              <div className="font-sans font-bold text-[11px] uppercase tracking-wider text-[#5C3D2E]/70 px-1 pt-1">
+                🍳 Status Masak Wajan (KDS)
+              </div>
+              <div className="p-2.5 bg-white rounded-2xl border-2 border-[#111111]/20 space-y-2">
+                <div className="flex flex-wrap gap-1.5">
+                  {(['antre', 'sedang_goreng', 'packing', 'siap', 'selesai'] as KitchenCookingStatus[]).map((st) => {
+                    const isActive = (mobileActionOrder.kitchen_status || 'antre') === st;
+                    const label =
+                      st === 'antre'
+                        ? '⏳ Antre'
+                        : st === 'sedang_goreng'
+                        ? '🔥 Goreng'
+                        : st === 'packing'
+                        ? '📦 Pack'
+                        : st === 'siap'
+                        ? '🥟 Siap'
+                        : '✅ Selesai';
+                    return (
+                      <button
+                        key={st}
+                        type="button"
+                        onClick={() => {
+                          handleUpdateKitchenStatus(mobileActionOrder.id, st);
+                          setMobileActionOrder({ ...mobileActionOrder, kitchen_status: st });
+                        }}
+                        className={`cursor-pointer px-3 py-1.5 rounded-full font-sans font-bold text-xs transition ${
+                          isActive
+                            ? 'bg-[#111111] text-[#FFD700] shadow-xs'
+                            : 'bg-gray-100 text-[#5C3D2E] hover:bg-gray-200'
+                        }`}
+                      >
+                        {label}
+                      </button>
+                    );
+                  })}
+                </div>
+
+                <button
+                  type="button"
+                  onClick={() => {
+                    const ord = mobileActionOrder;
+                    setMobileActionOrder(null);
+                    handleSendOrderWaUpdate(ord);
+                  }}
+                  className="cursor-pointer w-full py-2 px-3 rounded-xl bg-[#25D366] text-white border border-emerald-800 shadow-xs flex items-center justify-center gap-1.5 font-sans font-bold text-xs active:scale-95 transition"
+                >
+                  <span>📲</span>
+                  <span>Kirim Notifikasi Masak ke WA Pembeli</span>
                 </button>
               </div>
 
