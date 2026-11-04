@@ -1715,6 +1715,60 @@ ${lines.join('\n')}
   },
 
   /**
+   * Terima dan catat pesanan multi-channel dari GoFood, ShopeeFood, GrabFood
+   */
+  ingestExternalOrder(data: {
+    channel: 'gofood' | 'shopeefood' | 'grabfood';
+    externalOrderId: string;
+    customerName?: string;
+    items: { menuId?: string; nama: string; qty: number; harga: number; pilihanOpsi?: string; variantType?: 'matang' | 'frozen' }[];
+    totalPrice?: number;
+    notes?: string;
+  }): OrderRecord {
+    const list = this.getOrders();
+    const existing = list.find((o) => o.external_order_id === data.externalOrderId);
+    if (existing) {
+      return existing;
+    }
+
+    const cfg = this.getStoreConfig();
+    let commissionPercent = 20;
+    if (data.channel === 'gofood') commissionPercent = cfg.gofoodCommissionPercent ?? 20;
+    else if (data.channel === 'shopeefood') commissionPercent = cfg.shopeefoodCommissionPercent ?? 20;
+    else if (data.channel === 'grabfood') commissionPercent = cfg.grabfoodCommissionPercent ?? 20;
+
+    const calcTotal = data.totalPrice || data.items.reduce((sum, it) => sum + (it.harga * it.qty), 0);
+    const commissionAmount = Math.round((calcTotal * commissionPercent) / 100);
+    const netPayout = calcTotal - commissionAmount;
+
+    const channelPrefix = data.channel === 'gofood' ? 'GoFood' : data.channel === 'shopeefood' ? 'ShopeeFood' : 'GrabFood';
+    const fallbackCustName = data.customerName || `Pelanggan ${channelPrefix} (${data.externalOrderId})`;
+
+    return this.addOrder({
+      customer_name: fallbackCustName,
+      items: data.items.map((it) => ({
+        menu_id: it.menuId || 'custom',
+        nama: it.nama,
+        harga: it.harga,
+        qty: it.qty,
+        pilihanOpsi: it.pilihanOpsi,
+        variantType: it.variantType || 'matang',
+      })),
+      total_price: calcTotal,
+      payment_method: 'transfer',
+      status: 'lunas',
+      channel: data.channel,
+      delivery_method: 'pickup',
+      external_order_id: data.externalOrderId,
+      platform_commission_percent: commissionPercent,
+      platform_commission_amount: commissionAmount,
+      net_platform_payout: netPayout,
+      kitchen_status: 'antre',
+      notes: data.notes || `Pesanan ${channelPrefix} #${data.externalOrderId}`,
+    });
+  },
+
+  /**
    * Terima dan catat pesanan otomatis dari WhatsApp Bot / Bridge
    */
   addOrderFromWhatsApp(waData: {

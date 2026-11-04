@@ -102,6 +102,9 @@ export const DEFAULT_STORE_CONFIG: StoreConfig = {
   qrisTeks: 'DULANG INDONESIA (Mendukung QRIS semua Bank & E-Wallet)',
   qrisNmid: 'ID1020057244342',
   qrisImage: '/qris-dulang.png',
+  gofoodCommissionPercent: 20,
+  shopeefoodCommissionPercent: 20,
+  grabfoodCommissionPercent: 20,
 };
 
 export const DEFAULT_SIDOARJO_DELIVERY_RATES: Record<string, number> = {

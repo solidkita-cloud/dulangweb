@@ -155,6 +155,8 @@ export const OwnerDashboardView: React.FC<OwnerDashboardViewProps> = ({
   const [walkInQty, setWalkInQty] = useState<number>(1);
   const [walkInCart, setWalkInCart] = useState<{ menu_id: string; nama: string; harga: number; qty: number; pilihanOpsi?: string; variantType?: 'matang' | 'frozen' }[]>([]);
   const [walkInCashReceived, setWalkInCashReceived] = useState<number | ''>('');
+  const [walkInChannel, setWalkInChannel] = useState<'walk_in' | 'gofood' | 'shopeefood' | 'grabfood'>('walk_in');
+  const [walkInOjolOrderId, setWalkInOjolOrderId] = useState<string>('');
   const [selectedOrderForReceipt, setSelectedOrderForReceipt] = useState<OrderRecord | null>(null);
   const [receiptPaperWidth, setReceiptPaperWidth] = useState<'58mm' | '80mm'>('58mm');
   const [receiptQrDataUrl, setReceiptQrDataUrl] = useState<string>('');
@@ -180,6 +182,8 @@ export const OwnerDashboardView: React.FC<OwnerDashboardViewProps> = ({
   const [isQrisModalOpen, setIsQrisModalOpen] = useState<boolean>(false);
   const [isChartsExpanded, setIsChartsExpanded] = useState<boolean>(false);
   const [isQuickWaOpen, setIsQuickWaOpen] = useState<boolean>(false);
+  const [isMobileMerchantBarExpanded, setIsMobileMerchantBarExpanded] = useState<boolean>(false);
+  const [orderViewMode, setOrderViewMode] = useState<'compact' | 'cards'>('compact');
 
   // --- TESTIMONIALS CURATION STATE ---
   const [testimonials, setTestimonials] = useState<CustomerTestimonial[]>(() => storageService.getTestimonials());
@@ -924,6 +928,15 @@ Catatan Kurir: Pastikan posisi dus ditaruh datar agar mayo tidak tumpah ya kak.`
     const labaKotor = totalOmsetKotor - totalHppBahan;
     const grossProfitMargin = totalOmsetKotor > 0 ? ((labaKotor / totalOmsetKotor) * 100).toFixed(1) : '0';
 
+    const totalPlatformCommissions = periodPaidOrders.reduce(
+      (sum, o) => sum + (o.platform_commission_amount || 0),
+      0
+    );
+    const netOmsetAfterPlatformCommissions = totalOmsetKotor - totalPlatformCommissions;
+    const ojolOrdersCount = periodPaidOrders.filter(
+      (o) => o.channel === 'gofood' || o.channel === 'shopeefood' || o.channel === 'grabfood'
+    ).length;
+
     const netProfit = totalOmsetKotor - totalBelanjaDapur;
     const netProfitMargin = totalOmsetKotor > 0 ? ((netProfit / totalOmsetKotor) * 100).toFixed(1) : '0';
 
@@ -945,11 +958,64 @@ Catatan Kurir: Pastikan posisi dus ditaruh datar agar mayo tidak tumpah ya kak.`
       totalPcsTerjual,
       labaKotor,
       grossProfitMargin,
+      totalPlatformCommissions,
+      netOmsetAfterPlatformCommissions,
+      ojolOrdersCount,
       netProfit,
       netProfitMargin,
       periodLabel,
     };
   }, [orders, expenses, expensePeriodFilter]);
+
+  // Executive Cockpit metrics for mobile owner
+  const todayExecutiveSummary = useMemo(() => {
+    const now = new Date();
+    const localTodayStr = `${now.getFullYear()}-${String(now.getMonth() + 1).padStart(2, '0')}-${String(now.getDate()).padStart(2, '0')}`;
+
+    const todayOrders = orders.filter((o) => {
+      const d = o.created_at ? new Date(o.created_at) : null;
+      if (!d) return false;
+      const dStr = `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}-${String(d.getDate()).padStart(2, '0')}`;
+      return dStr === localTodayStr;
+    });
+
+    const todayPaidOrders = todayOrders.filter((o) => o.status === 'lunas' || o.status === 'dp');
+    const todayOmset = todayPaidOrders.reduce((sum, o) => {
+      if (o.status === 'lunas') return sum + o.total_price;
+      if (o.status === 'dp') return sum + (o.dp_amount || 0);
+      return sum;
+    }, 0);
+
+    const todayPendingOrders = todayOrders.filter((o) => o.status === 'menunggu');
+
+    const todayExpenses = expenses.filter((e) => {
+      const t = e.tanggal || '';
+      return t.startsWith(localTodayStr);
+    });
+    const todayExpenseTotal = todayExpenses.reduce((sum, e) => sum + (e.nominal || 0), 0);
+    const todayNetCash = todayOmset - todayExpenseTotal;
+
+    const activeKitchenOrders = orders.filter(
+      (o) =>
+        o.status !== 'batal' &&
+        (o.kitchen_status === 'antre' || o.kitchen_status === 'sedang_goreng' || o.kitchen_status === 'packing')
+    );
+
+    const lowStockMenus = menus.filter(
+      (m) => typeof m.sisaStok === 'number' && m.sisaStok <= 5
+    );
+
+    return {
+      localTodayStr,
+      todayOmset,
+      todayPaidCount: todayPaidOrders.length,
+      todayPendingCount: todayPendingOrders.length,
+      todayExpenseTotal,
+      todayNetCash,
+      activeKitchenCount: activeKitchenOrders.length,
+      lowStockCount: lowStockMenus.length,
+    };
+  }, [orders, expenses, menus]);
 
   const handleExportExpensesCSV = () => {
     const {
@@ -1316,23 +1382,41 @@ Catatan Kurir: Pastikan posisi dus ditaruh datar agar mayo tidak tumpah ya kak.`
       return;
     }
     const totalPrice = walkInCart.reduce((sum, item) => sum + item.harga * item.qty, 0);
-    const cashRec = walkInPaymentMethod === 'tunai'
+    const isOjol = walkInChannel === 'gofood' || walkInChannel === 'shopeefood' || walkInChannel === 'grabfood';
+    const effectivePayment = isOjol ? 'transfer' : walkInPaymentMethod;
+    const cashRec = effectivePayment === 'tunai'
       ? (typeof walkInCashReceived === 'number' ? walkInCashReceived : totalPrice)
       : undefined;
     const cashChg = cashRec !== undefined ? Math.max(0, cashRec - totalPrice) : undefined;
 
+    let commissionPercent = 0;
+    if (walkInChannel === 'gofood') commissionPercent = storeConfig.gofoodCommissionPercent ?? 20;
+    else if (walkInChannel === 'shopeefood') commissionPercent = storeConfig.shopeefoodCommissionPercent ?? 20;
+    else if (walkInChannel === 'grabfood') commissionPercent = storeConfig.grabfoodCommissionPercent ?? 20;
+
+    const commissionAmount = isOjol ? Math.round((totalPrice * commissionPercent) / 100) : undefined;
+    const netPayout = isOjol ? totalPrice - (commissionAmount || 0) : undefined;
+    const ojolId = walkInOjolOrderId.trim() || undefined;
+    const channelPrefix = walkInChannel === 'gofood' ? 'GoFood' : walkInChannel === 'shopeefood' ? 'ShopeeFood' : walkInChannel === 'grabfood' ? 'GrabFood' : '';
+    const custName = walkInCustName.trim() || (isOjol ? `Pelanggan ${channelPrefix} #${ojolId || ''}`.trim() : 'Pelanggan Walk-In');
+
     const newOrder: OrderRecord = {
       id: `ORD-${Date.now().toString().slice(-4)}`,
-      customer_name: walkInCustName.trim() || 'Pelanggan Walk-In',
+      customer_name: custName,
       customer_wa: walkInCustWa.trim() || undefined,
       items: walkInCart,
       total_price: totalPrice,
-      payment_method: walkInPaymentMethod,
+      payment_method: effectivePayment,
       status: 'lunas',
       created_at: new Date().toISOString(),
       completed_at: new Date().toISOString(),
-      channel: 'walk_in',
-      notes: walkInNotes.trim() || undefined,
+      channel: walkInChannel,
+      external_order_id: ojolId,
+      platform_commission_percent: isOjol ? commissionPercent : undefined,
+      platform_commission_amount: commissionAmount,
+      net_platform_payout: netPayout,
+      kitchen_status: 'antre',
+      notes: walkInNotes.trim() || (isOjol ? `Pesanan ${channelPrefix} #${ojolId || ''}`.trim() : undefined),
       cash_received: cashRec,
       cash_change: cashChg,
     };
@@ -1348,8 +1432,12 @@ Catatan Kurir: Pastikan posisi dus ditaruh datar agar mayo tidak tumpah ya kak.`
     setWalkInNotes('');
     setWalkInCart([]);
     setWalkInCashReceived('');
+    setWalkInChannel('walk_in');
+    setWalkInOjolOrderId('');
     setSelectedOrderForReceipt(newOrder);
-    let toastMsg = `Transaksi Dapur senilai Rp ${totalPrice.toLocaleString('id-ID')} (${walkInPaymentMethod.toUpperCase()}) Lunas! Bahan baku terpotong otomatis. 🧾✨`;
+    let toastMsg = isOjol
+      ? `Pesanan ${channelPrefix} #${ojolId || ''} (Rp ${totalPrice.toLocaleString('id-ID')}) tercatat! Net cair: Rp ${(netPayout || 0).toLocaleString('id-ID')}. Tiket masuk KDS Dapur! 🛵🍳`
+      : `Transaksi Dapur senilai Rp ${totalPrice.toLocaleString('id-ID')} (${effectivePayment.toUpperCase()}) Lunas! Bahan baku terpotong otomatis. 🧾✨`;
     if (lowStockItems.length > 0) {
       toastMsg += ` ⚠️ Peringatan: Stok ${lowStockItems.map((i) => i.name).join(', ')} menipis!`;
     }
@@ -2122,230 +2210,412 @@ Catatan Kurir: Pastikan posisi dus ditaruh datar agar mayo tidak tumpah ya kak.`
           Berada di posisi paling atas dashboard agar pemilik / kasir langsung bisa atur
           buka/tutup toko dan jam operasional dalam 1 klik tanpa masuk ke menu pengaturan.
       ============================================================================== */}
-      <div className="bg-white rounded-[22px] sm:rounded-[26px] border-2 border-[#111111] p-3.5 sm:p-5 shadow-[4px_4px_0_#111111] space-y-3.5 transition-all">
-        <div className="flex flex-col lg:flex-row lg:items-center justify-between gap-3 sm:gap-4">
-          {/* SISI KIRI: STATUS BUKA / TUTUP TOKO */}
-          <div className="flex-1 min-w-0">
-            <div className="flex flex-wrap items-center gap-2 mb-1.5">
-              <span className="text-[10px] sm:text-[11px] font-sans font-bold uppercase tracking-wider text-[#5C3D2E]/70">
-                Status Operasional Toko:
+      <div className="bg-white rounded-[22px] sm:rounded-[26px] border-2 border-[#111111] p-3 sm:p-5 shadow-[4px_4px_0_#111111] space-y-3 transition-all">
+        {/* MOBILE SLIM ROW (HEMAT RUANG DI LAYAR HP) */}
+        <div className="sm:hidden flex items-center justify-between gap-2">
+          <div className="flex items-center gap-1.5 min-w-0">
+            {localConfig.isStoreClosed ? (
+              <span className="inline-flex items-center gap-1 bg-red-500 text-white px-2.5 py-1 rounded-full text-[11px] font-bold font-sans animate-pulse">
+                <span className="w-1.5 h-1.5 rounded-full bg-white" />
+                🔴 Libur Goreng
               </span>
-              {localConfig.isStoreClosed ? (
-                <span className="inline-flex items-center gap-1.5 bg-red-500 text-white px-3 py-0.5 rounded-full text-xs font-bold font-sans shadow-xs animate-pulse">
-                  <span className="w-2 h-2 rounded-full bg-white" />
-                  🔴 SEDANG TUTUP (LIBUR GORENG)
-                </span>
-              ) : openStatus.isOpen ? (
-                <span className="inline-flex items-center gap-1.5 bg-emerald-500 text-white px-3 py-0.5 rounded-full text-xs font-bold font-sans shadow-xs">
-                  <span className="w-2 h-2 rounded-full bg-white animate-pulse" />
-                  🟢 DAPUR BUKA (NORMAL & SIAP GORENG)
-                </span>
-              ) : (
-                <span className="inline-flex items-center gap-1.5 bg-amber-500 text-[#111111] px-3 py-0.5 rounded-full text-xs font-bold font-sans shadow-xs">
-                  <span>🌙</span>
-                  TUTUP OTOMATIS (DI LUAR JAM KERJA)
-                </span>
-              )}
-            </div>
-
-            <p className="font-sans text-xs text-[#5C3D2E]/80 line-clamp-2">
-              {localConfig.isStoreClosed
-                ? `Pop-up libur aktif di HP pembeli: "${localConfig.closedReason || 'Dapur sedang libur goreng'}"`
-                : openStatus.isOpen
-                ? `Dapur siap menerima orderan masak panas (Jam buka: ${localConfig.openHour || '10:00'} - ${localConfig.closeHour || '20:00'} WIB).`
-                : `Di luar jam kerja (${localConfig.openHour || '10:00'} - ${localConfig.closeHour || '20:00'} WIB). Pembeli diarahkan ikut Pre-Order besok.`}
-            </p>
+            ) : openStatus.isOpen ? (
+              <span className="inline-flex items-center gap-1 bg-emerald-500 text-white px-2.5 py-1 rounded-full text-[11px] font-bold font-sans">
+                <span className="w-1.5 h-1.5 rounded-full bg-white animate-pulse" />
+                🟢 Dapur Buka ({localConfig.openHour || '10:00'}-{localConfig.closeHour || '20:00'})
+              </span>
+            ) : (
+              <span className="inline-flex items-center gap-1 bg-amber-500 text-[#111111] px-2.5 py-1 rounded-full text-[11px] font-bold font-sans">
+                <span>🌙</span> Tutup Otomatis
+              </span>
+            )}
           </div>
 
-          {/* TOMBOL TOGGLE STATUS 1-KLIK (ALA MERCHANT APP) */}
-          <div className="flex flex-wrap items-center gap-2 shrink-0">
+          <div className="flex items-center gap-1.5 shrink-0">
             {localConfig.isStoreClosed ? (
               <button
                 type="button"
                 onClick={() => handleToggleStoreClosed(false)}
-                className="cursor-pointer bg-emerald-500 hover:bg-emerald-600 text-white px-4 sm:px-5 py-2 sm:py-2.5 rounded-full font-sans font-bold text-xs sm:text-sm border-2 border-[#111111] shadow-[2px_2px_0_#111111] hover:shadow-none hover:translate-x-0.5 hover:translate-y-0.5 transition flex items-center gap-1.5"
+                className="cursor-pointer bg-emerald-500 hover:bg-emerald-600 text-white px-3 py-1 rounded-full font-sans font-bold text-xs border border-[#111111] shadow-2xs active:scale-95"
               >
-                <span>🍳</span>
-                <span>Buka Dapur Sekarang</span>
+                Buka
               </button>
             ) : (
               <button
                 type="button"
                 onClick={() => handleToggleStoreClosed(true)}
-                className="cursor-pointer bg-red-500 hover:bg-red-600 text-white px-4 sm:px-5 py-2 sm:py-2.5 rounded-full font-sans font-bold text-xs sm:text-sm border-2 border-[#111111] shadow-[2px_2px_0_#111111] hover:shadow-none hover:translate-x-0.5 hover:translate-y-0.5 transition flex items-center gap-1.5"
+                className="cursor-pointer bg-red-500 hover:bg-red-600 text-white px-3 py-1 rounded-full font-sans font-bold text-xs border border-[#111111] shadow-2xs active:scale-95"
               >
-                <span>💤</span>
-                <span>Tutup / Libur Goreng</span>
+                Tutup
               </button>
             )}
 
             <button
               type="button"
-              onClick={() => {
-                setQuickReasonInput(
-                  localConfig.closedReason ||
-                    'Maaf lagi nggak goreng dulu, hari ini masak di dapur sendiri ya. -Tim Dulang Indonesia'
-                );
-                setIsQuickEditReasonOpen((prev) => !prev);
-              }}
-              className="cursor-pointer bg-[#FFF8E7] hover:bg-[#FFEEC2] text-[#111111] px-3 sm:px-4 py-2 sm:py-2.5 rounded-full font-sans font-bold text-xs border border-[#111111] shadow-xs transition flex items-center gap-1"
-              title="Edit kalimat pop-up pengumuman saat toko libur"
+              onClick={() => setIsMobileMerchantBarExpanded((prev) => !prev)}
+              className="cursor-pointer bg-[#FFF8E7] hover:bg-[#FFEEC2] text-[#111111] px-2.5 py-1 rounded-full font-sans font-bold text-xs border border-[#111111] flex items-center gap-1 shadow-2xs active:scale-95"
+              title="Buka pengaturan jam & pesan libur"
             >
-              <span>✍️</span>
-              <span className="hidden xs:inline">Pesan Libur</span>
+              <span>⚙️</span>
+              <span>{isMobileMerchantBarExpanded ? 'Tutup' : 'Jam'}</span>
+            </button>
+          </div>
+        </div>
+
+        {/* FULL CONTROLS: EXPANDABLE ON MOBILE, ALWAYS VISIBLE ON DESKTOP */}
+        <div className={`${isMobileMerchantBarExpanded ? 'block' : 'hidden'} sm:block space-y-3.5 pt-2 sm:pt-0 border-t border-[#111111]/10 sm:border-0`}>
+          <div className="flex flex-col lg:flex-row lg:items-center justify-between gap-3 sm:gap-4">
+            {/* SISI KIRI: STATUS BUKA / TUTUP TOKO */}
+            <div className="flex-1 min-w-0">
+              <div className="flex flex-wrap items-center gap-2 mb-1.5">
+                <span className="text-[10px] sm:text-[11px] font-sans font-bold uppercase tracking-wider text-[#5C3D2E]/70">
+                  Status Operasional Toko:
+                </span>
+                {localConfig.isStoreClosed ? (
+                  <span className="inline-flex items-center gap-1.5 bg-red-500 text-white px-3 py-0.5 rounded-full text-xs font-bold font-sans shadow-xs animate-pulse">
+                    <span className="w-2 h-2 rounded-full bg-white" />
+                    🔴 SEDANG TUTUP (LIBUR GORENG)
+                  </span>
+                ) : openStatus.isOpen ? (
+                  <span className="inline-flex items-center gap-1.5 bg-emerald-500 text-white px-3 py-0.5 rounded-full text-xs font-bold font-sans shadow-xs">
+                    <span className="w-2 h-2 rounded-full bg-white animate-pulse" />
+                    🟢 DAPUR BUKA (NORMAL & SIAP GORENG)
+                  </span>
+                ) : (
+                  <span className="inline-flex items-center gap-1.5 bg-amber-500 text-[#111111] px-3 py-0.5 rounded-full text-xs font-bold font-sans shadow-xs">
+                    <span>🌙</span>
+                    TUTUP OTOMATIS (DI LUAR JAM KERJA)
+                  </span>
+                )}
+              </div>
+
+              <p className="font-sans text-xs text-[#5C3D2E]/80 line-clamp-2">
+                {localConfig.isStoreClosed
+                  ? `Pop-up libur aktif di HP pembeli: "${localConfig.closedReason || 'Dapur sedang libur goreng'}"`
+                  : openStatus.isOpen
+                  ? `Dapur siap menerima orderan masak panas (Jam buka: ${localConfig.openHour || '10:00'} - ${localConfig.closeHour || '20:00'} WIB).`
+                  : `Di luar jam kerja (${localConfig.openHour || '10:00'} - ${localConfig.closeHour || '20:00'} WIB). Pembeli diarahkan ikut Pre-Order besok.`}
+              </p>
+            </div>
+
+            {/* TOMBOL TOGGLE STATUS 1-KLIK (ALA MERCHANT APP) */}
+            <div className="flex flex-wrap items-center gap-2 shrink-0">
+              {localConfig.isStoreClosed ? (
+                <button
+                  type="button"
+                  onClick={() => handleToggleStoreClosed(false)}
+                  className="cursor-pointer bg-emerald-500 hover:bg-emerald-600 text-white px-4 sm:px-5 py-2 sm:py-2.5 rounded-full font-sans font-bold text-xs sm:text-sm border-2 border-[#111111] shadow-[2px_2px_0_#111111] hover:shadow-none hover:translate-x-0.5 hover:translate-y-0.5 transition flex items-center gap-1.5"
+                >
+                  <span>🍳</span>
+                  <span>Buka Dapur Sekarang</span>
+                </button>
+              ) : (
+                <button
+                  type="button"
+                  onClick={() => handleToggleStoreClosed(true)}
+                  className="cursor-pointer bg-red-500 hover:bg-red-600 text-white px-4 sm:px-5 py-2 sm:py-2.5 rounded-full font-sans font-bold text-xs sm:text-sm border-2 border-[#111111] shadow-[2px_2px_0_#111111] hover:shadow-none hover:translate-x-0.5 hover:translate-y-0.5 transition flex items-center gap-1.5"
+                >
+                  <span>💤</span>
+                  <span>Tutup / Libur Goreng</span>
+                </button>
+              )}
+
+              <button
+                type="button"
+                onClick={() => {
+                  setQuickReasonInput(
+                    localConfig.closedReason ||
+                      'Maaf lagi nggak goreng dulu, hari ini masak di dapur sendiri ya. -Tim Dulang Indonesia'
+                  );
+                  setIsQuickEditReasonOpen((prev) => !prev);
+                }}
+                className="cursor-pointer bg-[#FFF8E7] hover:bg-[#FFEEC2] text-[#111111] px-3 sm:px-4 py-2 sm:py-2.5 rounded-full font-sans font-bold text-xs border border-[#111111] shadow-xs transition flex items-center gap-1"
+                title="Edit kalimat pop-up pengumuman saat toko libur"
+              >
+                <span>✍️</span>
+                <span className="hidden xs:inline">Pesan Libur</span>
+              </button>
+
+              {!isAppInstalled && (
+                <button
+                  type="button"
+                  onClick={handleInstallPWA}
+                  className="cursor-pointer bg-white hover:bg-[#FFD700] text-[#111111] px-3 sm:px-4 py-2 sm:py-2.5 rounded-full font-sans font-bold text-xs border border-[#111111] shadow-xs transition flex items-center gap-1.5 active:scale-95"
+                  title="Pasang aplikasi Kasir / Dapur di layar HP tanpa browser"
+                >
+                  <span>📱</span>
+                  <span className="hidden xs:inline">Pasang di HP</span>
+                </button>
+              )}
+            </div>
+          </div>
+
+          {/* SISI BAWAH: ATUR JAM OPERASIONAL & BUKA OTOMATIS */}
+          <div className="pt-3 border-t border-[#111111]/10 flex flex-col md:flex-row md:items-center justify-between gap-3">
+            <div className="flex flex-wrap items-center gap-2 sm:gap-3 text-xs font-sans">
+              <span className="font-bold text-[#111111] flex items-center gap-1">
+                <span>⏰</span> Jam Operasional:
+              </span>
+              <div className="inline-flex items-center gap-1.5 bg-[#FFF8E7] px-2.5 py-1 rounded-full border border-[#111111]/20">
+                <span className="text-[11px] text-[#5C3D2E]/70 font-semibold">Buka:</span>
+                <input
+                  type="time"
+                  value={localConfig.openHour || '10:00'}
+                  onChange={(e) => handleQuickHoursChange(e.target.value, localConfig.closeHour || '20:00')}
+                  className="bg-white border border-[#111111]/30 rounded-md px-1.5 py-0.5 text-xs font-bold text-[#111111] focus:outline-none focus:border-[#111111]"
+                />
+                <span className="text-[11px] text-[#5C3D2E]/70 font-semibold">s/d</span>
+                <input
+                  type="time"
+                  value={localConfig.closeHour || '20:00'}
+                  onChange={(e) => handleQuickHoursChange(localConfig.openHour || '10:00', e.target.value)}
+                  className="bg-white border border-[#111111]/30 rounded-md px-1.5 py-0.5 text-xs font-bold text-[#111111] focus:outline-none focus:border-[#111111]"
+                />
+                <span className="text-[11px] font-bold text-[#5C3D2E]/70">WIB</span>
+              </div>
+
+              {/* Quick Presets */}
+              <div className="hidden sm:flex items-center gap-1">
+                <button
+                  type="button"
+                  onClick={() => handleQuickHoursChange('10:00', '20:00')}
+                  className="cursor-pointer text-[10px] font-bold bg-white hover:bg-[#FFF8E7] border border-[#111111]/20 px-2 py-1 rounded-full transition"
+                >
+                  10:00-20:00 (Normal)
+                </button>
+                <button
+                  type="button"
+                  onClick={() => handleQuickHoursChange('07:00', '17:00')}
+                  className="cursor-pointer text-[10px] font-bold bg-white hover:bg-[#FFF8E7] border border-[#111111]/20 px-2 py-1 rounded-full transition"
+                >
+                  07:00-17:00 (Pagi)
+                </button>
+                <button
+                  type="button"
+                  onClick={() => handleQuickHoursChange('13:00', '21:00')}
+                  className="cursor-pointer text-[10px] font-bold bg-white hover:bg-[#FFF8E7] border border-[#111111]/20 px-2 py-1 rounded-full transition"
+                >
+                  13:00-21:00 (Sore-Malam)
+                </button>
+              </div>
+            </div>
+
+            {/* Toggle Auto Hours Checkbox */}
+            <label className="flex items-center gap-2 cursor-pointer font-sans text-xs font-bold text-[#111111] select-none">
+              <input
+                type="checkbox"
+                checked={localConfig.autoOperatingHours ?? true}
+                onChange={(e) => handleQuickAutoHoursToggle(e.target.checked)}
+                className="w-4 h-4 accent-[#111111] rounded cursor-pointer"
+              />
+              <span>Buka/Tutup Otomatis sesuai Jam</span>
+            </label>
+          </div>
+
+          {/* EXPANDABLE QUICK HOLIDAY POPUP MESSAGE EDITOR */}
+          {isQuickEditReasonOpen && (
+            <form
+              onSubmit={handleSaveQuickReason}
+              className="pt-3 border-t-2 border-dashed border-[#111111]/20 space-y-2.5 animate-in slide-in-from-top duration-200"
+            >
+              <div className="flex items-center justify-between">
+                <label className="block font-sans text-[11px] font-bold uppercase text-[#5C3D2E]/80">
+                  💬 Kalimat Pop-up Pengumuman Libur (Tampil di HP Pembeli):
+                </label>
+                <button
+                  type="button"
+                  onClick={() => setIsQuickEditReasonOpen(false)}
+                  className="text-xs text-[#5C3D2E]/70 hover:text-black font-bold cursor-pointer"
+                >
+                  Tutup ✕
+                </button>
+              </div>
+              <textarea
+                rows={2}
+                value={quickReasonInput}
+                onChange={(e) => setQuickReasonInput(e.target.value)}
+                placeholder="Contoh: Maaf ya rek, hari ini dapur Dulang lagi libur goreng dulu ada acara keluarga. Besok subuh kita mulai goreng anget lagi!"
+                className="w-full rounded-[14px] border-2 border-[#111111] p-2.5 font-sans text-xs focus:outline-none focus:border-[#FFD700] bg-[#FFF8E7]"
+              />
+              <div className="flex flex-wrap items-center justify-between gap-2">
+                <div className="flex flex-wrap items-center gap-1.5">
+                  <span className="text-[10px] text-[#5C3D2E]/70 font-bold">Contoh Cepat:</span>
+                  <button
+                    type="button"
+                    onClick={() =>
+                      setQuickReasonInput('Maaf ya rek, hari ini dapur Dulang lagi libur goreng dulu. Besok subuh kita mulai goreng anget lagi!')
+                    }
+                    className="cursor-pointer text-[10px] bg-white hover:bg-amber-100 border border-[#111111]/20 px-2 py-0.5 rounded-full"
+                  >
+                    Libur Keluarga
+                  </button>
+                  <button
+                    type="button"
+                    onClick={() =>
+                      setQuickReasonInput('Hari ini dapur libur dulu ya rek, tim lagi belanja bahan baku segar ke pasar. Buka kembali besok!')
+                    }
+                    className="cursor-pointer text-[10px] bg-white hover:bg-amber-100 border border-[#111111]/20 px-2 py-0.5 rounded-full"
+                  >
+                    Belanja Pasar
+                  </button>
+                  <button
+                    type="button"
+                    onClick={() =>
+                      setQuickReasonInput('Kuah mayo & kulit risoles ludes terjual lebih awal! Wajan istirahat dulu, ketemu besok jam 10 ya rek!')
+                    }
+                    className="cursor-pointer text-[10px] bg-white hover:bg-amber-100 border border-[#111111]/20 px-2 py-0.5 rounded-full"
+                  >
+                    Sold Out Lebih Awal
+                  </button>
+                </div>
+                <div className="flex items-center gap-2">
+                  <button
+                    type="button"
+                    onClick={() => setShowClosedPreview(true)}
+                    className="cursor-pointer bg-white text-[#111111] hover:bg-[#FFF8E7] border border-[#111111] px-3 py-1.5 rounded-full font-sans font-bold text-xs"
+                  >
+                    👀 Pratinjau
+                  </button>
+                  <button
+                    type="submit"
+                    className="cursor-pointer bg-[#111111] hover:bg-black text-[#FFD700] px-4 py-1.5 rounded-full font-sans font-bold text-xs shadow-xs border border-[#111111]"
+                  >
+                    Simpan Pesan Pengumuman ✓
+                  </button>
+                </div>
+              </div>
+            </form>
+          )}
+
+          {isMobileMerchantBarExpanded && (
+            <div className="sm:hidden flex justify-end pt-2 border-t border-[#111111]/10">
+              <button
+                type="button"
+                onClick={() => setIsMobileMerchantBarExpanded(false)}
+                className="text-xs text-[#5C3D2E]/80 hover:text-black font-bold flex items-center gap-1 cursor-pointer"
+              >
+                <span>▲ Sembunyikan Detail Jam</span>
+              </button>
+            </div>
+          )}
+        </div>
+      </div>
+
+      {/* ==============================================================================
+          MOBILE EXECUTIVE COCKPIT: TAMPILAN KHUSUS HP UNTUK OWNER (PRAKTIS & CEPAT)
+      ============================================================================== */}
+      {activeRole === 'owner' && (
+        <div className="sm:hidden bg-[#111111] text-[#FFF8E7] rounded-[20px] p-3.5 border-2 border-[#FFD700] shadow-[3px_3px_0_#FFD700] space-y-2.5">
+          <div className="flex items-center justify-between">
+            <div className="flex items-center gap-1.5">
+              <span className="text-base">👑</span>
+              <span className="font-hand font-bold text-lg text-[#FFD700] leading-none">
+                Cockpit Bisnis Hari Ini
+              </span>
+            </div>
+            <span className="font-mono text-[10px] bg-white/10 px-2 py-0.5 rounded-full text-[#FFF8E7]/80">
+              {new Date().toLocaleDateString('id-ID', { weekday: 'short', day: 'numeric', month: 'short' })}
+            </span>
+          </div>
+
+          {/* 3 Metric Cards */}
+          <div className="grid grid-cols-3 gap-1.5 text-center">
+            <div className="bg-white/10 rounded-[14px] p-2 border border-white/15">
+              <span className="text-[9px] font-sans text-white/70 block uppercase tracking-tight">
+                Omset Masuk
+              </span>
+              <span className="font-hand font-bold text-sm text-[#FFD700] block truncate">
+                Rp {todayExecutiveSummary.todayOmset.toLocaleString('id-ID')}
+              </span>
+              <span className="text-[9px] text-emerald-400 block font-semibold truncate">
+                {todayExecutiveSummary.todayPaidCount} order lunas
+              </span>
+            </div>
+
+            <div className="bg-white/10 rounded-[14px] p-2 border border-white/15">
+              <span className="text-[9px] font-sans text-white/70 block uppercase tracking-tight">
+                Kas Bersih
+              </span>
+              <span
+                className={`font-hand font-bold text-sm block truncate ${
+                  todayExecutiveSummary.todayNetCash >= 0 ? 'text-emerald-300' : 'text-rose-300'
+                }`}
+              >
+                Rp {todayExecutiveSummary.todayNetCash.toLocaleString('id-ID')}
+              </span>
+              <span className="text-[9px] text-white/60 block truncate">
+                {todayExecutiveSummary.todayExpenseTotal > 0
+                  ? `-Rp ${todayExecutiveSummary.todayExpenseTotal.toLocaleString('id-ID')}`
+                  : 'Nol belanja'}
+              </span>
+            </div>
+
+            <div className="bg-white/10 rounded-[14px] p-2 border border-white/15">
+              <span className="text-[9px] font-sans text-white/70 block uppercase tracking-tight">
+                Wajan & Antre
+              </span>
+              <span className="font-hand font-bold text-sm text-amber-300 block truncate">
+                {todayExecutiveSummary.activeKitchenCount} di dapur
+              </span>
+              <span className="text-[9px] text-white/60 block truncate">
+                {todayExecutiveSummary.todayPendingCount > 0
+                  ? `⏳ ${todayExecutiveSummary.todayPendingCount} antre`
+                  : 'Goreng fresh'}
+              </span>
+            </div>
+          </div>
+
+          {/* Low Stock Warning Alert if any */}
+          {todayExecutiveSummary.lowStockCount > 0 && (
+            <button
+              type="button"
+              onClick={() => setActiveTab('menu')}
+              className="w-full bg-amber-500/20 hover:bg-amber-500/30 border border-amber-400/40 rounded-xl px-2.5 py-1.5 flex items-center justify-between text-[11px] text-amber-200 cursor-pointer transition active:scale-98"
+            >
+              <span className="flex items-center gap-1 font-bold">
+                <span>⚠️</span> {todayExecutiveSummary.lowStockCount} menu stok menipis (≤5 porsi)
+              </span>
+              <span className="text-[10px] underline text-[#FFD700] font-bold">Refill →</span>
+            </button>
+          )}
+
+          {/* Quick Actions (Thumb-Friendly) */}
+          <div className="grid grid-cols-3 gap-1.5 pt-1 border-t border-white/10">
+            <button
+              type="button"
+              onClick={() => {
+                setActiveTab('orders');
+                setIsAddingWalkInOrder(true);
+              }}
+              className="cursor-pointer bg-[#FFD700] hover:bg-[#FFE033] text-[#111111] py-1.5 px-2 rounded-xl font-sans font-bold text-[11px] border border-[#111111] flex items-center justify-center gap-1 active:scale-95 shadow-xs"
+            >
+              <span>+</span>
+              <span>Order Kasir</span>
             </button>
 
-            {!isAppInstalled && (
-              <button
-                type="button"
-                onClick={handleInstallPWA}
-                className="cursor-pointer bg-white hover:bg-[#FFD700] text-[#111111] px-3 sm:px-4 py-2 sm:py-2.5 rounded-full font-sans font-bold text-xs border border-[#111111] shadow-xs transition flex items-center gap-1.5 active:scale-95"
-                title="Pasang aplikasi Kasir / Dapur di layar HP tanpa browser"
-              >
-                <span>📱</span>
-                <span className="hidden xs:inline">Pasang di HP</span>
-              </button>
-            )}
+            <button
+              type="button"
+              onClick={() => {
+                setActiveTab('expenses');
+                setIsAddingExpense(true);
+              }}
+              className="cursor-pointer bg-white/15 hover:bg-white/25 text-white py-1.5 px-2 rounded-xl font-sans font-bold text-[11px] border border-white/25 flex items-center justify-center gap-1 active:scale-95"
+            >
+              <span>💸</span>
+              <span>Catat Belanja</span>
+            </button>
+
+            <button
+              type="button"
+              onClick={() => setActiveTab('kds')}
+              className="cursor-pointer bg-amber-500/30 hover:bg-amber-500/40 text-amber-200 py-1.5 px-2 rounded-xl font-sans font-bold text-[11px] border border-amber-400/30 flex items-center justify-center gap-1 active:scale-95"
+            >
+              <span>🍳</span>
+              <span>Layar Dapur</span>
+            </button>
           </div>
         </div>
-
-        {/* SISI BAWAH: ATUR JAM OPERASIONAL & BUKA OTOMATIS */}
-        <div className="pt-3 border-t border-[#111111]/10 flex flex-col md:flex-row md:items-center justify-between gap-3">
-          <div className="flex flex-wrap items-center gap-2 sm:gap-3 text-xs font-sans">
-            <span className="font-bold text-[#111111] flex items-center gap-1">
-              <span>⏰</span> Jam Operasional:
-            </span>
-            <div className="inline-flex items-center gap-1.5 bg-[#FFF8E7] px-2.5 py-1 rounded-full border border-[#111111]/20">
-              <span className="text-[11px] text-[#5C3D2E]/70 font-semibold">Buka:</span>
-              <input
-                type="time"
-                value={localConfig.openHour || '10:00'}
-                onChange={(e) => handleQuickHoursChange(e.target.value, localConfig.closeHour || '20:00')}
-                className="bg-white border border-[#111111]/30 rounded-md px-1.5 py-0.5 text-xs font-bold text-[#111111] focus:outline-none focus:border-[#111111]"
-              />
-              <span className="text-[11px] text-[#5C3D2E]/70 font-semibold">s/d</span>
-              <input
-                type="time"
-                value={localConfig.closeHour || '20:00'}
-                onChange={(e) => handleQuickHoursChange(localConfig.openHour || '10:00', e.target.value)}
-                className="bg-white border border-[#111111]/30 rounded-md px-1.5 py-0.5 text-xs font-bold text-[#111111] focus:outline-none focus:border-[#111111]"
-              />
-              <span className="text-[11px] font-bold text-[#5C3D2E]/70">WIB</span>
-            </div>
-
-            {/* Quick Presets */}
-            <div className="hidden sm:flex items-center gap-1">
-              <button
-                type="button"
-                onClick={() => handleQuickHoursChange('10:00', '20:00')}
-                className="cursor-pointer text-[10px] font-bold bg-white hover:bg-[#FFF8E7] border border-[#111111]/20 px-2 py-1 rounded-full transition"
-              >
-                10:00-20:00 (Normal)
-              </button>
-              <button
-                type="button"
-                onClick={() => handleQuickHoursChange('07:00', '17:00')}
-                className="cursor-pointer text-[10px] font-bold bg-white hover:bg-[#FFF8E7] border border-[#111111]/20 px-2 py-1 rounded-full transition"
-              >
-                07:00-17:00 (Pagi)
-              </button>
-              <button
-                type="button"
-                onClick={() => handleQuickHoursChange('13:00', '21:00')}
-                className="cursor-pointer text-[10px] font-bold bg-white hover:bg-[#FFF8E7] border border-[#111111]/20 px-2 py-1 rounded-full transition"
-              >
-                13:00-21:00 (Sore-Malam)
-              </button>
-            </div>
-          </div>
-
-          {/* Toggle Auto Hours Checkbox */}
-          <label className="flex items-center gap-2 cursor-pointer font-sans text-xs font-bold text-[#111111] select-none">
-            <input
-              type="checkbox"
-              checked={localConfig.autoOperatingHours ?? true}
-              onChange={(e) => handleQuickAutoHoursToggle(e.target.checked)}
-              className="w-4 h-4 accent-[#111111] rounded cursor-pointer"
-            />
-            <span>Buka/Tutup Otomatis sesuai Jam</span>
-          </label>
-        </div>
-
-        {/* EXPANDABLE QUICK HOLIDAY POPUP MESSAGE EDITOR */}
-        {isQuickEditReasonOpen && (
-          <form
-            onSubmit={handleSaveQuickReason}
-            className="pt-3 border-t-2 border-dashed border-[#111111]/20 space-y-2.5 animate-in slide-in-from-top duration-200"
-          >
-            <div className="flex items-center justify-between">
-              <label className="block font-sans text-[11px] font-bold uppercase text-[#5C3D2E]/80">
-                💬 Kalimat Pop-up Pengumuman Libur (Tampil di HP Pembeli):
-              </label>
-              <button
-                type="button"
-                onClick={() => setIsQuickEditReasonOpen(false)}
-                className="text-xs text-[#5C3D2E]/70 hover:text-black font-bold cursor-pointer"
-              >
-                Tutup ✕
-              </button>
-            </div>
-            <textarea
-              rows={2}
-              value={quickReasonInput}
-              onChange={(e) => setQuickReasonInput(e.target.value)}
-              placeholder="Contoh: Maaf ya rek, hari ini dapur Dulang lagi libur goreng dulu ada acara keluarga. Besok subuh kita mulai goreng anget lagi!"
-              className="w-full rounded-[14px] border-2 border-[#111111] p-2.5 font-sans text-xs focus:outline-none focus:border-[#FFD700] bg-[#FFF8E7]"
-            />
-            <div className="flex flex-wrap items-center justify-between gap-2">
-              <div className="flex flex-wrap items-center gap-1.5">
-                <span className="text-[10px] text-[#5C3D2E]/70 font-bold">Contoh Cepat:</span>
-                <button
-                  type="button"
-                  onClick={() =>
-                    setQuickReasonInput('Maaf ya rek, hari ini dapur Dulang lagi libur goreng dulu. Besok subuh kita mulai goreng anget lagi!')
-                  }
-                  className="cursor-pointer text-[10px] bg-white hover:bg-amber-100 border border-[#111111]/20 px-2 py-0.5 rounded-full"
-                >
-                  Libur Keluarga
-                </button>
-                <button
-                  type="button"
-                  onClick={() =>
-                    setQuickReasonInput('Hari ini dapur libur dulu ya rek, tim lagi belanja bahan baku segar ke pasar. Buka kembali besok!')
-                  }
-                  className="cursor-pointer text-[10px] bg-white hover:bg-amber-100 border border-[#111111]/20 px-2 py-0.5 rounded-full"
-                >
-                  Belanja Pasar
-                </button>
-                <button
-                  type="button"
-                  onClick={() =>
-                    setQuickReasonInput('Kuah mayo & kulit risoles ludes terjual lebih awal! Wajan istirahat dulu, ketemu besok jam 10 ya rek!')
-                  }
-                  className="cursor-pointer text-[10px] bg-white hover:bg-amber-100 border border-[#111111]/20 px-2 py-0.5 rounded-full"
-                >
-                  Sold Out Lebih Awal
-                </button>
-              </div>
-              <div className="flex items-center gap-2">
-                <button
-                  type="button"
-                  onClick={() => setShowClosedPreview(true)}
-                  className="cursor-pointer bg-white text-[#111111] hover:bg-[#FFF8E7] border border-[#111111] px-3 py-1.5 rounded-full font-sans font-bold text-xs"
-                >
-                  👀 Pratinjau
-                </button>
-                <button
-                  type="submit"
-                  className="cursor-pointer bg-[#111111] hover:bg-black text-[#FFD700] px-4 py-1.5 rounded-full font-sans font-bold text-xs shadow-xs border border-[#111111]"
-                >
-                  Simpan Pesan Pengumuman ✓
-                </button>
-              </div>
-            </div>
-          </form>
-        )}
-      </div>
+      )}
 
       {/* Navigation Pills (Compact on Mobile, Full on Desktop) */}
       <div className="flex items-center gap-1.5 sm:gap-2 overflow-x-auto no-scrollbar py-1 sm:py-2 border-b border-[#111111]/10 sm:border-b-2">
@@ -3681,6 +3951,64 @@ Catatan Kurir: Pastikan posisi dus ditaruh datar agar mayo tidak tumpah ya kak.`
                   </span>
                 </div>
 
+                {/* PILIHAN SALURAN PESANAN (OFFLINE / OJOL) */}
+                <div>
+                  <label className="block font-sans text-[11px] font-bold uppercase text-[#5C3D2E]/80 mb-1.5">
+                    Saluran Pesanan:
+                  </label>
+                  <div className="flex flex-wrap gap-2">
+                    {[
+                      { id: 'walk_in', label: '🟡 Walk-In (Offline)', badge: 'Kasir' },
+                      { id: 'gofood', label: '🛵 GoFood (GoBiz)', badge: `Komisi ${storeConfig.gofoodCommissionPercent ?? 20}%` },
+                      { id: 'shopeefood', label: '🍔 ShopeeFood', badge: `Komisi ${storeConfig.shopeefoodCommissionPercent ?? 20}%` },
+                      { id: 'grabfood', label: '🟢 GrabFood', badge: `Komisi ${storeConfig.grabfoodCommissionPercent ?? 20}%` },
+                    ].map((ch) => (
+                      <button
+                        key={ch.id}
+                        type="button"
+                        onClick={() => setWalkInChannel(ch.id as any)}
+                        className={`cursor-pointer px-3.5 py-1.5 rounded-full text-xs font-bold font-sans transition flex items-center gap-1.5 border-2 ${
+                          walkInChannel === ch.id
+                            ? 'bg-[#111111] text-[#FFD700] border-[#111111] shadow-xs'
+                            : 'bg-white text-[#111111] border-[#111111]/20 hover:border-[#111111]'
+                        }`}
+                      >
+                        <span>{ch.label}</span>
+                        <span className={`text-[9px] px-1.5 py-0.2 rounded-full ${walkInChannel === ch.id ? 'bg-[#FFD700] text-[#111111]' : 'bg-gray-100 text-gray-600'}`}>
+                          {ch.badge}
+                        </span>
+                      </button>
+                    ))}
+                  </div>
+
+                  {/* Input Nomor Resi / Order ID Ojol bila dipilih */}
+                  {(walkInChannel === 'gofood' || walkInChannel === 'shopeefood' || walkInChannel === 'grabfood') && (
+                    <div className="mt-3 p-3.5 rounded-[16px] bg-amber-50 border border-amber-300 flex flex-col sm:flex-row sm:items-center justify-between gap-3 text-xs animate-in fade-in">
+                      <div className="flex items-center gap-2">
+                        <span className="text-xl">🛵</span>
+                        <div>
+                          <div className="font-bold text-black font-sans">
+                            Pesanan {walkInChannel === 'gofood' ? 'GoFood' : walkInChannel === 'shopeefood' ? 'ShopeeFood' : 'GrabFood'}
+                          </div>
+                          <div className="text-[11px] text-[#5C3D2E]">
+                            Otomatis memotong komisi platform {walkInChannel === 'gofood' ? storeConfig.gofoodCommissionPercent ?? 20 : walkInChannel === 'shopeefood' ? storeConfig.shopeefoodCommissionPercent ?? 20 : storeConfig.grabfoodCommissionPercent ?? 20}% di Buku Kas & memberi tanda prioritas di KDS Dapur.
+                          </div>
+                        </div>
+                      </div>
+                      <div className="flex items-center gap-2">
+                        <span className="font-bold text-gray-700 font-mono text-xs whitespace-nowrap">No. Order Ojol:</span>
+                        <input
+                          type="text"
+                          value={walkInOjolOrderId}
+                          onChange={(e) => setWalkInOjolOrderId(e.target.value)}
+                          placeholder="e.g. GF-104"
+                          className="w-36 rounded-lg border-2 border-[#111111] px-3 py-1 font-mono font-bold text-xs bg-white uppercase focus:outline-none"
+                        />
+                      </div>
+                    </div>
+                  )}
+                </div>
+
                 <div className="grid sm:grid-cols-2 gap-4">
                   <div>
                     <label className="block font-sans text-[11px] font-bold uppercase text-[#5C3D2E]/80 mb-1">
@@ -4158,6 +4486,34 @@ Catatan Kurir: Pastikan posisi dus ditaruh datar agar mayo tidak tumpah ya kak.`
                   </div>
 
                   <div className="flex items-center gap-1.5 w-full sm:w-auto">
+                    {/* View Mode Toggle: Ringkas vs Detail */}
+                    <div className="inline-flex p-0.5 bg-white border border-[#111111] rounded-full shadow-2xs gap-0.5 shrink-0">
+                      <button
+                        type="button"
+                        onClick={() => setOrderViewMode('compact')}
+                        className={`cursor-pointer px-2.5 py-1 rounded-full font-sans font-bold text-[10px] sm:text-[11px] transition ${
+                          orderViewMode === 'compact'
+                            ? 'bg-[#111111] text-[#FFD700]'
+                            : 'text-[#5C3D2E]/70 hover:text-[#111111]'
+                        }`}
+                        title="Tampilan ringkas padat (hemat scroll di HP)"
+                      >
+                        📋 Ringkas
+                      </button>
+                      <button
+                        type="button"
+                        onClick={() => setOrderViewMode('cards')}
+                        className={`cursor-pointer px-2.5 py-1 rounded-full font-sans font-bold text-[10px] sm:text-[11px] transition ${
+                          orderViewMode === 'cards'
+                            ? 'bg-[#111111] text-[#FFD700]'
+                            : 'text-[#5C3D2E]/70 hover:text-[#111111]'
+                        }`}
+                        title="Tampilan kartu detail"
+                      >
+                        🃏 Detail
+                      </button>
+                    </div>
+
                     <input
                       type="text"
                       value={orderSearch}
@@ -4186,6 +4542,119 @@ Catatan Kurir: Pastikan posisi dus ditaruh datar agar mayo tidak tumpah ya kak.`
                   <p className="font-sans text-sm text-[#5C3D2E]/70">
                     Tidak ada transaksi pada filter ini.
                   </p>
+                </div>
+              ) : orderViewMode === 'compact' ? (
+                /* Compact List View (Ultra-praktis di HP: 6-7 order tampil sekaligus) */
+                <div className="divide-y divide-[#111111]/10 bg-white rounded-[20px] border-2 border-[#111111] shadow-[3px_3px_0_#111111] overflow-hidden">
+                  {filteredOrders.map((ord) => {
+                    const itemsSummary = ord.items.map((it) => `${it.qty}x ${it.nama}`).join(', ');
+                    const channelBadge =
+                      ord.channel === 'gofood'
+                        ? { label: 'GoFood', bg: 'bg-emerald-100 text-emerald-800 border-emerald-300' }
+                        : ord.channel === 'shopeefood'
+                        ? { label: 'Shopee', bg: 'bg-orange-100 text-orange-800 border-orange-300' }
+                        : ord.channel === 'grabfood'
+                        ? { label: 'Grab', bg: 'bg-green-100 text-green-800 border-green-300' }
+                        : ord.channel === 'walk_in'
+                        ? { label: 'Kasir', bg: 'bg-amber-100 text-amber-900 border-amber-300' }
+                        : { label: 'WA', bg: 'bg-blue-100 text-blue-900 border-blue-300' };
+
+                    const kitchenPill =
+                      ord.kitchen_status === 'sedang_goreng'
+                        ? { label: '🔥 Wajan', bg: 'bg-amber-400 text-black border border-amber-500' }
+                        : ord.kitchen_status === 'packing'
+                        ? { label: '📦 Pack', bg: 'bg-purple-100 text-purple-900 border border-purple-300' }
+                        : ord.kitchen_status === 'siap'
+                        ? { label: '🥟 Siap', bg: 'bg-emerald-600 text-white shadow-2xs' }
+                        : ord.kitchen_status === 'selesai'
+                        ? { label: '✅ Selesai', bg: 'bg-gray-100 text-gray-700' }
+                        : { label: '⏳ Antre', bg: 'bg-gray-200 text-gray-800' };
+
+                    return (
+                      <div
+                        key={ord.id}
+                        onClick={() => setMobileActionOrder(ord)}
+                        className={`p-3 sm:p-3.5 hover:bg-[#FFFDF4] transition cursor-pointer flex items-center justify-between gap-2.5 active:bg-amber-50/70 ${
+                          ord.status === 'menunggu' ? 'bg-amber-50/50' : ''
+                        }`}
+                      >
+                        <div className="flex-1 min-w-0 space-y-1">
+                          <div className="flex items-center gap-1.5 flex-wrap">
+                            <span className={`font-mono text-[9px] font-bold px-1.5 py-0.2 rounded-full border ${channelBadge.bg}`}>
+                              {channelBadge.label}
+                            </span>
+                            <span className="font-mono font-bold text-xs text-[#111111]">
+                              #{ord.id}
+                            </span>
+                            {ord.external_order_id && (
+                              <span className="font-mono text-[9px] font-bold bg-[#111111] text-[#FFD700] px-1.5 py-0.2 rounded-full">
+                                #{ord.external_order_id}
+                              </span>
+                            )}
+                            <span className="font-sans font-bold text-xs text-[#111111] truncate max-w-[120px] xs:max-w-[160px] sm:max-w-none">
+                              {ord.customer_name}
+                            </span>
+                            <span
+                              className={`font-sans text-[10px] font-bold px-1.5 py-0.2 rounded-full ${
+                                ord.status === 'lunas'
+                                  ? 'bg-emerald-100 text-emerald-800 border border-emerald-300'
+                                  : ord.status === 'dp'
+                                  ? 'bg-amber-200 text-amber-900 border border-amber-400 font-extrabold'
+                                  : ord.status === 'menunggu'
+                                  ? 'bg-amber-100 text-amber-900 border border-amber-300 animate-pulse'
+                                  : 'bg-red-100 text-red-800'
+                              }`}
+                            >
+                              {ord.status === 'lunas' ? 'Lunas' : ord.status === 'dp' ? 'DP' : ord.status === 'menunggu' ? 'Baru' : 'Batal'}
+                            </span>
+                            {ord.delivery_schedule && (
+                              <span className="font-sans text-[9px] font-semibold text-amber-900 bg-amber-100 px-1.5 py-0.2 rounded-md truncate max-w-[120px]">
+                                ⏰ {ord.delivery_schedule}
+                              </span>
+                            )}
+                          </div>
+
+                          <div className="flex items-center justify-between gap-2">
+                            <p className="font-sans text-[11px] text-[#5C3D2E]/80 truncate">
+                              {itemsSummary}
+                            </p>
+                          </div>
+                        </div>
+
+                        <div className="flex items-center gap-2 shrink-0">
+                          <div className="text-right">
+                            <span className="font-hand font-bold text-sm sm:text-base text-[#111111] block leading-tight">
+                              Rp {ord.total_price.toLocaleString('id-ID')}
+                            </span>
+                            <span className={`text-[9px] font-bold px-1.5 py-0.2 rounded-full inline-block mt-0.5 ${kitchenPill.bg}`}>
+                              {kitchenPill.label}
+                            </span>
+                          </div>
+
+                          <div className="flex items-center gap-1" onClick={(e) => e.stopPropagation()}>
+                            {ord.customer_wa && (
+                              <button
+                                type="button"
+                                onClick={() => handleSendOrderWaUpdate(ord)}
+                                className="w-8 h-8 rounded-full bg-[#25D366] text-white flex items-center justify-center text-sm shadow-xs border border-emerald-800 hover:brightness-110 active:scale-95 cursor-pointer"
+                                title="Kirim WA ke pembeli"
+                              >
+                                📲
+                              </button>
+                            )}
+                            <button
+                              type="button"
+                              onClick={() => setMobileActionOrder(ord)}
+                              className="w-8 h-8 rounded-full bg-gray-100 hover:bg-[#FFD700] text-[#111111] border border-[#111111]/25 font-bold flex items-center justify-center text-xs active:scale-95 cursor-pointer shadow-2xs"
+                              title="Buka menu aksi pesanan"
+                            >
+                              •••
+                            </button>
+                          </div>
+                        </div>
+                      </div>
+                    );
+                  })}
                 </div>
               ) : (
                 <div className="grid gap-2.5 sm:gap-3">
@@ -4840,6 +5309,9 @@ Catatan Kurir: Pastikan posisi dus ditaruh datar agar mayo tidak tumpah ya kak.`
           totalPcsTerjual,
           labaKotor,
           grossProfitMargin,
+          totalPlatformCommissions,
+          netOmsetAfterPlatformCommissions,
+          ojolOrdersCount,
           netProfit,
           netProfitMargin,
           periodLabel,
@@ -5125,6 +5597,30 @@ Catatan Kurir: Pastikan posisi dus ditaruh datar agar mayo tidak tumpah ya kak.`
                 💡 Dihitung otomatis dari resep bahan per pcs pesanan lunas pada <strong>{periodLabel}</strong>.
               </div>
             </div>
+
+            {/* PLATFORM OJOL COMMISSIONS BREAKDOWN (JIKA ADA TRANSAKSI GOFOOD / SHOPEEFOOD) */}
+            {totalPlatformCommissions > 0 && (
+              <div className="bg-emerald-50 rounded-[20px] p-4 sm:p-5 border-2 border-emerald-600 shadow-[3px_3px_0_#059669] flex flex-col sm:flex-row sm:items-center justify-between gap-3 text-xs animate-in fade-in">
+                <div className="flex items-center gap-3">
+                  <div className="w-10 h-10 rounded-full bg-emerald-200 border border-emerald-400 flex items-center justify-center text-xl shrink-0">
+                    🛵
+                  </div>
+                  <div>
+                    <div className="font-bold text-emerald-950 font-sans text-sm">
+                      Penjualan Ojek Online ({ojolOrdersCount} pesanan GoFood / ShopeeFood)
+                    </div>
+                    <div className="text-emerald-800 text-[11px] mt-0.5">
+                      Potongan Komisi Platform: <strong className="text-red-700">-Rp {totalPlatformCommissions.toLocaleString('id-ID')}</strong> • Dana Bersih yang Cair: <strong className="text-emerald-900">Rp {netOmsetAfterPlatformCommissions.toLocaleString('id-ID')}</strong>
+                    </div>
+                  </div>
+                </div>
+                <div className="text-right">
+                  <span className="bg-emerald-600 text-white font-bold font-mono text-[11px] px-3 py-1 rounded-full shadow-xs">
+                    ✓ Otomatis Dipotong di Buku Kas
+                  </span>
+                </div>
+              </div>
+            )}
 
             {/* BREAKDOWN PER KATEGORI BELANJA */}
             <div className="grid grid-cols-2 sm:grid-cols-4 gap-3">
@@ -5516,6 +6012,72 @@ Catatan Kurir: Pastikan posisi dus ditaruh datar agar mayo tidak tumpah ya kak.`
                   <p className="font-sans text-[11px] text-[#5C3D2E]/70 mt-1">
                     Alamat ini otomatis tercetak di header struk kasir thermal, invoice resmi, dan petunjuk ambil mandiri bagi pembeli.
                   </p>
+                </div>
+              </div>
+
+              {/* KOMISI PLATFORM OJEK ONLINE (GOFOOD, SHOPEEFOOD, GRABFOOD) */}
+              <div className="pt-2 border-t border-[#111111]/10">
+                <div className="flex items-center gap-2 mb-2">
+                  <span className="text-base">🛵</span>
+                  <label className="font-sans text-xs font-bold text-[#111111] uppercase tracking-wider">
+                    Komisi Platform Online Food Delivery (OFD)
+                  </label>
+                </div>
+                <p className="font-sans text-[11px] text-[#5C3D2E]/75 mb-3">
+                  Persentase potongan bagi hasil platform. Sistem akan otomatis memotong komisi ini dari omzet kotor agar laba bersih yang tercatat di Buku Kas adalah uang riil yang cair ke rekening resto.
+                </p>
+
+                <div className="grid grid-cols-1 sm:grid-cols-3 gap-3">
+                  <div className="p-3 bg-white rounded-[14px] border border-[#111111]/20">
+                    <label className="block font-sans text-[11px] font-bold text-emerald-800 mb-1">
+                      🛵 Komisi GoFood (%):
+                    </label>
+                    <div className="flex items-center gap-1.5">
+                      <input
+                        type="number"
+                        min="0"
+                        max="50"
+                        value={localConfig.gofoodCommissionPercent ?? 20}
+                        onChange={(e) => setLocalConfig({ ...localConfig, gofoodCommissionPercent: Number(e.target.value) || 0 })}
+                        className="w-full rounded-lg border border-[#111111] px-2.5 py-1.5 font-mono font-bold text-xs bg-white text-[#111111]"
+                      />
+                      <span className="font-bold text-xs text-gray-500">%</span>
+                    </div>
+                  </div>
+
+                  <div className="p-3 bg-white rounded-[14px] border border-[#111111]/20">
+                    <label className="block font-sans text-[11px] font-bold text-orange-800 mb-1">
+                      🍔 Komisi ShopeeFood (%):
+                    </label>
+                    <div className="flex items-center gap-1.5">
+                      <input
+                        type="number"
+                        min="0"
+                        max="50"
+                        value={localConfig.shopeefoodCommissionPercent ?? 20}
+                        onChange={(e) => setLocalConfig({ ...localConfig, shopeefoodCommissionPercent: Number(e.target.value) || 0 })}
+                        className="w-full rounded-lg border border-[#111111] px-2.5 py-1.5 font-mono font-bold text-xs bg-white text-[#111111]"
+                      />
+                      <span className="font-bold text-xs text-gray-500">%</span>
+                    </div>
+                  </div>
+
+                  <div className="p-3 bg-white rounded-[14px] border border-[#111111]/20">
+                    <label className="block font-sans text-[11px] font-bold text-green-800 mb-1">
+                      🟢 Komisi GrabFood (%):
+                    </label>
+                    <div className="flex items-center gap-1.5">
+                      <input
+                        type="number"
+                        min="0"
+                        max="50"
+                        value={localConfig.grabfoodCommissionPercent ?? 20}
+                        onChange={(e) => setLocalConfig({ ...localConfig, grabfoodCommissionPercent: Number(e.target.value) || 0 })}
+                        className="w-full rounded-lg border border-[#111111] px-2.5 py-1.5 font-mono font-bold text-xs bg-white text-[#111111]"
+                      />
+                      <span className="font-bold text-xs text-gray-500">%</span>
+                    </div>
+                  </div>
                 </div>
               </div>
 

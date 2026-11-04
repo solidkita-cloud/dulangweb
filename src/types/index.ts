@@ -108,6 +108,9 @@ export interface StoreConfig {
   qrisTeks?: string;
   qrisNmid?: string;
   qrisImage?: string;
+  gofoodCommissionPercent?: number;     // Default: 20%
+  shopeefoodCommissionPercent?: number; // Default: 20%
+  grabfoodCommissionPercent?: number;   // Default: 20%
 }
 
 export interface ChildVoucherPerk {
@@ -174,7 +177,11 @@ export interface OrderRecord {
   status: OrderStatus;
   created_at: string;
   completed_at?: string;
-  channel: 'web_wa' | 'walk_in';
+  channel: 'web_wa' | 'walk_in' | 'gofood' | 'shopeefood' | 'grabfood';
+  external_order_id?: string;            // Nomor ID/Resi GoFood/ShopeeFood (e.g. GF-104)
+  platform_commission_percent?: number;  // Persentase komisi bagi hasil (e.g. 20)
+  platform_commission_amount?: number;   // Nominal potongan platform (e.g. 6000)
+  net_platform_payout?: number;          // Nominal bersih yang cair ke rekening resto (e.g. 24000)
   cash_received?: number;
   cash_change?: number;
   delivery_method?: 'pickup' | 'delivery';
