@@ -17,7 +17,20 @@ import {
 import { SIDOARJO_AREAS, INDONESIA_CITIES, CITY_DISTRICTS, MONTHS_INDONESIA, DEFAULT_SIDOARJO_DELIVERY_RATES, checkStoreOpenStatus } from '../lib/constants';
 import { getSupabaseCredentials, saveSupabaseCredentials, clearSupabaseCredentials } from '../lib/supabase';
 import { storageService } from '../services/storageService';
-import { playNewCustomerChime, isAudioEnabled, setAudioEnabled } from '../lib/audioNotifier';
+import {
+  playNewCustomerChime,
+  isAudioEnabled,
+  setAudioEnabled,
+  getAudioVolume,
+  setAudioVolume,
+  getAudioSoundType,
+  setAudioSoundType,
+  isVibrationEnabled,
+  setVibrationEnabled,
+  triggerKitchenVibration,
+  NotificationSoundType,
+  NOTIFICATION_SOUND_OPTIONS,
+} from '../lib/audioNotifier';
 import { StoreClosedModal } from '../components/common/StoreClosedModal';
 import { ImageCropModal } from '../components/common/ImageCropModal';
 import { SubuhCalculatorModal } from '../components/common/SubuhCalculatorModal';
@@ -184,6 +197,10 @@ export const OwnerDashboardView: React.FC<OwnerDashboardViewProps> = ({
   const [isQuickWaOpen, setIsQuickWaOpen] = useState<boolean>(false);
   const [isMobileMerchantBarExpanded, setIsMobileMerchantBarExpanded] = useState<boolean>(false);
   const [orderViewMode, setOrderViewMode] = useState<'compact' | 'cards'>('compact');
+  const [isSoundModalOpen, setIsSoundModalOpen] = useState<boolean>(false);
+  const [audioVolume, setAudioVolumeState] = useState<number>(() => getAudioVolume());
+  const [audioSoundType, setAudioSoundTypeState] = useState<NotificationSoundType>(() => getAudioSoundType());
+  const [audioVibration, setAudioVibrationState] = useState<boolean>(() => isVibrationEnabled());
 
   // --- TESTIMONIALS CURATION STATE ---
   const [testimonials, setTestimonials] = useState<CustomerTestimonial[]>(() => storageService.getTestimonials());
@@ -494,11 +511,34 @@ export const OwnerDashboardView: React.FC<OwnerDashboardViewProps> = ({
     }
   };
 
-  const handleTestSound = () => {
-    playNewCustomerChime();
-    onShowToast('Ting-dong! 🔔 Suara bell notifikasi aktif');
-    if (typeof window !== 'undefined' && 'Notification' in window && Notification.permission === 'default') {
-      Notification.requestPermission();
+  const handleSaveSoundSettings = (newType: NotificationSoundType, newVol: number, newVib: boolean) => {
+    setAudioSoundType(newType);
+    setAudioVolume(newVol);
+    setVibrationEnabled(newVib);
+    setAudioSoundTypeState(newType);
+    setAudioVolumeState(newVol);
+    setAudioVibrationState(newVib);
+    playNewCustomerChime(newType, newVol);
+    setIsSoundModalOpen(false);
+    onShowToast(`Pengaturan suara & volume berhasil disimpan! 🔊 (${Math.round(newVol * 100)}%)`);
+  };
+
+  const handleRequestPushNotification = async () => {
+    if (typeof window !== 'undefined' && 'Notification' in window) {
+      try {
+        const perm = await Notification.requestPermission();
+        if (perm === 'granted') {
+          onShowToast('Izin notifikasi banner HP berhasil diaktifkan! 🔔');
+          new Notification('Dapur Dulang Indonesia', {
+            body: 'Notifikasi pesanan dapur berhasil diaktifkan di HP Anda! 🥟✨',
+            icon: '/dulang-logo.png',
+          });
+        } else {
+          onShowToast('Izin notifikasi ditolak oleh browser.');
+        }
+      } catch {
+        onShowToast('Browser tidak mendukung izin notifikasi.');
+      }
     }
   };
 
@@ -2141,11 +2181,12 @@ Catatan Kurir: Pastikan posisi dus ditaruh datar agar mayo tidak tumpah ya kak.`
             </button>
             <button
               type="button"
-              onClick={handleTestSound}
-              className="cursor-pointer px-2 sm:px-2.5 py-1 text-white/70 hover:text-white rounded-full font-sans text-[11px] sm:text-xs transition"
-              title="Tes bunyi bel notifikasi"
+              onClick={() => setIsSoundModalOpen(true)}
+              className="cursor-pointer px-2 sm:px-2.5 py-1 text-white/90 hover:text-[#FFD700] hover:bg-white/10 rounded-full font-sans text-[11px] sm:text-xs transition flex items-center gap-1 font-bold"
+              title="Atur volume & pilih nada notifikasi bel dapur"
             >
-              Tes
+              <span>⚙️</span>
+              <span className="hidden xs:inline">Atur Nada</span>
             </button>
           </div>
 
@@ -6234,6 +6275,205 @@ Catatan Kurir: Pastikan posisi dus ditaruh datar agar mayo tidak tumpah ya kak.`
             </form>
           </div>
 
+          {/* SECTION 2B: NOTIFIKASI SUARA & VOLUME BEL DAPUR */}
+          <div className="bg-white rounded-[24px] p-6 lg:p-8 border-2 border-[#111111] shadow-[4px_4px_0_#111111] space-y-6">
+            <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-4">
+              <div>
+                <div className="inline-flex items-center gap-2 bg-[#FFD700] text-[#111111] px-3 py-0.5 rounded-full font-sans text-[11px] font-bold uppercase tracking-wider mb-2">
+                  🔊 Audio & Notifikasi Dapur
+                </div>
+                <h2 className="font-hand font-bold text-[30px] text-[#111111] leading-none">
+                  Kekencangan Volume & Nada Bel Dapur
+                </h2>
+                <p className="font-sans text-xs text-[#5C3D2E]/70 mt-1">
+                  Atur kekencangan volume bel (0% - 100%) dan pilih nada notifikasi saat ada pesanan atau scan pelanggan baru.
+                </p>
+              </div>
+
+              <div className="flex items-center gap-2 shrink-0">
+                <button
+                  type="button"
+                  onClick={toggleSound}
+                  className={`cursor-pointer px-4 py-2 rounded-full font-sans font-bold text-xs border-2 shadow-xs transition flex items-center gap-1.5 ${
+                    soundEnabled
+                      ? 'bg-emerald-500 text-white border-[#111111]'
+                      : 'bg-gray-200 text-gray-700 border-gray-400'
+                  }`}
+                >
+                  <span>{soundEnabled ? '🔔' : '🔕'}</span>
+                  <span>{soundEnabled ? 'Suara Bel AKTIF' : 'Suara Bel SENYAP'}</span>
+                </button>
+              </div>
+            </div>
+
+            {/* Slider Volume */}
+            <div className="bg-[#FFFDF4] rounded-[20px] p-4 sm:p-5 border-2 border-[#111111]/20 space-y-3">
+              <div className="flex items-center justify-between">
+                <label className="font-sans font-bold text-xs sm:text-sm text-[#111111] flex items-center gap-2">
+                  <span>🔊</span>
+                  <span>Kekencangan Volume Bel Notifikasi:</span>
+                </label>
+                <span className="font-mono font-bold text-sm bg-[#111111] text-[#FFD700] px-3 py-0.5 rounded-full">
+                  {Math.round(audioVolume * 100)}%
+                </span>
+              </div>
+              <div className="flex items-center gap-3">
+                <span className="text-xs text-gray-500">🔈 Pelan</span>
+                <input
+                  type="range"
+                  min="0.1"
+                  max="1.0"
+                  step="0.05"
+                  value={audioVolume}
+                  onChange={(e) => {
+                    const newVol = parseFloat(e.target.value);
+                    setAudioVolumeState(newVol);
+                    setAudioVolume(newVol);
+                  }}
+                  className="w-full accent-[#111111] cursor-pointer"
+                />
+                <span className="text-xs text-gray-900 font-bold">🔊 Kencang</span>
+              </div>
+              <p className="font-sans text-xs text-[#5C3D2E]/80">
+                Disarankan <strong className="text-[#111111]">80% – 100%</strong> agar suara bel terdengar jelas menembus suara wajan panas & kebisingan dapur.
+              </p>
+            </div>
+
+            {/* Pilihan Nada Bel */}
+            <div className="space-y-3">
+              <label className="block font-sans text-xs font-bold text-[#111111]">
+                🎵 Pilih Karakter Nada Bel Pesanan:
+              </label>
+              <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-2.5">
+                {NOTIFICATION_SOUND_OPTIONS.map((opt) => {
+                  const isSelected = audioSoundType === opt.id;
+                  return (
+                    <div
+                      key={opt.id}
+                      onClick={() => {
+                        setAudioSoundTypeState(opt.id);
+                        setAudioSoundType(opt.id);
+                        playNewCustomerChime(opt.id, audioVolume);
+                      }}
+                      className={`p-3.5 rounded-[18px] border-2 transition cursor-pointer flex flex-col justify-between gap-2.5 ${
+                        isSelected
+                          ? 'bg-[#FFF8E7] border-[#111111] shadow-[3px_3px_0_#111111]'
+                          : 'bg-white border-[#111111]/20 hover:border-[#111111]/50'
+                      }`}
+                    >
+                      <div className="flex items-start justify-between gap-2">
+                        <div className="flex items-center gap-2">
+                          <span className="text-2xl">{opt.icon}</span>
+                          <div>
+                            <div className="font-sans font-bold text-xs text-[#111111]">
+                              {opt.label}
+                            </div>
+                            <div className="text-[10px] text-[#5C3D2E]/70 line-clamp-2">
+                              {opt.desc}
+                            </div>
+                          </div>
+                        </div>
+                      </div>
+
+                      <div className="flex items-center justify-between pt-1 border-t border-[#111111]/10">
+                        {isSelected ? (
+                          <span className="text-[10px] bg-[#111111] text-[#FFD700] px-2 py-0.5 rounded-full font-bold">
+                            ✓ Terpilih
+                          </span>
+                        ) : (
+                          <span className="text-[10px] text-gray-500 font-semibold">Pilih</span>
+                        )}
+
+                        <button
+                          type="button"
+                          onClick={(e) => {
+                            e.stopPropagation();
+                            setAudioSoundTypeState(opt.id);
+                            setAudioSoundType(opt.id);
+                            playNewCustomerChime(opt.id, audioVolume);
+                          }}
+                          className="cursor-pointer bg-white hover:bg-gray-100 text-[#111111] px-2.5 py-1 rounded-full text-[11px] font-bold font-sans border border-[#111111]/30 shadow-2xs"
+                        >
+                          ▶️ Tes
+                        </button>
+                      </div>
+                    </div>
+                  );
+                })}
+              </div>
+            </div>
+
+            {/* Toggle Getar & Banner */}
+            <div className="grid sm:grid-cols-2 gap-3 pt-2 border-t border-[#111111]/10">
+              <div className="flex items-center justify-between p-3.5 bg-[#FFFDF4] rounded-[18px] border border-[#111111]/20">
+                <div className="flex items-center gap-2.5">
+                  <span className="text-xl">📳</span>
+                  <div>
+                    <span className="font-sans font-bold text-xs text-[#111111] block">
+                      Getar HP (Haptic Vibration)
+                    </span>
+                    <span className="font-sans text-[11px] text-[#5C3D2E]/70">
+                      HP bergetar di tangan/saku saat pesanan tiba
+                    </span>
+                  </div>
+                </div>
+                <input
+                  type="checkbox"
+                  checked={audioVibration}
+                  onChange={(e) => {
+                    setAudioVibrationState(e.target.checked);
+                    setVibrationEnabled(e.target.checked);
+                    if (e.target.checked) triggerKitchenVibration();
+                  }}
+                  className="w-5 h-5 accent-[#111111] rounded cursor-pointer"
+                />
+              </div>
+
+              <div className="flex items-center justify-between p-3.5 bg-blue-50/70 rounded-[18px] border border-blue-200">
+                <div className="flex items-center gap-2.5">
+                  <span className="text-xl">📱</span>
+                  <div>
+                    <span className="font-sans font-bold text-xs text-blue-950 block">
+                      Notifikasi Banner Status Bar
+                    </span>
+                    <span className="font-sans text-[11px] text-blue-800/80">
+                      Muncul pop-up di layar atas HP
+                    </span>
+                  </div>
+                </div>
+                <button
+                  type="button"
+                  onClick={handleRequestPushNotification}
+                  className="cursor-pointer bg-blue-600 hover:bg-blue-700 text-white px-3 py-1.5 rounded-full font-sans font-bold text-xs shadow-2xs"
+                >
+                  Izin Banner ↗
+                </button>
+              </div>
+            </div>
+
+            {/* Tombol Simpan & Tes */}
+            <div className="flex flex-wrap items-center justify-between gap-3 pt-2">
+              <button
+                type="button"
+                onClick={() => playNewCustomerChime(audioSoundType, audioVolume)}
+                className="cursor-pointer bg-white hover:bg-amber-50 text-[#111111] px-4 py-2 rounded-full font-sans font-bold text-xs border border-[#111111] shadow-2xs flex items-center gap-1.5"
+              >
+                <span>🔔</span>
+                <span>Tes Bunyi Sekarang</span>
+              </button>
+
+              <button
+                type="button"
+                onClick={() => {
+                  handleSaveSoundSettings(audioSoundType, audioVolume, audioVibration);
+                }}
+                className="cursor-pointer bg-[#111111] hover:bg-black text-[#FFD700] px-6 py-2.5 rounded-full font-sans font-bold text-xs border-2 border-[#111111] shadow-[2px_2px_0_#FFD700] transition active:scale-95"
+              >
+                Simpan Pengaturan Suara ✓
+              </button>
+            </div>
+          </div>
+
           {/* SECTION 3A: STATUS KLOTER GORENG & PRE-ORDER MENU BESOK */}
           <div className="bg-white rounded-[24px] p-6 lg:p-8 border-2 border-[#111111] shadow-[4px_4px_0_#111111] space-y-6">
             <div>
@@ -9812,6 +10052,227 @@ Catatan Kurir: Pastikan posisi dus ditaruh datar agar mayo tidak tumpah ya kak.`
         storeConfig={storeConfig}
         onShowToast={onShowToast}
       />
+
+      {/* ==============================================================================
+          MODAL PENGATURAN SUARA NOTIFIKASI & VOLUME BEL DAPUR
+      ============================================================================== */}
+      {isSoundModalOpen && (
+        <div
+          onClick={() => setIsSoundModalOpen(false)}
+          className="fixed inset-0 z-50 flex items-end sm:items-center justify-center bg-black/60 backdrop-blur-xs p-0 sm:p-4"
+        >
+          <div
+            onClick={(e) => e.stopPropagation()}
+            className="bg-[#FFFDF4] w-full max-w-lg rounded-t-[28px] sm:rounded-[28px] border-t-3 sm:border-3 border-[#111111] shadow-[0_-8px_24px_rgba(0,0,0,0.3)] sm:shadow-[8px_8px_0_#111111] p-5 sm:p-6 space-y-5 max-h-[90vh] overflow-y-auto animate-in slide-in-from-bottom duration-200"
+          >
+            {/* Header info */}
+            <div className="flex items-center justify-between pb-3 border-b-2 border-[#111111]/15">
+              <div className="flex items-center gap-2.5">
+                <div className="w-10 h-10 rounded-full bg-[#FFD700] text-[#111111] flex items-center justify-center text-xl font-bold border-2 border-[#111111] shadow-2xs">
+                  🔊
+                </div>
+                <div>
+                  <h3 className="font-hand font-bold text-2xl text-[#111111] leading-none">
+                    Suara & Volume Bel Dapur
+                  </h3>
+                  <p className="font-sans text-xs text-[#5C3D2E]/70 mt-0.5">
+                    Kustomisasi nada dan volume notifikasi pesanan masuk
+                  </p>
+                </div>
+              </div>
+              <button
+                type="button"
+                onClick={() => setIsSoundModalOpen(false)}
+                className="cursor-pointer w-8 h-8 rounded-full bg-white text-[#111111] border-2 border-[#111111] font-bold text-sm flex items-center justify-center hover:bg-[#FFD700]"
+              >
+                ✕
+              </button>
+            </div>
+
+            {/* Switch Master Sound ON / OFF */}
+            <div className="flex items-center justify-between p-3.5 bg-white rounded-[18px] border-2 border-[#111111]/20">
+              <div>
+                <span className="font-sans font-bold text-xs text-[#111111] block">
+                  Notifikasi Suara Bel
+                </span>
+                <span className="font-sans text-[11px] text-[#5C3D2E]/70">
+                  {soundEnabled ? 'Bel berbunyi saat pesanan/pelanggan baru tiba' : 'Bel dibisukan (senyap)'}
+                </span>
+              </div>
+              <button
+                type="button"
+                onClick={toggleSound}
+                className={`cursor-pointer px-4 py-1.5 rounded-full font-sans font-bold text-xs border transition ${
+                  soundEnabled
+                    ? 'bg-emerald-500 text-white border-emerald-700 shadow-xs'
+                    : 'bg-gray-200 text-gray-700 border-gray-400'
+                }`}
+              >
+                {soundEnabled ? 'AKTIF ✓' : 'MATI (SENYAP)'}
+              </button>
+            </div>
+
+            {/* Volume Slider */}
+            <div className="bg-white rounded-[18px] p-4 border-2 border-[#111111]/20 space-y-2.5">
+              <div className="flex items-center justify-between">
+                <label className="font-sans font-bold text-xs text-[#111111] flex items-center gap-1.5">
+                  <span>🔊</span>
+                  <span>Kekencangan Volume Bel Dapur:</span>
+                </label>
+                <span className="font-mono font-bold text-sm bg-[#111111] text-[#FFD700] px-2.5 py-0.5 rounded-full">
+                  {Math.round(audioVolume * 100)}%
+                </span>
+              </div>
+              <div className="flex items-center gap-3">
+                <span className="text-xs text-gray-500">🔈 Pelan</span>
+                <input
+                  type="range"
+                  min="0.1"
+                  max="1.0"
+                  step="0.05"
+                  value={audioVolume}
+                  onChange={(e) => {
+                    const newVol = parseFloat(e.target.value);
+                    setAudioVolumeState(newVol);
+                    setAudioVolume(newVol);
+                  }}
+                  className="w-full accent-[#111111] cursor-pointer"
+                />
+                <span className="text-xs text-gray-800 font-bold">🔊 Kencang</span>
+              </div>
+              <p className="font-sans text-[11px] text-[#5C3D2E]/70">
+                Disarankan <strong className="text-[#111111]">80% – 100%</strong> agar terdengar jelas saat dapur sedang bising menggoreng.
+              </p>
+            </div>
+
+            {/* Sound Tone Chooser */}
+            <div className="space-y-2">
+              <label className="block font-sans text-xs font-bold text-[#111111]">
+                🎵 Pilih Karakter Nada Bel Notifikasi:
+              </label>
+              <div className="grid grid-cols-1 gap-2">
+                {NOTIFICATION_SOUND_OPTIONS.map((opt) => {
+                  const isSelected = audioSoundType === opt.id;
+                  return (
+                    <div
+                      key={opt.id}
+                      onClick={() => {
+                        setAudioSoundTypeState(opt.id);
+                        setAudioSoundType(opt.id);
+                        playNewCustomerChime(opt.id, audioVolume);
+                      }}
+                      className={`p-3 rounded-[16px] border-2 transition cursor-pointer flex items-center justify-between gap-3 ${
+                        isSelected
+                          ? 'bg-[#FFF8E7] border-[#111111] shadow-[2px_2px_0_#111111]'
+                          : 'bg-white border-[#111111]/15 hover:border-[#111111]/40'
+                      }`}
+                    >
+                      <div className="flex items-center gap-2.5 min-w-0">
+                        <span className="text-2xl shrink-0">{opt.icon}</span>
+                        <div className="min-w-0">
+                          <div className="flex items-center gap-2">
+                            <span className="font-sans font-bold text-xs text-[#111111]">
+                              {opt.label}
+                            </span>
+                            {isSelected && (
+                              <span className="text-[9px] bg-[#111111] text-[#FFD700] px-1.5 py-0.2 rounded-full font-bold">
+                                Terpilih ✓
+                              </span>
+                            )}
+                          </div>
+                          <span className="font-sans text-[11px] text-[#5C3D2E]/70 block truncate">
+                            {opt.desc}
+                          </span>
+                        </div>
+                      </div>
+
+                      <button
+                        type="button"
+                        onClick={(e) => {
+                          e.stopPropagation();
+                          setAudioSoundTypeState(opt.id);
+                          setAudioSoundType(opt.id);
+                          playNewCustomerChime(opt.id, audioVolume);
+                        }}
+                        className="cursor-pointer bg-white hover:bg-gray-100 text-[#111111] px-2.5 py-1 rounded-full text-xs font-bold font-sans border border-[#111111]/30 shrink-0 shadow-2xs"
+                        title="Dengarkan contoh bunyi nada ini"
+                      >
+                        ▶️ Tes
+                      </button>
+                    </div>
+                  );
+                })}
+              </div>
+            </div>
+
+            {/* Mobile Vibration Toggle */}
+            <div className="flex items-center justify-between p-3.5 bg-white rounded-[18px] border border-[#111111]/20">
+              <div className="flex items-center gap-2.5">
+                <span className="text-xl">📳</span>
+                <div>
+                  <span className="font-sans font-bold text-xs text-[#111111] block">
+                    Getar HP (Haptic Feedback)
+                  </span>
+                  <span className="font-sans text-[11px] text-[#5C3D2E]/70">
+                    HP bergetar di tangan/saku saat pesanan baru masuk
+                  </span>
+                </div>
+              </div>
+              <input
+                type="checkbox"
+                checked={audioVibration}
+                onChange={(e) => {
+                  setAudioVibrationState(e.target.checked);
+                  setVibrationEnabled(e.target.checked);
+                  if (e.target.checked) triggerKitchenVibration();
+                }}
+                className="w-5 h-5 accent-[#111111] rounded cursor-pointer"
+              />
+            </div>
+
+            {/* Web Push Banner Permission Button */}
+            <div className="p-3.5 bg-blue-50/70 rounded-[18px] border border-blue-200 flex flex-col sm:flex-row sm:items-center justify-between gap-2.5">
+              <div>
+                <span className="font-sans font-bold text-xs text-blue-950 flex items-center gap-1">
+                  <span>📱</span> Notifikasi Banner Layar HP
+                </span>
+                <span className="font-sans text-[11px] text-blue-800/80 block mt-0.5">
+                  Munculkan banner di status bar HP saat tab berjalan
+                </span>
+              </div>
+              <button
+                type="button"
+                onClick={handleRequestPushNotification}
+                className="cursor-pointer bg-blue-600 hover:bg-blue-700 text-white px-3.5 py-1.5 rounded-full font-sans font-bold text-xs shrink-0 shadow-2xs transition"
+              >
+                Aktifkan Izin Banner ↗
+              </button>
+            </div>
+
+            {/* Footer Buttons */}
+            <div className="flex items-center justify-between pt-2 border-t border-[#111111]/15 gap-2">
+              <button
+                type="button"
+                onClick={() => playNewCustomerChime(audioSoundType, audioVolume)}
+                className="cursor-pointer bg-white hover:bg-amber-50 text-[#111111] px-4 py-2.5 rounded-full font-sans font-bold text-xs border border-[#111111] transition flex items-center gap-1.5 shadow-2xs"
+              >
+                <span>🔔</span>
+                <span>Tes Bunyi Sekarang</span>
+              </button>
+
+              <button
+                type="button"
+                onClick={() => {
+                  handleSaveSoundSettings(audioSoundType, audioVolume, audioVibration);
+                }}
+                className="cursor-pointer bg-[#111111] hover:bg-black text-[#FFD700] px-5 py-2.5 rounded-full font-sans font-bold text-xs border-2 border-[#111111] shadow-[2px_2px_0_#FFD700] transition active:scale-95"
+              >
+                Simpan & Tutup ✓
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
 
       {/* MODAL CETAK LAPORAN KEUANGAN BULANAN RESMI */}
       {isPrintingFinancialReport && (
