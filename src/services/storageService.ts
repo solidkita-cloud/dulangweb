@@ -18,6 +18,7 @@ import {
   MenuRecipe,
   KitchenCookingStatus,
   StaffRole,
+  StockMovementRecord,
 } from '../types';
 import {
   DEFAULT_MENUS,
@@ -57,6 +58,7 @@ const STORAGE_KEYS = {
   KITCHEN_RECAPS: 'dulang_kitchen_recaps_v1',
   PANTRY_INGREDIENTS: 'dulang_pantry_ingredients_v1',
   MENU_RECIPES: 'dulang_menu_recipes_v1',
+  STOCK_MOVEMENTS: 'dulang_stock_movements_v1',
 };
 
 export const DEFAULT_EXPENSES: ExpenseRecord[] = [];
@@ -2617,7 +2619,7 @@ _Dapur Dulang Indonesia - Risoles & Katering Sidoarjo_`;
   // --- BACKUP & RESTORE DATABASE OFFLINE (.JSON) ---
   exportDatabaseBackup(): DulangDatabaseBackup {
     return {
-      version: '1.1',
+      version: '1.2',
       exported_at: new Date().toISOString(),
       app_name: 'Dapur Dulang Indonesia',
       menus: this.getMenus(),
@@ -2631,6 +2633,7 @@ _Dapur Dulang Indonesia - Risoles & Katering Sidoarjo_`;
       menuRecipes: this.getMenuRecipes(),
       kitchenRecaps: this.getKitchenRecaps(),
       subuhPlans: this.getSubuhPlans(),
+      stockMovements: this.getStockMovements(),
     };
   },
 
@@ -2673,6 +2676,9 @@ _Dapur Dulang Indonesia - Risoles & Katering Sidoarjo_`;
       if (Array.isArray(backup.subuhPlans)) {
         localStorage.setItem(STORAGE_KEYS.SUBUH_PLANS, JSON.stringify(backup.subuhPlans));
       }
+      if (Array.isArray(backup.stockMovements)) {
+        localStorage.setItem(STORAGE_KEYS.STOCK_MOVEMENTS, JSON.stringify(backup.stockMovements));
+      }
 
       if (typeof window !== 'undefined') {
         window.dispatchEvent(new Event('dulang_menus_updated'));
@@ -2684,6 +2690,7 @@ _Dapur Dulang Indonesia - Risoles & Katering Sidoarjo_`;
         window.dispatchEvent(new Event('dulang_expenses_updated'));
         window.dispatchEvent(new Event('dulang_pantry_updated'));
         window.dispatchEvent(new Event('dulang_recipes_updated'));
+        window.dispatchEvent(new Event('dulang_stock_movements_updated'));
       }
 
       const totalOrders = Array.isArray(backup.orders) ? backup.orders.length : 0;
@@ -2798,6 +2805,7 @@ _Dapur Dulang Indonesia - Risoles & Katering Sidoarjo_`;
     if (idx < 0) return;
 
     const item = list[idx];
+    const prevStock = item.currentStock;
     const newStock = Number((item.currentStock + addedQty).toFixed(2));
     const newCost = costPerUnit !== undefined && costPerUnit > 0 ? costPerUnit : item.costPerUnit;
 
@@ -2809,6 +2817,18 @@ _Dapur Dulang Indonesia - Risoles & Katering Sidoarjo_`;
     };
 
     this.savePantryIngredients(list);
+
+    // Catat ke Kartu Stok (Audit Log Pergerakan)
+    this.recordStockMovement({
+      ingredientId: item.id,
+      ingredientName: item.name,
+      type: 'masuk',
+      amount: addedQty,
+      unit: item.unit,
+      previousStock: prevStock,
+      newStock,
+      note: `Restock belanja (+${addedQty} ${item.unit})`,
+    });
 
     if (recordExpense) {
       const totalCost = Math.round(addedQty * newCost);
@@ -2822,6 +2842,67 @@ _Dapur Dulang Indonesia - Risoles & Katering Sidoarjo_`;
         });
       }
     }
+  },
+
+  updatePantryIngredient(updated: PantryIngredient, note?: string): void {
+    const list = this.getPantryIngredients();
+    const idx = list.findIndex((p) => p.id === updated.id);
+    if (idx < 0) return;
+
+    const existing = list[idx];
+    if (existing.currentStock !== updated.currentStock) {
+      const diff = Number((updated.currentStock - existing.currentStock).toFixed(3));
+      this.recordStockMovement({
+        ingredientId: updated.id,
+        ingredientName: updated.name,
+        type: 'penyesuaian',
+        amount: Math.abs(diff),
+        unit: updated.unit,
+        previousStock: existing.currentStock,
+        newStock: updated.currentStock,
+        note: note || `Penyesuaian stok opname (${diff > 0 ? `+${diff}` : `${diff}`} ${updated.unit})`,
+      });
+    }
+
+    list[idx] = {
+      ...updated,
+      updatedAt: new Date().toISOString(),
+    };
+    this.savePantryIngredients(list);
+  },
+
+  getStockMovements(): StockMovementRecord[] {
+    try {
+      const data = localStorage.getItem(STORAGE_KEYS.STOCK_MOVEMENTS);
+      if (data) {
+        const parsed = JSON.parse(data);
+        if (Array.isArray(parsed)) return parsed;
+      }
+    } catch (e) {
+      console.warn('Failed to read stock movements:', e);
+    }
+    return [];
+  },
+
+  saveStockMovements(movements: StockMovementRecord[]): void {
+    // Simpan maksimal 500 riwayat transaksi stok terakhir agar performa kilat
+    const trimmed = movements.slice(0, 500);
+    localStorage.setItem(STORAGE_KEYS.STOCK_MOVEMENTS, JSON.stringify(trimmed));
+    if (typeof window !== 'undefined') {
+      window.dispatchEvent(new Event('dulang_stock_movements_updated'));
+    }
+  },
+
+  recordStockMovement(movement: Omit<StockMovementRecord, 'id' | 'createdAt'>): StockMovementRecord {
+    const list = this.getStockMovements();
+    const newRecord: StockMovementRecord = {
+      ...movement,
+      id: `MOV-${Date.now()}-${Math.random().toString(36).substring(2, 6).toUpperCase()}`,
+      createdAt: new Date().toISOString(),
+    };
+    list.unshift(newRecord);
+    this.saveStockMovements(list);
+    return newRecord;
   },
 
   getMenuRecipes(): MenuRecipe[] {
@@ -2881,9 +2962,24 @@ _Dapur Dulang Indonesia - Risoles & Katering Sidoarjo_`;
         const pIdx = pantry.findIndex((p) => p.id === comp.ingredientId);
         if (pIdx >= 0) {
           const usedQty = comp.amountPerPcs * ordItem.qty;
-          pantry[pIdx].currentStock = Math.max(0, Number((pantry[pIdx].currentStock - usedQty).toFixed(3)));
+          const prevStock = pantry[pIdx].currentStock;
+          const nextStock = Math.max(0, Number((prevStock - usedQty).toFixed(3)));
+          pantry[pIdx].currentStock = nextStock;
           pantry[pIdx].updatedAt = new Date().toISOString();
           hasChanges = true;
+
+          // Catat ke Kartu Stok (Audit Log Pergerakan Keluar)
+          this.recordStockMovement({
+            ingredientId: pantry[pIdx].id,
+            ingredientName: pantry[pIdx].name,
+            type: 'keluar',
+            amount: Number(usedQty.toFixed(3)),
+            unit: pantry[pIdx].unit,
+            previousStock: prevStock,
+            newStock: nextStock,
+            note: `Pesanan #${order.id} (${ordItem.qty}x ${ordItem.nama})`,
+            orderId: order.id,
+          });
         }
       });
     });

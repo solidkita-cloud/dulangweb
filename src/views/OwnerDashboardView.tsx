@@ -201,6 +201,13 @@ export const OwnerDashboardView: React.FC<OwnerDashboardViewProps> = ({
   const [audioVolume, setAudioVolumeState] = useState<number>(() => getAudioVolume());
   const [audioSoundType, setAudioSoundTypeState] = useState<NotificationSoundType>(() => getAudioSoundType());
   const [audioVibration, setAudioVibrationState] = useState<boolean>(() => isVibrationEnabled());
+  const [pantryVersion, setPantryVersion] = useState<number>(0);
+
+  useEffect(() => {
+    const handlePantryUpdate = () => setPantryVersion((v) => v + 1);
+    window.addEventListener('dulang_pantry_updated', handlePantryUpdate);
+    return () => window.removeEventListener('dulang_pantry_updated', handlePantryUpdate);
+  }, []);
 
   // --- TESTIMONIALS CURATION STATE ---
   const [testimonials, setTestimonials] = useState<CustomerTestimonial[]>(() => storageService.getTestimonials());
@@ -1045,6 +1052,9 @@ Catatan Kurir: Pastikan posisi dus ditaruh datar agar mayo tidak tumpah ya kak.`
       (m) => typeof m.sisaStok === 'number' && m.sisaStok <= 5
     );
 
+    const pantry = storageService.getPantryIngredients();
+    const lowStockPantry = pantry.filter((p) => p.currentStock <= p.minStock);
+
     return {
       localTodayStr,
       todayOmset,
@@ -1054,8 +1064,11 @@ Catatan Kurir: Pastikan posisi dus ditaruh datar agar mayo tidak tumpah ya kak.`
       todayNetCash,
       activeKitchenCount: activeKitchenOrders.length,
       lowStockCount: lowStockMenus.length,
+      lowStockMenuCount: lowStockMenus.length,
+      lowStockPantryCount: lowStockPantry.length,
+      lowStockPantryNames: lowStockPantry.map((p) => p.name).slice(0, 3).join(', '),
     };
-  }, [orders, expenses, menus]);
+  }, [orders, expenses, menus, pantryVersion]);
 
   const handleExportExpensesCSV = () => {
     const {
@@ -2610,15 +2623,28 @@ Catatan Kurir: Pastikan posisi dus ditaruh datar agar mayo tidak tumpah ya kak.`
             </div>
           </div>
 
-          {/* Low Stock Warning Alert if any */}
-          {todayExecutiveSummary.lowStockCount > 0 && (
+          {/* Low Stock Warning Alert: Raw Ingredients & Portions */}
+          {todayExecutiveSummary.lowStockPantryCount > 0 && (
+            <button
+              type="button"
+              onClick={() => setActiveTab('inventory')}
+              className="w-full bg-rose-500/25 hover:bg-rose-500/35 border border-rose-400/50 rounded-xl px-2.5 py-1.5 flex items-center justify-between text-[11px] text-rose-200 cursor-pointer transition active:scale-98"
+            >
+              <span className="flex items-center gap-1 font-bold truncate">
+                <span>🥩</span> {todayExecutiveSummary.lowStockPantryCount} bahan gudang menipis ({todayExecutiveSummary.lowStockPantryNames})
+              </span>
+              <span className="text-[10px] underline text-[#FFD700] font-bold shrink-0 ml-1">Restock →</span>
+            </button>
+          )}
+
+          {todayExecutiveSummary.lowStockMenuCount > 0 && (
             <button
               type="button"
               onClick={() => setActiveTab('menu')}
               className="w-full bg-amber-500/20 hover:bg-amber-500/30 border border-amber-400/40 rounded-xl px-2.5 py-1.5 flex items-center justify-between text-[11px] text-amber-200 cursor-pointer transition active:scale-98"
             >
               <span className="flex items-center gap-1 font-bold">
-                <span>⚠️</span> {todayExecutiveSummary.lowStockCount} menu stok menipis (≤5 porsi)
+                <span>⚠️</span> {todayExecutiveSummary.lowStockMenuCount} menu stok menipis (≤5 porsi)
               </span>
               <span className="text-[10px] underline text-[#FFD700] font-bold">Refill →</span>
             </button>

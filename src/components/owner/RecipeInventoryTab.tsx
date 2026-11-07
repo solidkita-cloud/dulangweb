@@ -4,6 +4,8 @@ import {
   MenuRecipe,
   MenuItem,
   IngredientCategory,
+  StockMovementRecord,
+  StockMovementType,
 } from '../../types';
 import { storageService } from '../../services/storageService';
 import { calculateRecipeHpp } from '../../lib/defaultRecipes';
@@ -19,17 +21,22 @@ export const RecipeInventoryTab: React.FC<RecipeInventoryTabProps> = ({
   onShowToast,
   onRefreshExpenses,
 }) => {
-  const [subView, setSubView] = useState<'pantry' | 'recipes'>('pantry');
+  const [subView, setSubView] = useState<'pantry' | 'recipes' | 'movements'>('pantry');
   const [pantry, setPantry] = useState<PantryIngredient[]>(() =>
     storageService.getPantryIngredients()
   );
   const [recipes, setRecipes] = useState<MenuRecipe[]>(() =>
     storageService.getMenuRecipes()
   );
+  const [movements, setMovements] = useState<StockMovementRecord[]>(() =>
+    storageService.getStockMovements()
+  );
   const [categoryFilter, setCategoryFilter] = useState<
     'all' | IngredientCategory | 'low_stock'
   >('all');
   const [searchQuery, setSearchQuery] = useState('');
+  const [movementTypeFilter, setMovementTypeFilter] = useState<'all' | StockMovementType>('all');
+  const [movementIngredientFilter, setMovementIngredientFilter] = useState<string>('all');
 
   // Modal Restock
   const [restockItem, setRestockItem] = useState<PantryIngredient | null>(null);
@@ -59,11 +66,16 @@ export const RecipeInventoryTab: React.FC<RecipeInventoryTabProps> = ({
     const handleRecipesUpdate = () => {
       setRecipes(storageService.getMenuRecipes());
     };
+    const handleMovementsUpdate = () => {
+      setMovements(storageService.getStockMovements());
+    };
     window.addEventListener('dulang_pantry_updated', handlePantryUpdate);
     window.addEventListener('dulang_recipes_updated', handleRecipesUpdate);
+    window.addEventListener('dulang_stock_movements_updated', handleMovementsUpdate);
     return () => {
       window.removeEventListener('dulang_pantry_updated', handlePantryUpdate);
       window.removeEventListener('dulang_recipes_updated', handleRecipesUpdate);
+      window.removeEventListener('dulang_stock_movements_updated', handleMovementsUpdate);
     };
   }, []);
 
@@ -261,6 +273,18 @@ export const RecipeInventoryTab: React.FC<RecipeInventoryTabProps> = ({
           >
             <span>🥩</span>
             <span>Resep & HPP Margin ({recipes.length})</span>
+          </button>
+          <button
+            type="button"
+            onClick={() => setSubView('movements')}
+            className={`cursor-pointer px-4 py-2 rounded-full font-sans font-bold text-xs transition flex items-center gap-1.5 ${
+              subView === 'movements'
+                ? 'bg-[#111111] text-[#FFD700]'
+                : 'text-[#111111] hover:bg-gray-100'
+            }`}
+          >
+            <span>📜</span>
+            <span>Kartu Stok ({movements.length})</span>
           </button>
         </div>
       </div>
@@ -798,6 +822,202 @@ export const RecipeInventoryTab: React.FC<RecipeInventoryTabProps> = ({
           </div>
         </div>
       )}
+
+      {/* ========================================================= */}
+      {/* SUBVIEW 3: KARTU STOK & LOG PERGERAKAN BAHAN BAKU */}
+      {/* ========================================================= */}
+      {subView === 'movements' && (() => {
+        const filteredMovements = movements.filter((mov) => {
+          if (movementTypeFilter !== 'all' && mov.type !== movementTypeFilter) return false;
+          if (movementIngredientFilter !== 'all' && mov.ingredientId !== movementIngredientFilter) return false;
+          if (searchQuery.trim()) {
+            const q = searchQuery.toLowerCase();
+            return (
+              mov.ingredientName.toLowerCase().includes(q) ||
+              (mov.note && mov.note.toLowerCase().includes(q)) ||
+              (mov.orderId && mov.orderId.toLowerCase().includes(q))
+            );
+          }
+          return true;
+        });
+
+        const totalIn = movements.filter((m) => m.type === 'masuk').length;
+        const totalOut = movements.filter((m) => m.type === 'keluar').length;
+        const totalAdjust = movements.filter((m) => m.type === 'penyesuaian').length;
+
+        return (
+          <div className="space-y-5 animate-in fade-in duration-200">
+            {/* Header / Intro */}
+            <div className="bg-[#FFFDF4] rounded-[22px] p-4 sm:p-5 border-2 border-[#111111] shadow-[3px_3px_0_#111111] flex flex-col md:flex-row items-start md:items-center justify-between gap-3 text-xs font-sans">
+              <div>
+                <div className="inline-flex items-center gap-1.5 bg-[#FFD700] text-[#111111] px-2.5 py-0.5 rounded-full text-[10px] font-bold border border-[#111111] mb-1">
+                  <span>📜</span>
+                  <span>BUKU BESAR MUTASI STOK GUDANG</span>
+                </div>
+                <h3 className="font-hand font-bold text-xl sm:text-2xl text-[#111111] leading-tight">
+                  Kartu Stok & Audit Pergerakan Bahan
+                </h3>
+                <p className="text-[#5C3D2E]/80 text-[11px] mt-0.5">
+                  Setiap butir telur, kg daging, dan lembar smoked beef yang terpakai untuk pesanan atau dibeli di pasar tercatat di sini dengan transparan.
+                </p>
+              </div>
+
+              {/* KPI Strip */}
+              <div className="flex items-center gap-2 font-mono text-[11px]">
+                <span className="bg-emerald-50 text-emerald-900 border border-emerald-400 px-2.5 py-1 rounded-full font-bold">
+                  🟢 Masuk: {totalIn}x
+                </span>
+                <span className="bg-red-50 text-red-900 border border-red-400 px-2.5 py-1 rounded-full font-bold">
+                  🔴 Keluar: {totalOut}x
+                </span>
+                <span className="bg-amber-50 text-amber-900 border border-amber-400 px-2.5 py-1 rounded-full font-bold">
+                  🟡 Opname: {totalAdjust}x
+                </span>
+              </div>
+            </div>
+
+            {/* Filter Bar */}
+            <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-2.5">
+              {/* Type Filter Pills */}
+              <div className="inline-flex p-1 bg-white border-2 border-[#111111] rounded-full shadow-[2px_2px_0_#111111] gap-1 overflow-x-auto no-scrollbar">
+                {(['all', 'masuk', 'keluar', 'penyesuaian'] as const).map((t) => (
+                  <button
+                    key={t}
+                    type="button"
+                    onClick={() => setMovementTypeFilter(t)}
+                    className={`cursor-pointer px-3 py-1 rounded-full font-sans font-bold text-xs transition whitespace-nowrap ${
+                      movementTypeFilter === t
+                        ? 'bg-[#111111] text-[#FFD700]'
+                        : 'text-[#5C3D2E]/70 hover:text-[#111111]'
+                    }`}
+                  >
+                    {t === 'all' && `Semua Transaksi (${movements.length})`}
+                    {t === 'masuk' && `🟢 Masuk (Restock)`}
+                    {t === 'keluar' && `🔴 Keluar (Pesanan)`}
+                    {t === 'penyesuaian' && `🟡 Opname Fisik`}
+                  </button>
+                ))}
+              </div>
+
+              {/* Ingredient selector & search */}
+              <div className="flex items-center gap-2">
+                <select
+                  value={movementIngredientFilter}
+                  onChange={(e) => setMovementIngredientFilter(e.target.value)}
+                  className="bg-white border-2 border-[#111111] rounded-full px-3 py-1.5 font-sans font-bold text-xs text-[#111111] focus:outline-none focus:ring-2 focus:ring-[#FFD700] shadow-xs"
+                >
+                  <option value="all">Semua Bahan Baku ({pantry.length})</option>
+                  {pantry.map((p) => (
+                    <option key={p.id} value={p.id}>
+                      {p.name}
+                    </option>
+                  ))}
+                </select>
+
+                <input
+                  type="text"
+                  value={searchQuery}
+                  onChange={(e) => setSearchQuery(e.target.value)}
+                  placeholder="Cari nota / pesanan..."
+                  className="bg-white border-2 border-[#111111] rounded-full px-3.5 py-1.5 font-sans text-xs focus:outline-none focus:ring-2 focus:ring-[#FFD700] shadow-xs w-36 sm:w-48"
+                />
+              </div>
+            </div>
+
+            {/* List / Table */}
+            {filteredMovements.length === 0 ? (
+              <div className="bg-white rounded-[22px] p-8 border-2 border-[#111111] text-center space-y-2 shadow-[3px_3px_0_#111111]">
+                <div className="text-4xl">📜</div>
+                <h4 className="font-hand font-bold text-xl text-[#111111]">
+                  Belum Ada Catatan Mutasi Stok
+                </h4>
+                <p className="font-sans text-xs text-[#5C3D2E]/75 max-w-md mx-auto">
+                  Catatan keluar-masuk stok akan muncul otomatis setiap kali pesanan diselesaikan (status LUNAS) atau ketika Anda melakukan restock belanja bahan di tab Gudang Bahan.
+                </p>
+              </div>
+            ) : (
+              <div className="bg-white rounded-[22px] border-2 border-[#111111] shadow-[4px_4px_0_#111111] overflow-hidden">
+                <div className="overflow-x-auto">
+                  <table className="w-full text-left font-sans text-xs">
+                    <thead className="bg-[#111111] text-[#FFF8E7] uppercase text-[10px] tracking-wider">
+                      <tr>
+                        <th className="py-3 px-4">Waktu (WIB)</th>
+                        <th className="py-3 px-4">Bahan Baku</th>
+                        <th className="py-3 px-4 text-center">Tipe Mutasi</th>
+                        <th className="py-3 px-4 text-center">Perubahan Stok</th>
+                        <th className="py-3 px-4 text-center">Stok Awal ➔ Akhir</th>
+                        <th className="py-3 px-4">Keterangan / Referensi</th>
+                      </tr>
+                    </thead>
+                    <tbody className="divide-y divide-[#111111]/10">
+                      {filteredMovements.map((mov) => {
+                        const dateObj = new Date(mov.createdAt);
+                        const timeStr = dateObj.toLocaleTimeString('id-ID', {
+                          hour: '2-digit',
+                          minute: '2-digit',
+                        });
+                        const dateStr = dateObj.toLocaleDateString('id-ID', {
+                          day: 'numeric',
+                          month: 'short',
+                        });
+
+                        return (
+                          <tr key={mov.id} className="hover:bg-amber-50/40 transition">
+                            <td className="py-2.5 px-4 font-mono text-[11px] whitespace-nowrap text-[#5C3D2E]">
+                              <div>{dateStr}</div>
+                              <div className="text-[10px] text-gray-500">{timeStr} WIB</div>
+                            </td>
+                            <td className="py-2.5 px-4 font-bold text-[#111111]">
+                              {mov.ingredientName}
+                            </td>
+                            <td className="py-2.5 px-4 text-center">
+                              {mov.type === 'masuk' ? (
+                                <span className="inline-flex items-center gap-1 bg-emerald-100 text-emerald-950 font-bold px-2 py-0.5 rounded-full text-[10px] border border-emerald-300">
+                                  <span>🟢</span> Masuk
+                                </span>
+                              ) : mov.type === 'keluar' ? (
+                                <span className="inline-flex items-center gap-1 bg-red-100 text-red-950 font-bold px-2 py-0.5 rounded-full text-[10px] border border-red-300">
+                                  <span>🔴</span> Keluar
+                                </span>
+                              ) : (
+                                <span className="inline-flex items-center gap-1 bg-amber-100 text-amber-950 font-bold px-2 py-0.5 rounded-full text-[10px] border border-amber-300">
+                                  <span>🟡</span> Opname
+                                </span>
+                              )}
+                            </td>
+                            <td className="py-2.5 px-4 text-center font-mono font-bold text-xs whitespace-nowrap">
+                              <span
+                                className={
+                                  mov.type === 'masuk'
+                                    ? 'text-emerald-700'
+                                    : mov.type === 'keluar'
+                                    ? 'text-red-600'
+                                    : 'text-amber-800'
+                                }
+                              >
+                                {mov.type === 'masuk' ? '+' : mov.type === 'keluar' ? '-' : 'Δ '}
+                                {mov.amount} {mov.unit}
+                              </span>
+                            </td>
+                            <td className="py-2.5 px-4 text-center font-mono text-[11px] whitespace-nowrap text-gray-600">
+                              <span>{mov.previousStock}</span>
+                              <span className="mx-1 text-gray-400">➔</span>
+                              <strong className="text-[#111111]">{mov.newStock} {mov.unit}</strong>
+                            </td>
+                            <td className="py-2.5 px-4 text-[#5C3D2E] text-[11px]">
+                              <span>{mov.note || '-'}</span>
+                            </td>
+                          </tr>
+                        );
+                      })}
+                    </tbody>
+                  </table>
+                </div>
+              </div>
+            )}
+          </div>
+        );
+      })()}
 
       {/* ========================================================= */}
       {/* MODAL RESTOCK BAHAN */}

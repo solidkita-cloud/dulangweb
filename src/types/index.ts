@@ -258,6 +258,7 @@ export interface DulangDatabaseBackup {
   menuRecipes?: MenuRecipe[];
   kitchenRecaps?: KitchenClosingRecap[];
   subuhPlans?: SubuhPrepPlan[];
+  stockMovements?: StockMovementRecord[];
 }
 // --- KALKULATOR KEBUTUHAN BAHAN SUBUH (PREP-COOK CALCULATOR) ---
 export interface SubuhPrepIngredient {
@@ -336,4 +337,22 @@ export interface MenuRecipe {
   components: RecipeItemComponent[];
   calculatedHpp: number;      // total HPP / biaya bahan per 1 butir
   updatedAt?: string;
+}
+
+// --- KARTU STOK & LOG PERGERAKAN BAHAN BAKU (INVENTORY MOVEMENT LEDGER) ---
+export type StockMovementType = 'masuk' | 'keluar' | 'penyesuaian';
+
+export interface StockMovementRecord {
+  id: string;
+  ingredientId: string;
+  ingredientName: string;
+  type: StockMovementType;
+  amount: number;             // e.g. 5 (masuk), 0.25 (keluar)
+  unit: string;
+  previousStock: number;
+  newStock: number;
+  createdAt: string;          // ISO date
+  note?: string;              // e.g. "Pesanan #ORD-20261108-1234 (3x Risol Mayo)" or "Restock belanja pasar"
+  orderId?: string;
+  expenseId?: string;
 }
