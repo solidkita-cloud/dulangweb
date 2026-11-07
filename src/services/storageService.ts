@@ -2617,7 +2617,7 @@ _Dapur Dulang Indonesia - Risoles & Katering Sidoarjo_`;
   // --- BACKUP & RESTORE DATABASE OFFLINE (.JSON) ---
   exportDatabaseBackup(): DulangDatabaseBackup {
     return {
-      version: '1.0',
+      version: '1.1',
       exported_at: new Date().toISOString(),
       app_name: 'Dapur Dulang Indonesia',
       menus: this.getMenus(),
@@ -2627,6 +2627,10 @@ _Dapur Dulang Indonesia - Risoles & Katering Sidoarjo_`;
       vouchers: this.getVouchers(),
       storeConfig: this.getStoreConfig(),
       expenses: this.getExpenses(),
+      pantryIngredients: this.getPantryIngredients(),
+      menuRecipes: this.getMenuRecipes(),
+      kitchenRecaps: this.getKitchenRecaps(),
+      subuhPlans: this.getSubuhPlans(),
     };
   },
 
@@ -2657,6 +2661,18 @@ _Dapur Dulang Indonesia - Risoles & Katering Sidoarjo_`;
       if (Array.isArray(backup.expenses)) {
         localStorage.setItem(STORAGE_KEYS.EXPENSES, JSON.stringify(backup.expenses));
       }
+      if (Array.isArray(backup.pantryIngredients)) {
+        localStorage.setItem(STORAGE_KEYS.PANTRY_INGREDIENTS, JSON.stringify(backup.pantryIngredients));
+      }
+      if (Array.isArray(backup.menuRecipes)) {
+        localStorage.setItem(STORAGE_KEYS.MENU_RECIPES, JSON.stringify(backup.menuRecipes));
+      }
+      if (Array.isArray(backup.kitchenRecaps)) {
+        localStorage.setItem(STORAGE_KEYS.KITCHEN_RECAPS, JSON.stringify(backup.kitchenRecaps));
+      }
+      if (Array.isArray(backup.subuhPlans)) {
+        localStorage.setItem(STORAGE_KEYS.SUBUH_PLANS, JSON.stringify(backup.subuhPlans));
+      }
 
       if (typeof window !== 'undefined') {
         window.dispatchEvent(new Event('dulang_menus_updated'));
@@ -2666,13 +2682,16 @@ _Dapur Dulang Indonesia - Risoles & Katering Sidoarjo_`;
         window.dispatchEvent(new Event('dulang_vouchers_updated'));
         window.dispatchEvent(new Event('dulang_store_config_updated'));
         window.dispatchEvent(new Event('dulang_expenses_updated'));
+        window.dispatchEvent(new Event('dulang_pantry_updated'));
+        window.dispatchEvent(new Event('dulang_recipes_updated'));
       }
 
       const totalOrders = Array.isArray(backup.orders) ? backup.orders.length : 0;
       const totalCust = Array.isArray(backup.customers) ? backup.customers.length : 0;
+      const totalExpenses = Array.isArray(backup.expenses) ? backup.expenses.length : 0;
       return {
         success: true,
-        message: `Database berhasil dipulihkan! (${totalOrders} riwayat pesanan, ${totalCust} data pelanggan).`,
+        message: `Database berhasil dipulihkan! (${totalOrders} pesanan, ${totalCust} pelanggan, ${totalExpenses} catatan kas).`,
       };
     } catch (err: any) {
       return {

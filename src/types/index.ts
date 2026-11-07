@@ -254,6 +254,10 @@ export interface DulangDatabaseBackup {
   vouchers: Voucher[];
   storeConfig: StoreConfig;
   expenses?: ExpenseRecord[];
+  pantryIngredients?: PantryIngredient[];
+  menuRecipes?: MenuRecipe[];
+  kitchenRecaps?: KitchenClosingRecap[];
+  subuhPlans?: SubuhPrepPlan[];
 }
 // --- KALKULATOR KEBUTUHAN BAHAN SUBUH (PREP-COOK CALCULATOR) ---
 export interface SubuhPrepIngredient {
@@ -296,6 +300,13 @@ export interface KitchenClosingRecap {
   topSellingItems: { name: string; qty: number }[];
   tomorrowPreOrdersCount: number;
   notes?: string;
+  // Rekonsiliasi Laci Kasir (Cash Drawer Float & Reconciliation)
+  openingCashFloat?: number;
+  cashExpensesFromDrawer?: number;
+  expectedDrawerCash?: number;
+  actualDrawerCash?: number;
+  cashDifference?: number;
+  depositToOwner?: number;
 }
 
 // --- GUDANG BAHAN BAKU & RESEP HPP OTOMATIS (COGS / RECIPE COSTING) ---

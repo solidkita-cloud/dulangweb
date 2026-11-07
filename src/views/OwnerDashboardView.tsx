@@ -1888,13 +1888,16 @@ Catatan Kurir: Pastikan posisi dus ditaruh datar agar mayo tidak tumpah ya kak.`
         const parsed = JSON.parse(content);
 
         const confirmRestore = window.confirm(
-          `⚠️ KONFIRMASI PEMULIHAN DATABASE OFFLINE:\n\n` +
+          `⚠️ KONFIRMASI PEMULIHAN DATABASE OFFLINE (V${parsed.version || '1.0'}):\n\n` +
             `File cadangan terdeteksi:\n` +
             `• Dibuat pada: ${parsed.exported_at ? new Date(parsed.exported_at).toLocaleString('id-ID') : 'Tidak diketahui'}\n` +
             `• Pesanan Kasir: ${parsed.orders?.length || 0} order\n` +
             `• Data Pelanggan: ${parsed.customers?.length || 0} orang\n` +
-            `• Menu: ${parsed.menus?.length || 0} item\n\n` +
-            `Apakah Anda yakin ingin memulihkan database dapur dari file ini? Data saat ini akan diperbarui.`
+            `• Menu: ${parsed.menus?.length || 0} item\n` +
+            `• Catatan Kas/Belanja: ${parsed.expenses?.length || 0} transaksi\n` +
+            `• Bahan Baku Gudang: ${parsed.pantryIngredients?.length || 0} item\n` +
+            `• Resep HPP: ${parsed.menuRecipes?.length || 0} resep\n\n` +
+            `Apakah Anda yakin ingin memulihkan seluruh database dapur dari file ini? Data saat ini akan diperbarui.`
         );
 
         if (confirmRestore) {
@@ -1905,6 +1908,7 @@ Catatan Kurir: Pastikan posisi dus ditaruh datar agar mayo tidak tumpah ya kak.`
             setOrders(storageService.getOrders());
             setVouchers(storageService.getVouchers());
             setTestimonials(storageService.getTestimonials());
+            setExpenses(storageService.getExpenses());
             onUpdateMenus(storageService.getMenus());
             onUpdateStoreConfig(storageService.getStoreConfig());
             onShowToast(res.message);
@@ -11114,6 +11118,22 @@ Catatan Kurir: Pastikan posisi dus ditaruh datar agar mayo tidak tumpah ya kak.`
                   <div className="text-xl mb-1">🔐</div>
                   <div className="font-sans font-bold text-xs">Keamanan & PIN</div>
                   <div className="text-[10px] opacity-75">Identitas, Brand & PIN</div>
+                </button>
+              )}
+
+              {/* Cadangkan Database Offline: Owner Only */}
+              {activeRole === 'owner' && (
+                <button
+                  type="button"
+                  onClick={() => {
+                    handleExportBackup();
+                    setIsMobileDrawerOpen(false);
+                  }}
+                  className="p-3 bg-emerald-50 rounded-[16px] border-2 border-emerald-600 shadow-[2px_2px_0_#059669] hover:bg-emerald-100 text-left transition cursor-pointer"
+                >
+                  <div className="text-xl mb-1">💾</div>
+                  <div className="font-sans font-bold text-xs text-emerald-950">Cadangkan Data (.json)</div>
+                  <div className="text-[10px] text-emerald-800">1-Klik unduh cadangan aman</div>
                 </button>
               )}
             </div>

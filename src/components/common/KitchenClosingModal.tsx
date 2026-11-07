@@ -23,6 +23,18 @@ export const KitchenClosingModal: React.FC<KitchenClosingModalProps> = ({
   const [evalNotes, setEvalNotes] = useState('Alhamdulillah gorengan hari ini habis, sisa adonan aman di kulkas');
   const [ownerWa, setOwnerWa] = useState(() => storageService.getOwnerWa());
 
+  // Cash Float & Drawer Reconciliation state
+  const [openingCashFloat, setOpeningCashFloat] = useState<number | ''>(() => {
+    if (typeof window !== 'undefined') {
+      const saved = localStorage.getItem('dulang_cash_float');
+      if (saved !== null && !isNaN(Number(saved))) return Number(saved);
+    }
+    return 100000; // Default Rp 100.000 modal awal kembalian pagi
+  });
+  const [actualDrawerCash, setActualDrawerCash] = useState<number | ''>('');
+  const [drawerExpenseOverride, setDrawerExpenseOverride] = useState<number | '' | null>(null);
+  const [keepFloatForTomorrow, setKeepFloatForTomorrow] = useState<boolean>(true);
+
   if (!isOpen) return null;
 
   // Filter today's completed orders and DP orders
@@ -103,6 +115,23 @@ export const KitchenClosingModal: React.FC<KitchenClosingModalProps> = ({
   const netProfit = grossRevenue - totalExpenseNominal;
   const netProfitMargin = grossRevenue > 0 ? Math.round((netProfit / grossRevenue) * 100) : 0;
 
+  // Cash Drawer Reconciliation Calculations
+  const floatNum = typeof openingCashFloat === 'number' ? openingCashFloat : 0;
+  const drawerExpenseNum =
+    drawerExpenseOverride !== null
+      ? typeof drawerExpenseOverride === 'number'
+        ? drawerExpenseOverride
+        : 0
+      : totalExpenseNominal;
+  const expectedDrawerCash = Math.max(0, floatNum + cashRevenue - drawerExpenseNum);
+  const isActualInputted = actualDrawerCash !== '';
+  const actualCashNum = typeof actualDrawerCash === 'number' ? actualDrawerCash : 0;
+  const cashDifference = isActualInputted ? actualCashNum - expectedDrawerCash : 0;
+  const effectiveCashToCount = isActualInputted ? actualCashNum : expectedDrawerCash;
+  const depositToOwner = keepFloatForTomorrow
+    ? Math.max(0, effectiveCashToCount - floatNum)
+    : effectiveCashToCount;
+
   // Top selling items
   const sortedItems = Object.entries(itemCounts)
     .sort((a, b) => b[1] - a[1])
@@ -146,6 +175,28 @@ export const KitchenClosingModal: React.FC<KitchenClosingModalProps> = ({
     msg += `━━━━━━━━━━━━━━━━━━━━━━━━\n`;
     msg += `🚀 *LABA BERSIH HARI INI: Rp ${netProfit.toLocaleString('id-ID')}*\n`;
     msg += `📊 Margin Profit: *${netProfitMargin}%*\n`;
+    msg += `━━━━━━━━━━━━━━━━━━━━━━━━\n`;
+    msg += `💵 *REKONSILIASI UANG FISIK LACI KASIR:*\n`;
+    msg += `• Modal Awal Kembalian (Pagi): Rp ${floatNum.toLocaleString('id-ID')}\n`;
+    msg += `• Penjualan Tunai Masuk: +Rp ${cashRevenue.toLocaleString('id-ID')}\n`;
+    msg += `• Belanja Keluar dari Laci: -Rp ${drawerExpenseNum.toLocaleString('id-ID')}\n`;
+    msg += `• *Seharusnya Ada di Laci:* *Rp ${expectedDrawerCash.toLocaleString('id-ID')}*\n`;
+    if (isActualInputted) {
+      msg += `• Uang Fisik Hasil Hitung: *Rp ${actualCashNum.toLocaleString('id-ID')}*\n`;
+      const diffStatus =
+        cashDifference === 0
+          ? '✅ PAS (Sesuai 100%)'
+          : cashDifference > 0
+          ? `🟢 LEBIH (+Rp ${cashDifference.toLocaleString('id-ID')})`
+          : `🔴 SELISIH KURANG (-Rp ${Math.abs(cashDifference).toLocaleString('id-ID')})`;
+      msg += `• Status Selisih Fisik: *${diffStatus}*\n`;
+    } else {
+      msg += `• Uang Fisik Hasil Hitung: _(Belum dihitung saat rekap dibuat)_\n`;
+    }
+    msg += `• *Setoran Fisik ke Owner:* *Rp ${depositToOwner.toLocaleString('id-ID')}*\n`;
+    if (keepFloatForTomorrow) {
+      msg += `  ℹ️ (Modal Rp ${floatNum.toLocaleString('id-ID')} ditinggal di laci untuk operasional besok pagi)\n`;
+    }
     msg += `━━━━━━━━━━━━━━━━━━━━━━━━\n`;
     msg += `🥟 *PORSI RISOLES TERJUAL:*\n`;
     msg += `• Total Terjual: *${totalPortions} Pcs*\n`;
@@ -192,9 +243,18 @@ export const KitchenClosingModal: React.FC<KitchenClosingModalProps> = ({
       topSellingItems: sortedItems,
       tomorrowPreOrdersCount: tomorrowOrders.length,
       notes: evalNotes,
+      openingCashFloat: floatNum,
+      cashExpensesFromDrawer: drawerExpenseNum,
+      expectedDrawerCash,
+      actualDrawerCash: isActualInputted ? actualCashNum : undefined,
+      cashDifference: isActualInputted ? cashDifference : undefined,
+      depositToOwner,
     };
     storageService.saveKitchenRecap(recap);
     storageService.setOwnerWa(ownerWa);
+    if (typeof window !== 'undefined') {
+      localStorage.setItem('dulang_cash_float', String(floatNum));
+    }
 
     const text = generateRecapText();
     const cleanWa = ownerWa.replace(/\D/g, '');
@@ -231,8 +291,17 @@ export const KitchenClosingModal: React.FC<KitchenClosingModalProps> = ({
       topSellingItems: sortedItems,
       tomorrowPreOrdersCount: tomorrowOrders.length,
       notes: evalNotes,
+      openingCashFloat: floatNum,
+      cashExpensesFromDrawer: drawerExpenseNum,
+      expectedDrawerCash,
+      actualDrawerCash: isActualInputted ? actualCashNum : undefined,
+      cashDifference: isActualInputted ? cashDifference : undefined,
+      depositToOwner,
     };
     storageService.saveKitchenRecap(recap);
+    if (typeof window !== 'undefined') {
+      localStorage.setItem('dulang_cash_float', String(floatNum));
+    }
     window.print();
   };
 
@@ -309,6 +378,224 @@ export const KitchenClosingModal: React.FC<KitchenClosingModalProps> = ({
                     ⏳ Sisa DP Pending: Rp {pendingReceivables.toLocaleString('id-ID')}
                   </div>
                 )}
+              </div>
+            </div>
+          </div>
+
+          {/* Rekonsiliasi Uang Fisik Laci Kasir */}
+          <div className="bg-white rounded-[22px] p-4 sm:p-5 border-2 border-[#111111] shadow-[3px_3px_0_#111111] space-y-4">
+            <div className="flex items-start justify-between gap-2">
+              <div>
+                <div className="inline-flex items-center gap-1.5 bg-[#FFF8E7] text-[#5C3D2E] px-2.5 py-0.5 rounded-full text-[10px] font-bold border border-[#111111]/20 mb-1">
+                  <span>💵</span>
+                  <span>KAS KASIR & SETORAN OWNER</span>
+                </div>
+                <h3 className="font-hand font-bold text-xl sm:text-2xl text-[#111111] leading-tight">
+                  Rekonsiliasi Uang Fisik Laci Kasir
+                </h3>
+                <p className="font-sans text-xs text-[#5C3D2E]/80">
+                  Hitung uang tunai fisik di laci sebelum toko ditutup & pisahkan setoran owner
+                </p>
+              </div>
+            </div>
+
+            {/* Inputs: Modal Awal & Belanja Tunai */}
+            <div className="grid grid-cols-1 sm:grid-cols-2 gap-3 text-xs font-sans">
+              {/* Modal Awal Kembalian Pagi */}
+              <div className="bg-[#FFFDF4] p-3 rounded-2xl border-2 border-[#111111]/20 space-y-2">
+                <div className="flex items-center justify-between">
+                  <label className="font-bold text-[#111111] flex items-center gap-1">
+                    <span>🪙</span> Modal Awal Kembalian:
+                  </label>
+                  <span className="text-[10px] text-[#5C3D2E]/70 font-mono">Pagi hari</span>
+                </div>
+                <div className="relative">
+                  <span className="absolute left-3 top-1/2 -translate-y-1/2 font-bold text-[#5C3D2E]/60 text-xs">Rp</span>
+                  <input
+                    type="number"
+                    min={0}
+                    value={openingCashFloat}
+                    onChange={(e) => {
+                      const val = e.target.value === '' ? '' : Math.max(0, Number(e.target.value));
+                      setOpeningCashFloat(val);
+                      if (typeof val === 'number') {
+                        localStorage.setItem('dulang_cash_float', String(val));
+                      }
+                    }}
+                    placeholder="100.000"
+                    className="w-full bg-white border-2 border-[#111111] rounded-xl pl-9 pr-3 py-1.5 font-mono text-sm font-bold text-[#111111] focus:outline-none focus:ring-2 focus:ring-[#FFD700]"
+                  />
+                </div>
+                {/* Quick Chips */}
+                <div className="flex items-center gap-1.5 pt-0.5">
+                  <span className="text-[10px] text-[#5C3D2E]/70 font-semibold">Cepat:</span>
+                  {[50000, 100000, 150000, 200000].map((nominal) => (
+                    <button
+                      key={nominal}
+                      type="button"
+                      onClick={() => {
+                        setOpeningCashFloat(nominal);
+                        localStorage.setItem('dulang_cash_float', String(nominal));
+                      }}
+                      className={`cursor-pointer px-2 py-0.5 rounded-md text-[10px] font-bold border transition ${
+                        openingCashFloat === nominal
+                          ? 'bg-[#111111] text-[#FFD700] border-[#111111]'
+                          : 'bg-white hover:bg-gray-100 text-[#111111] border-[#111111]/30'
+                      }`}
+                    >
+                      {nominal / 1000}rb
+                    </button>
+                  ))}
+                </div>
+              </div>
+
+              {/* Belanja dari Laci */}
+              <div className="bg-[#FFFDF4] p-3 rounded-2xl border-2 border-[#111111]/20 space-y-2">
+                <div className="flex items-center justify-between">
+                  <label className="font-bold text-[#111111] flex items-center gap-1">
+                    <span>🛒</span> Belanja dari Laci Kasir:
+                  </label>
+                  {drawerExpenseOverride !== null && (
+                    <button
+                      type="button"
+                      onClick={() => setDrawerExpenseOverride(null)}
+                      className="cursor-pointer text-[10px] text-amber-800 underline font-bold"
+                    >
+                      Reset otomatis
+                    </button>
+                  )}
+                </div>
+                <div className="relative">
+                  <span className="absolute left-3 top-1/2 -translate-y-1/2 font-bold text-[#5C3D2E]/60 text-xs">Rp</span>
+                  <input
+                    type="number"
+                    min={0}
+                    value={drawerExpenseOverride !== null ? drawerExpenseOverride : totalExpenseNominal}
+                    onChange={(e) => {
+                      const val = e.target.value === '' ? '' : Math.max(0, Number(e.target.value));
+                      setDrawerExpenseOverride(val);
+                    }}
+                    placeholder="0"
+                    className="w-full bg-white border-2 border-[#111111] rounded-xl pl-9 pr-3 py-1.5 font-mono text-sm font-bold text-[#111111] focus:outline-none focus:ring-2 focus:ring-[#FFD700]"
+                  />
+                </div>
+                <div className="text-[10px] text-[#5C3D2E]/75">
+                  Total belanja tercatat hari ini: <strong className="font-mono">Rp {totalExpenseNominal.toLocaleString('id-ID')}</strong>
+                </div>
+              </div>
+            </div>
+
+            {/* Expected vs Actual Count Highlight Card */}
+            <div className="bg-[#FFF8E7] rounded-2xl p-3.5 border-2 border-amber-300 space-y-3">
+              <div className="grid grid-cols-1 sm:grid-cols-2 gap-3 items-center">
+                {/* Expected */}
+                <div>
+                  <span className="text-[11px] font-sans font-bold text-[#5C3D2E] block">
+                    1. Uang Seharusnya Ada di Laci:
+                  </span>
+                  <div className="font-hand font-bold text-2xl sm:text-3xl text-[#111111] mt-0.5">
+                    Rp {expectedDrawerCash.toLocaleString('id-ID')}
+                  </div>
+                  <div className="text-[10px] font-mono text-[#5C3D2E]/80 mt-0.5">
+                    Modal Rp {floatNum.toLocaleString('id-ID')} + Tunai Rp {cashRevenue.toLocaleString('id-ID')} - Belanja Rp {drawerExpenseNum.toLocaleString('id-ID')}
+                  </div>
+                </div>
+
+                {/* Actual Physical Cash Input */}
+                <div className="bg-white p-3 rounded-xl border-2 border-[#111111] shadow-[2px_2px_0_#111111]">
+                  <label className="text-[11px] font-sans font-bold text-[#111111] block mb-1">
+                    2. Hitung Uang Fisik di Laci: <span className="text-red-600">*</span>
+                  </label>
+                  <div className="relative">
+                    <span className="absolute left-3 top-1/2 -translate-y-1/2 font-bold text-[#111111] text-sm">Rp</span>
+                    <input
+                      type="number"
+                      min={0}
+                      value={actualDrawerCash}
+                      onChange={(e) => {
+                        const val = e.target.value === '' ? '' : Math.max(0, Number(e.target.value));
+                        setActualDrawerCash(val);
+                      }}
+                      placeholder="Ketik total uang fisik..."
+                      className="w-full bg-[#FFFDF4] border-2 border-[#111111] rounded-lg pl-9 pr-3 py-1.5 font-mono text-base font-bold text-[#111111] focus:outline-none focus:ring-2 focus:ring-[#FFD700]"
+                    />
+                  </div>
+                  <div className="text-[10px] text-[#5C3D2E]/70 mt-1">
+                    Ketik jumlah total uang kertas & koin yang ada di laci kasir saat ini
+                  </div>
+                </div>
+              </div>
+
+              {/* Variance Alert Banner */}
+              {isActualInputted ? (
+                <div
+                  className={`p-3 rounded-xl border-2 flex items-start gap-2.5 font-sans text-xs transition ${
+                    cashDifference === 0
+                      ? 'bg-emerald-50 border-emerald-500 text-emerald-950'
+                      : cashDifference > 0
+                      ? 'bg-sky-50 border-sky-500 text-sky-950'
+                      : 'bg-red-50 border-red-500 text-red-950'
+                  }`}
+                >
+                  <span className="text-xl shrink-0">
+                    {cashDifference === 0 ? '✅' : cashDifference > 0 ? '🟢' : '🔴'}
+                  </span>
+                  <div className="flex-1">
+                    <div className="flex flex-wrap items-center justify-between gap-1">
+                      <strong className="text-xs uppercase font-extrabold tracking-wide">
+                        {cashDifference === 0
+                          ? 'Uang Fisik Kasir Pas 100%'
+                          : cashDifference > 0
+                          ? `Uang Kasir Lebih (+Rp ${cashDifference.toLocaleString('id-ID')})`
+                          : `Perhatian: Selisih Kurang (-Rp ${Math.abs(cashDifference).toLocaleString('id-ID')})`}
+                      </strong>
+                      <span className="font-mono font-bold text-xs">
+                        Selisih: {cashDifference >= 0 ? `+Rp ${cashDifference.toLocaleString('id-ID')}` : `-Rp ${Math.abs(cashDifference).toLocaleString('id-ID')}`}
+                      </span>
+                    </div>
+                    <p className="text-[11px] mt-0.5 opacity-90">
+                      {cashDifference === 0
+                        ? 'Alhamdulillah, tidak ada selisih sama sekali antara sistem dan fisik laci.'
+                        : cashDifference > 0
+                        ? 'Uang fisik di laci lebih banyak dari pencatatan (kemungkinan dapat tip dari pelanggan atau kembalian ikhlas).'
+                        : 'Uang fisik di laci kurang dari catatan. Silakan cek kembali uang kembalian atau mungkin ada nota belanja pasar yang belum tercatat.'}
+                    </p>
+                  </div>
+                </div>
+              ) : (
+                <div className="p-2.5 bg-amber-100/60 rounded-xl border border-amber-300 text-[11px] font-sans text-amber-900 flex items-center gap-2">
+                  <span>💡</span>
+                  <span>Ketik nominal uang fisik di atas untuk memverifikasi apakah laci kasir malam ini sudah pas atau ada selisih.</span>
+                </div>
+              )}
+            </div>
+
+            {/* Setoran Owner & Modal Besok Card */}
+            <div className="bg-[#111111] text-[#FFF8E7] rounded-2xl p-4 border-2 border-[#111111] space-y-3">
+              <div className="flex flex-col sm:flex-row items-start sm:items-center justify-between gap-3">
+                <div>
+                  <span className="text-[11px] font-sans font-bold text-[#FFD700] uppercase tracking-wider block">
+                    💰 Setoran Bersih Tunai ke Owner Malam Ini:
+                  </span>
+                  <div className="font-hand font-bold text-3xl sm:text-4xl text-[#FFD700] leading-tight">
+                    Rp {depositToOwner.toLocaleString('id-ID')}
+                  </div>
+                  <p className="text-[11px] text-white/70 font-sans mt-0.5">
+                    {keepFloatForTomorrow
+                      ? `Modal awal Rp ${floatNum.toLocaleString('id-ID')} tetap ditinggalkan di laci untuk operasional pagi besok.`
+                      : 'Semua uang kas fisik ditarik / disetor ke owner tanpa sisa di laci.'}
+                  </p>
+                </div>
+
+                <label className="cursor-pointer bg-white/10 hover:bg-white/15 px-3 py-2 rounded-xl border border-white/20 flex items-center gap-2 text-xs font-sans text-white shrink-0 transition">
+                  <input
+                    type="checkbox"
+                    checked={keepFloatForTomorrow}
+                    onChange={(e) => setKeepFloatForTomorrow(e.target.checked)}
+                    className="w-4 h-4 accent-[#FFD700] rounded cursor-pointer"
+                  />
+                  <span>Tinggalkan modal awal di laci</span>
+                </label>
               </div>
             </div>
           </div>
