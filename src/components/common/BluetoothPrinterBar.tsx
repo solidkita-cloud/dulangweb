@@ -18,6 +18,8 @@ interface BluetoothPrinterBarProps {
   paperWidth?: ThermalPaperWidth;
   onShowToast: (msg: string) => void;
   compact?: boolean;
+  autoPrintEnabled?: boolean;
+  onToggleAutoPrint?: (enabled: boolean) => void;
 }
 
 export const BluetoothPrinterBar: React.FC<BluetoothPrinterBarProps> = ({
@@ -25,6 +27,8 @@ export const BluetoothPrinterBar: React.FC<BluetoothPrinterBarProps> = ({
   paperWidth,
   onShowToast,
   compact = false,
+  autoPrintEnabled,
+  onToggleAutoPrint,
 }) => {
   const [connectedName, setConnectedName] = useState<string | null>(() =>
     isPrinterConnected() ? getConnectedDeviceName() : null
@@ -167,6 +171,22 @@ export const BluetoothPrinterBar: React.FC<BluetoothPrinterBarProps> = ({
         >
           {isBusy === 'test' ? 'Mencetak...' : '🧪 Tes Print'}
         </button>
+
+        {onToggleAutoPrint && (
+          <button
+            type="button"
+            disabled={isBusy !== null}
+            onClick={() => onToggleAutoPrint(!autoPrintEnabled)}
+            className={`cursor-pointer rounded-full px-2.5 py-1 font-bold text-[11px] border transition disabled:opacity-50 ${
+              autoPrintEnabled
+                ? 'bg-emerald-600 text-white border-emerald-700 hover:bg-emerald-700'
+                : 'bg-white text-[#5C3D2E] border-[#111111]/30 hover:border-[#111111]'
+            }`}
+            title="Otomatis cetak struk ke printer Bluetooth saat transaksi baru / lunas (ala kasir Indomaret)"
+          >
+            {autoPrintEnabled ? '⚡ Auto-Print: ON' : '⚡ Auto-Print: OFF'}
+          </button>
+        )}
 
         {connectedName && (
           <button

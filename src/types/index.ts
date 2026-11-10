@@ -115,6 +115,7 @@ export interface StoreConfig {
   cashierDailyTargetPortions?: number;  // Target porsi harian per kasir (default: 100)
   cashierBonusPerPortion?: number;      // Nominal bonus insentif per porsi jika tembus target (default: Rp 100)
   printerPaperWidth?: '58mm' | '80mm';  // Default lebar kertas cetak langsung Bluetooth ('58mm')
+  autoPrintReceipt?: boolean;           // Default true: otomatis cetak struk via Bluetooth saat transaksi lunas
 }
 
 export interface ChildVoucherPerk {

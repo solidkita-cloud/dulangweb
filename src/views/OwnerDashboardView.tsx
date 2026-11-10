@@ -56,6 +56,8 @@ import {
   printOrderViaBluetooth,
   printShiftSlipViaBluetooth,
   printTestPageViaBluetooth,
+  tryAutoPrintOrderViaBluetooth,
+  switchBluetoothPrinter,
   isBluetoothSupported,
   isPrinterConnected,
   getConnectedDeviceName,
@@ -199,6 +201,17 @@ export const OwnerDashboardView: React.FC<OwnerDashboardViewProps> = ({
   const [connectedPrinterName, setConnectedPrinterName] = useState<string | null>(() =>
     isPrinterConnected() ? getConnectedDeviceName() : null
   );
+  const [autoPrintEnabled, setAutoPrintEnabled] = useState<boolean>(() => {
+    try {
+      const saved = typeof window !== 'undefined' ? localStorage.getItem('dulang_auto_print_receipt') : null;
+      if (saved === 'true') return true;
+      if (saved === 'false') return false;
+    } catch {}
+    return storeConfig.autoPrintReceipt ?? true;
+  });
+  const autoPrintEnabledRef = useRef<boolean>(autoPrintEnabled);
+  autoPrintEnabledRef.current = autoPrintEnabled;
+  const autoPrintingOrderIdsRef = useRef<Set<string>>(new Set());
   const [receiptQrDataUrl, setReceiptQrDataUrl] = useState<string>('');
   const [quickWaOrderText, setQuickWaOrderText] = useState('');
   const [mobileActionOrder, setMobileActionOrder] = useState<OrderRecord | null>(null);
@@ -208,6 +221,17 @@ export const OwnerDashboardView: React.FC<OwnerDashboardViewProps> = ({
       setReceiptPaperWidth(storeConfig.printerPaperWidth);
     }
   }, [storeConfig.printerPaperWidth]);
+
+  useEffect(() => {
+    if (typeof storeConfig.autoPrintReceipt === 'boolean') {
+      setAutoPrintEnabled(storeConfig.autoPrintReceipt);
+      try {
+        if (typeof window !== 'undefined') {
+          localStorage.setItem('dulang_auto_print_receipt', String(storeConfig.autoPrintReceipt));
+        }
+      } catch {}
+    }
+  }, [storeConfig.autoPrintReceipt]);
 
   useEffect(() => {
     const syncPrinterName = () => {
@@ -232,6 +256,76 @@ export const OwnerDashboardView: React.FC<OwnerDashboardViewProps> = ({
       setLocalConfig(updated);
       onUpdateStoreConfig(updated);
       storageService.saveStoreConfig(updated);
+    }
+  };
+
+  const handleToggleAutoPrint = (enabled: boolean) => {
+    setAutoPrintEnabled(enabled);
+    autoPrintEnabledRef.current = enabled;
+    try {
+      if (typeof window !== 'undefined') {
+        localStorage.setItem('dulang_auto_print_receipt', String(enabled));
+      }
+    } catch {}
+    if (activeRole === 'owner' && localConfig.autoPrintReceipt !== enabled) {
+      const updated: StoreConfig = { ...localConfig, autoPrintReceipt: enabled };
+      setLocalConfig(updated);
+      onUpdateStoreConfig(updated);
+      storageService.saveStoreConfig(updated);
+    }
+    onShowToast(
+      enabled
+        ? '⚡ Auto-Print Struk AKTIF! Struk langsung tercetak otomatis saat transaksi lunas.'
+        : 'Auto-Print Struk dimatikan (mode cetak manual).'
+    );
+  };
+
+  const handleConnectPrinterQuick = async () => {
+    if (!isBluetoothSupported()) {
+      alert(
+        'Cetak Bluetooth langsung memerlukan browser Google Chrome di HP Android.\n' +
+          'Untuk printer USB/WiFi atau iPhone, gunakan tombol "Cetak Biasa / PDF".'
+      );
+      return;
+    }
+    try {
+      const res = await switchBluetoothPrinter();
+      setConnectedPrinterName(isPrinterConnected() ? getConnectedDeviceName() : res.deviceName);
+      onShowToast(`Terhubung ke "${res.deviceName}"! Auto-Print siap digunakan 🖨️⚡`);
+    } catch (err: any) {
+      const info = formatBluetoothErrorAlert(err);
+      if (info.isCancelled) {
+        onShowToast('Pemilihan printer dibatalkan.');
+      } else {
+        alert(info.message);
+      }
+    }
+  };
+
+  const triggerAutoPrintReceipt = async (order: OrderRecord) => {
+    if (activeRole === 'kitchen' || !autoPrintEnabledRef.current || order.status !== 'lunas') {
+      return;
+    }
+    if (autoPrintingOrderIdsRef.current.has(order.id)) {
+      return;
+    }
+    autoPrintingOrderIdsRef.current.add(order.id);
+    setIsPrintingBluetooth(true);
+    try {
+      const res = await tryAutoPrintOrderViaBluetooth(order, storeConfig, receiptPaperWidth);
+      if (res.printed) {
+        const updated = storageService.incrementOrderPrintCount(order.id);
+        setOrders(storageService.getOrders());
+        if (updated) {
+          setSelectedOrderForReceipt((prev) => (prev && prev.id === updated.id ? updated : prev));
+        }
+        onShowToast(`🖨️ Nota #${order.id} otomatis tercetak ke "${res.deviceName}"!`);
+      } else if (res.reason === 'error') {
+        onShowToast(`⚠️ Auto-print #${order.id} gagal. Silakan cetak manual lewat tombol Struk.`);
+      }
+    } finally {
+      autoPrintingOrderIdsRef.current.delete(order.id);
+      setIsPrintingBluetooth(false);
     }
   };
 
@@ -1454,6 +1548,7 @@ Catatan Kurir: Pastikan posisi dus ditaruh datar agar mayo tidak tumpah ya kak.`
       onShowToast('Akses ditolak! Mode Kru Dapur hanya untuk layar masak (KDS). 🔒');
       return;
     }
+    const prevOrder = orders.find((o) => o.id === orderId);
     const updated = storageService.updateOrderStatus(orderId, status, method);
     if (updated) {
       setOrders(storageService.getOrders());
@@ -1480,6 +1575,9 @@ Catatan Kurir: Pastikan posisi dus ditaruh datar agar mayo tidak tumpah ya kak.`
           msg += ` ⚠️ Stok (${low.map((i) => i.name).join(', ')}) menipis!`;
         }
         onShowToast(msg);
+        if (prevOrder?.status !== 'lunas') {
+          void triggerAutoPrintReceipt(updated);
+        }
       } else if (status === 'batal') {
         onShowToast(`Pesanan #${orderId} ditandai batal beli.`);
       } else {
@@ -1555,11 +1653,15 @@ Catatan Kurir: Pastikan posisi dus ditaruh datar agar mayo tidak tumpah ya kak.`
       onShowToast('Akses ditolak! Mode Kru Dapur tidak dapat melunasi transaksi. 🔒');
       return;
     }
+    const prevOrder = orders.find((o) => o.id === orderId);
     const updated = storageService.updateOrderStatus(orderId, 'lunas', method);
     if (updated) {
       setOrders(storageService.getOrders());
       setCustomers(storageService.getCustomers());
       onShowToast(`Pesanan #${orderId} telah LUNAS sepenuhnya! Data kas & pelanggan diperbarui. ✓🎉`);
+      if (prevOrder?.status !== 'lunas') {
+        void triggerAutoPrintReceipt(updated);
+      }
     }
   };
 
@@ -1744,6 +1846,7 @@ Catatan Kurir: Pastikan posisi dus ditaruh datar agar mayo tidak tumpah ya kak.`
       toastMsg += ` ⚠️ Peringatan: Stok ${lowStockItems.map((i) => i.name).join(', ')} menipis!`;
     }
     onShowToast(toastMsg);
+    void triggerAutoPrintReceipt(savedOrder);
   };
 
   const handleQuickWaOrder = (e: React.FormEvent) => {
@@ -1792,6 +1895,7 @@ Catatan Kurir: Pastikan posisi dus ditaruh datar agar mayo tidak tumpah ya kak.`
         msg += ` ⚠️ Stok bahan (${lowStockItems.map((i) => i.name).join(', ')}) menipis!`;
       }
       onShowToast(msg);
+      void triggerAutoPrintReceipt(res.order);
     } else {
       alert(res.message || 'Gagal memproses teks pesanan!');
     }
@@ -5406,18 +5510,51 @@ Catatan Kurir: Pastikan posisi dus ditaruh datar agar mayo tidak tumpah ya kak.`
                   );
                 })()}
 
-                <div className="flex flex-col sm:flex-row items-center justify-between gap-3 pt-3 border-t-2 border-[#111111]/10">
-                  <div className="font-sans text-sm">
-                    <span className="text-[#5C3D2E]">Total Transaksi: </span>
-                    <strong className="text-xl font-hand font-bold text-[#111111]">
-                      Rp{' '}
-                      {walkInCart
-                        .reduce((sum, item) => sum + item.harga * item.qty, 0)
-                        .toLocaleString('id-ID')}
-                    </strong>
+                <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-3 pt-3 border-t-2 border-[#111111]/10">
+                  <div className="space-y-1.5">
+                    <div className="font-sans text-sm">
+                      <span className="text-[#5C3D2E]">Total Transaksi: </span>
+                      <strong className="text-xl font-hand font-bold text-[#111111]">
+                        Rp{' '}
+                        {walkInCart
+                          .reduce((sum, item) => sum + item.harga * item.qty, 0)
+                          .toLocaleString('id-ID')}
+                      </strong>
+                    </div>
+
+                    {isBluetoothSupported() && (
+                      <div className="flex flex-wrap items-center gap-1.5 text-[11px] font-sans">
+                        <button
+                          type="button"
+                          onClick={() => handleToggleAutoPrint(!autoPrintEnabled)}
+                          className={`cursor-pointer px-2.5 py-1 rounded-full font-bold border transition ${
+                            autoPrintEnabled
+                              ? 'bg-emerald-100 text-emerald-900 border-emerald-400 hover:bg-emerald-200'
+                              : 'bg-gray-100 text-gray-600 border-gray-300 hover:border-gray-500'
+                          }`}
+                          title="Aktifkan/matikan cetak struk otomatis setelah menyimpan transaksi"
+                        >
+                          {autoPrintEnabled ? '⚡ Auto-Print Nota: ON' : '⚡ Auto-Print Nota: OFF'}
+                        </button>
+                        {connectedPrinterName ? (
+                          <span className="text-emerald-800 font-semibold">
+                            • Printer siap ({connectedPrinterName})
+                          </span>
+                        ) : (
+                          <button
+                            type="button"
+                            onClick={handleConnectPrinterQuick}
+                            className="cursor-pointer px-2.5 py-1 rounded-full font-bold bg-[#FFF3C7] text-[#111111] border border-[#111111]/30 hover:bg-[#FFD700] transition"
+                            title="Sambung printer Bluetooth 1x agar nota langsung keluar otomatis"
+                          >
+                            🔌 Sambung Printer
+                          </button>
+                        )}
+                      </div>
+                    )}
                   </div>
 
-                  <div className="flex items-center gap-2">
+                  <div className="flex items-center gap-2 self-end sm:self-center">
                     <button
                       type="button"
                       onClick={() => {
@@ -8619,10 +8756,32 @@ Catatan Kurir: Pastikan posisi dus ditaruh datar agar mayo tidak tumpah ya kak.`
               </div>
             </div>
 
+            <div className="flex flex-wrap items-center justify-between gap-3 bg-[#FFFDF4] rounded-[16px] p-4 border border-[#111111]/20 text-xs font-sans">
+              <div>
+                <div className="font-bold text-[#111111]">⚡ Auto-Print Struk Saat Lunas (Ala Kasir Minimarket):</div>
+                <div className="text-[11px] text-[#5C3D2E]/75">
+                  Jika printer Bluetooth sudah tersambung, setiap transaksi baru atau pelunasan otomatis langsung keluar kertas tanpa klik tombol cetak lagi.
+                </div>
+              </div>
+              <button
+                type="button"
+                onClick={() => handleToggleAutoPrint(!autoPrintEnabled)}
+                className={`cursor-pointer px-4 py-1.5 rounded-full font-bold text-xs border-2 transition shrink-0 ${
+                  autoPrintEnabled
+                    ? 'bg-emerald-600 text-white border-emerald-700 hover:bg-emerald-700'
+                    : 'bg-white text-[#111111] border-[#111111]/30 hover:border-[#111111]'
+                }`}
+              >
+                {autoPrintEnabled ? '⚡ AKTIF (Otomatis)' : 'NONAKTIF (Manual)'}
+              </button>
+            </div>
+
             <BluetoothPrinterBar
               storeConfig={localConfig}
               paperWidth={receiptPaperWidth}
               onShowToast={onShowToast}
+              autoPrintEnabled={autoPrintEnabled}
+              onToggleAutoPrint={handleToggleAutoPrint}
             />
           </div>
 
@@ -10958,6 +11117,8 @@ Catatan Kurir: Pastikan posisi dus ditaruh datar agar mayo tidak tumpah ya kak.`
                 storeConfig={storeConfig}
                 paperWidth={receiptPaperWidth}
                 onShowToast={onShowToast}
+                autoPrintEnabled={autoPrintEnabled}
+                onToggleAutoPrint={handleToggleAutoPrint}
               />
             </div>
 
@@ -11186,9 +11347,13 @@ Catatan Kurir: Pastikan posisi dus ditaruh datar agar mayo tidak tumpah ya kak.`
                 <span className="text-base">{isPrintingBluetooth ? '⏳' : '⚡'}</span>
                 <span>
                   {isPrintingBluetooth
-                    ? 'Menghubungkan ke Printer...'
+                    ? connectedPrinterName
+                      ? 'Mengirim Struk ke Printer...'
+                      : 'Menghubungkan ke Printer...'
                     : connectedPrinterName
-                    ? `Cetak Langsung (${connectedPrinterName})`
+                    ? (selectedOrderForReceipt.print_count || 0) >= 1
+                      ? `Cetak Ulang (${connectedPrinterName} • Sudah ${selectedOrderForReceipt.print_count}x)`
+                      : `Cetak Langsung (${connectedPrinterName})`
                     : 'Cetak Langsung Bluetooth'}
                 </span>
               </button>

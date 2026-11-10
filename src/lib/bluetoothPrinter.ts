@@ -158,6 +158,42 @@ async function resolveWritableCharacteristic(device: any): Promise<BluetoothDevi
   return writeChar;
 }
 
+/**
+ * Mencoba menyambung ulang secara senyap (tanpa pop-up picker) ke printer aktif
+ * atau printer yang sebelumnya sudah pernah diberi izin di Chrome Web Bluetooth.
+ */
+export async function trySilentReconnectPrinter(): Promise<BluetoothDeviceChar | null> {
+  if (isPrinterConnected()) {
+    return cachedCharacteristic!;
+  }
+  if (!isBluetoothSupported()) {
+    return null;
+  }
+
+  const navBluetooth = (navigator as any).bluetooth;
+  if (typeof navBluetooth.getDevices === 'function') {
+    try {
+      const permittedDevices: any[] = await navBluetooth.getDevices();
+      if (Array.isArray(permittedDevices) && permittedDevices.length > 0) {
+        const lastPrinterName = getLastConnectedPrinterName();
+        const preferred =
+          (lastPrinterName && permittedDevices.find((d) => d?.name === lastPrinterName)) ||
+          permittedDevices[0];
+        if (preferred?.gatt) {
+          try {
+            return await resolveWritableCharacteristic(preferred);
+          } catch {
+            // Printer belum menyala / di luar jangkauan
+          }
+        }
+      }
+    } catch {
+      // Abaikan jika browser membatasi getDevices()
+    }
+  }
+  return null;
+}
+
 export async function getOrConnectPrinter(forceNew = false): Promise<BluetoothDeviceChar> {
   if (!forceNew && isPrinterConnected()) {
     return cachedCharacteristic!;
@@ -171,32 +207,14 @@ export async function getOrConnectPrinter(forceNew = false): Promise<BluetoothDe
 
   if (forceNew) {
     disconnectBluetoothPrinter();
-  }
-
-  const navBluetooth = (navigator as any).bluetooth;
-
-  // Upaya reconnect otomatis ke perangkat yang pernah diizinkan sebelumnya (jika didukung Chrome)
-  if (!forceNew && typeof navBluetooth.getDevices === 'function') {
-    try {
-      const permittedDevices: any[] = await navBluetooth.getDevices();
-      if (Array.isArray(permittedDevices) && permittedDevices.length > 0) {
-        const lastPrinterName = getLastConnectedPrinterName();
-        const preferred =
-          (lastPrinterName && permittedDevices.find((d) => d?.name === lastPrinterName)) ||
-          permittedDevices[0];
-        if (preferred?.gatt) {
-          try {
-            return await resolveWritableCharacteristic(preferred);
-          } catch {
-            // Lanjutkan ke picker manual jika perangkat belum aktif/tidak terjangkau
-          }
-        }
-      }
-    } catch {
-      // Abaikan jika browser menolak getDevices()
+  } else {
+    const silentChar = await trySilentReconnectPrinter();
+    if (silentChar) {
+      return silentChar;
     }
   }
 
+  const navBluetooth = (navigator as any).bluetooth;
   const device = await navBluetooth.requestDevice({
     acceptAllDevices: true,
     optionalServices: KNOWN_PRINTER_SERVICES,
@@ -525,11 +543,12 @@ export async function sendRawEscPos(
   }
 }
 
-async function sendEscPosJob(
+async function sendPayloadWithRetry(
+  initialChar: BluetoothDeviceChar,
   buildBytes: () => Uint8Array | Promise<Uint8Array>
 ): Promise<{ success: boolean; deviceName: string }> {
   const previousDevice = cachedDevice;
-  let char = await getOrConnectPrinter();
+  let char = initialChar;
   const payload = await buildBytes();
 
   try {
@@ -556,6 +575,13 @@ async function sendEscPosJob(
   }
 
   return { success: true, deviceName: getConnectedDeviceName() || 'Printer Thermal' };
+}
+
+async function sendEscPosJob(
+  buildBytes: () => Uint8Array | Promise<Uint8Array>
+): Promise<{ success: boolean; deviceName: string }> {
+  const char = await getOrConnectPrinter();
+  return sendPayloadWithRetry(char, buildBytes);
 }
 
 export function buildOrderReceipt(
@@ -829,16 +855,63 @@ export function buildClosingRecapReceipt(
   return b.getUint8Array();
 }
 
+export interface AutoPrintOrderResult {
+  printed: boolean;
+  deviceName?: string;
+  reason?: 'unsupported' | 'not_connected' | 'error';
+  errorMessage?: string;
+}
+
+async function prepareOrderReceiptBytes(
+  order: OrderRecord,
+  storeConfig: StoreConfig,
+  paperWidth?: ThermalPaperWidth
+): Promise<Uint8Array> {
+  const logoBitmap = await imageToEscPosRaster(
+    storeConfig.brandLogo || '/dulang-logo.png',
+    paperWidth || storeConfig.printerPaperWidth
+  );
+  return buildOrderReceipt(order, storeConfig, paperWidth, logoBitmap);
+}
+
 export async function printOrderViaBluetooth(
   order: OrderRecord,
   storeConfig: StoreConfig,
   paperWidth?: ThermalPaperWidth
 ): Promise<{ success: boolean; deviceName: string }> {
-  const logoBitmap = await imageToEscPosRaster(
-    storeConfig.brandLogo || '/dulang-logo.png',
-    paperWidth || storeConfig.printerPaperWidth
-  );
-  return sendEscPosJob(() => buildOrderReceipt(order, storeConfig, paperWidth, logoBitmap));
+  return sendEscPosJob(() => prepareOrderReceiptBytes(order, storeConfig, paperWidth));
+}
+
+/**
+ * Mencetak struk transaksi secara otomatis apabila printer Bluetooth sudah tersambung
+ * (atau dapat disambung ulang senyap lewat getDevices()). Tidak pernah membuka pop-up picker.
+ */
+export async function tryAutoPrintOrderViaBluetooth(
+  order: OrderRecord,
+  storeConfig: StoreConfig,
+  paperWidth?: ThermalPaperWidth
+): Promise<AutoPrintOrderResult> {
+  if (!isBluetoothSupported()) {
+    return { printed: false, reason: 'unsupported' };
+  }
+
+  const char = await trySilentReconnectPrinter();
+  if (!char) {
+    return { printed: false, reason: 'not_connected' };
+  }
+
+  try {
+    const res = await sendPayloadWithRetry(char, () =>
+      prepareOrderReceiptBytes(order, storeConfig, paperWidth)
+    );
+    return { printed: true, deviceName: res.deviceName };
+  } catch (err: any) {
+    return {
+      printed: false,
+      reason: 'error',
+      errorMessage: err?.message || 'Gagal mengirim perintah auto-print ke printer.',
+    };
+  }
 }
 
 export async function printClosingRecapViaBluetooth(
