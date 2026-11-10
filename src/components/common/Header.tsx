@@ -3,7 +3,7 @@ import { BRAND, LOCKED_COPY } from '../../lib/constants';
 import { usePWAInstall } from '../../hooks/usePWAInstall';
 import { PwaInstallModal } from './PwaInstallModal';
 import { storageService } from '../../services/storageService';
-import { StaffRole } from '../../types';
+import { StaffRole, StoreConfig } from '../../types';
 
 export type NavMode = 'pembeli' | 'pemilik' | 'cetak' | 'scan' | 'kds' | 'track';
 
@@ -13,6 +13,7 @@ interface HeaderProps {
   onOpenOwnerLogin: (targetMode?: NavMode) => void;
   isOwnerLoggedIn: boolean;
   onLogout?: () => void;
+  storeConfig?: Partial<StoreConfig>;
 }
 
 export const Header: React.FC<HeaderProps> = ({
@@ -20,6 +21,7 @@ export const Header: React.FC<HeaderProps> = ({
   onSelectMode,
   isOwnerLoggedIn,
   onLogout,
+  storeConfig,
 }) => {
   const { isInstalled, showIOSModal, setShowIOSModal, triggerInstall } = usePWAInstall();
   const [staffRole, setStaffRole] = useState<StaffRole>(() => storageService.getStaffRole());
@@ -118,14 +120,14 @@ export const Header: React.FC<HeaderProps> = ({
         >
           <div className="w-[46px] h-[46px] rounded-full bg-white border-2 border-[#111111] shadow-[2px_2px_0_#111111] grid place-items-center overflow-hidden rotate-[-2deg] group-hover:rotate-0 transition-transform">
             <img
-              src="/dulang-logo.png"
-              alt="Dulang Indonesia"
-              className="w-[36px] h-[36px] object-contain"
+              src={storeConfig?.brandLogo || '/dulang-logo.png'}
+              alt={storeConfig?.brandName || BRAND.name}
+              className="w-[36px] h-[36px] object-contain rounded-full"
             />
           </div>
           <div className="flex items-center gap-2">
             <span className="font-hand font-bold text-[28px] leading-none tracking-tight text-[#111111]">
-              {BRAND.shortName.toLowerCase()}
+              {(storeConfig?.brandName ? storeConfig.brandName.split(' ')[0] : BRAND.shortName).toLowerCase()}
             </span>
             <span className="inline-flex items-center px-2.5 py-0.5 rounded-full bg-[#FFD700] text-[10px] font-bold tracking-widest uppercase font-sans border border-[#111111] rotate-[-2deg]">
               {LOCKED_COPY.badgeSince}

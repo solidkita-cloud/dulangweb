@@ -267,6 +267,99 @@ export function wordWrap(text: string, maxWidth = 32): string[] {
   return lines;
 }
 
+export interface EscPosRasterBitmap {
+  widthBytes: number;
+  height: number;
+  data: number[];
+}
+
+/**
+ * Mengonversi gambar/logo (PNG/JPG/DataURL) menjadi bitmap monokrom 1-bit ESC/POS (GS v 0)
+ * Ringan untuk BLE thermal 58mm/80mm, menjaga transparansi tetap putih & logo tetap proporsional.
+ */
+export async function imageToEscPosRaster(
+  imageSrc: string,
+  paperWidth?: ThermalPaperWidth
+): Promise<EscPosRasterBitmap | null> {
+  if (!imageSrc || typeof document === 'undefined' || typeof Image === 'undefined') {
+    return null;
+  }
+
+  try {
+    const img = await new Promise<HTMLImageElement>((resolve, reject) => {
+      const el = new Image();
+      if (!imageSrc.startsWith('data:')) {
+        el.crossOrigin = 'anonymous';
+      }
+      el.onload = () => resolve(el);
+      el.onerror = () => reject(new Error('Gagal memuat gambar logo struk'));
+      el.src = imageSrc;
+    });
+
+    const naturalW = img.naturalWidth || img.width;
+    const naturalH = img.naturalHeight || img.height;
+    if (naturalW <= 0 || naturalH <= 0) {
+      return null;
+    }
+
+    const maxWidth = paperWidth === '80mm' ? 224 : 168;
+    const maxHeight = paperWidth === '80mm' ? 112 : 96;
+    const scale = Math.min(maxWidth / naturalW, maxHeight / naturalH, 1);
+
+    const drawWidth = Math.max(8, Math.round(naturalW * scale));
+    const drawHeight = Math.max(8, Math.round(naturalH * scale));
+    const canvasWidth = Math.ceil(drawWidth / 8) * 8;
+    const offsetX = Math.floor((canvasWidth - drawWidth) / 2);
+
+    const canvas = document.createElement('canvas');
+    canvas.width = canvasWidth;
+    canvas.height = drawHeight;
+    const ctx = canvas.getContext('2d');
+    if (!ctx) {
+      return null;
+    }
+
+    // Pastikan piksel transparan dirender di atas latar putih (tidak ikut tercetak hitam)
+    ctx.fillStyle = '#FFFFFF';
+    ctx.fillRect(0, 0, canvasWidth, drawHeight);
+    ctx.imageSmoothingEnabled = true;
+    ctx.drawImage(img, offsetX, 0, drawWidth, drawHeight);
+
+    const { data: pixels } = ctx.getImageData(0, 0, canvasWidth, drawHeight);
+    const widthBytes = canvasWidth / 8;
+    const packed: number[] = new Array(widthBytes * drawHeight).fill(0);
+
+    for (let y = 0; y < drawHeight; y++) {
+      for (let byteX = 0; byteX < widthBytes; byteX++) {
+        let byteVal = 0;
+        for (let bit = 0; bit < 8; bit++) {
+          const x = byteX * 8 + bit;
+          const idx = (y * canvasWidth + x) * 4;
+          const r = pixels[idx];
+          const g = pixels[idx + 1];
+          const b = pixels[idx + 2];
+          const a = pixels[idx + 3];
+          // Alpha blend over white just in case
+          const alpha = a / 255;
+          const luma = (0.299 * r + 0.587 * g + 0.114 * b) * alpha + 255 * (1 - alpha);
+          if (luma < 145) {
+            byteVal |= 1 << (7 - bit);
+          }
+        }
+        packed[y * widthBytes + byteX] = byteVal;
+      }
+    }
+
+    return {
+      widthBytes,
+      height: drawHeight,
+      data: packed,
+    };
+  } catch {
+    return null;
+  }
+}
+
 export class EscPosBuilder {
   private buffer: number[] = [];
 
@@ -388,6 +481,22 @@ export class EscPosBuilder {
     return this;
   }
 
+  /**
+   * Mencetak bitmap monokrom 1-bit ESC/POS (GS v 0)
+   */
+  rasterBitmap(bitmap: EscPosRasterBitmap | null | undefined): this {
+    if (!bitmap || bitmap.widthBytes <= 0 || bitmap.height <= 0 || bitmap.data.length === 0) {
+      return this;
+    }
+    const xL = bitmap.widthBytes & 0xff;
+    const xH = (bitmap.widthBytes >> 8) & 0xff;
+    const yL = bitmap.height & 0xff;
+    const yH = (bitmap.height >> 8) & 0xff;
+    this.buffer.push(GS, 0x76, 0x30, 0x00, xL, xH, yL, yH, ...bitmap.data);
+    this.newLine(1);
+    return this;
+  }
+
   feedAndCut(lines = 4): this {
     this.newLine(lines);
     // Partial cut command for supported cutters (harmless on tear-bar)
@@ -417,11 +526,11 @@ export async function sendRawEscPos(
 }
 
 async function sendEscPosJob(
-  buildBytes: () => Uint8Array
+  buildBytes: () => Uint8Array | Promise<Uint8Array>
 ): Promise<{ success: boolean; deviceName: string }> {
   const previousDevice = cachedDevice;
   let char = await getOrConnectPrinter();
-  const payload = buildBytes();
+  const payload = await buildBytes();
 
   try {
     await sendRawEscPos(char, payload);
@@ -452,7 +561,8 @@ async function sendEscPosJob(
 export function buildOrderReceipt(
   order: OrderRecord,
   storeConfig: StoreConfig,
-  paperWidth?: ThermalPaperWidth
+  paperWidth?: ThermalPaperWidth,
+  logoBitmap?: EscPosRasterBitmap | null
 ): Uint8Array {
   const b = new EscPosBuilder();
   const width = getReceiptColumnWidth(storeConfig, paperWidth);
@@ -462,8 +572,11 @@ export function buildOrderReceipt(
   const address = storeConfig.pickupAddressNote || 'Sedati - Sidoarjo, Jawa Timur';
   const phone = storeConfig.brandPhone || '0877-0339-7035';
 
-  // 1. Header Toko (Mirip Persis Visual Preview Layar)
+  // 1. Logo & Header Toko (Mirip Persis Visual Preview Layar)
   b.alignCenter();
+  if (logoBitmap) {
+    b.rasterBitmap(logoBitmap);
+  }
   b.bold(true).sizeDouble();
   b.textLine(brandName);
   b.bold(false).sizeNormal();
@@ -521,24 +634,12 @@ export function buildOrderReceipt(
   b.twoColumns('Waktu      :', dateStr, width);
   b.twoColumns('Kasir      :', order.cashier_name || 'Stand Dapur Dulang', width);
   b.twoColumns('Pelanggan  :', order.customer_name || 'Pelanggan Umum', width);
-  if (order.customer_wa) {
-    b.twoColumns('WhatsApp   :', `+${order.customer_wa}`, width);
-  }
   b.twoColumns('Metode Bayar:', (order.payment_method || 'TUNAI').toUpperCase(), width);
 
   const isDelivery = order.delivery_method === 'delivery';
   b.twoColumns('Layanan    :', isDelivery ? 'ANTAR KURIR' : 'AMBIL DI DAPUR', width);
 
-  if (isDelivery) {
-    if (order.shipping_district) {
-      b.twoColumns('Tujuan     :', `Kec. ${order.shipping_district}`, width);
-    }
-    if (order.notes) {
-      for (const line of wordWrap(`Catatan: ${order.notes}`, width)) {
-        b.textLine(line);
-      }
-    }
-  } else {
+  if (!isDelivery) {
     b.twoColumns('Lokasi     :', (storeConfig.pickupAddressNote || 'Sedati, Sidoarjo').slice(0, Math.max(19, width - 13)), width);
   }
 
@@ -591,8 +692,7 @@ export function buildOrderReceipt(
 
   // 4. Ongkir & Potongan Kupon
   if (order.shipping_cost && order.shipping_cost > 0) {
-    const distText = order.shipping_district ? ` (${order.shipping_district})` : '';
-    b.twoColumns(`Ongkir${distText}:`, `Rp ${order.shipping_cost.toLocaleString('id-ID')}`, width);
+    b.twoColumns('Ongkir Kurir:', `Rp ${order.shipping_cost.toLocaleString('id-ID')}`, width);
   }
 
   const rawSubtotal = order.items.reduce((sum, it) => sum + it.qty * it.harga, 0);
@@ -734,7 +834,11 @@ export async function printOrderViaBluetooth(
   storeConfig: StoreConfig,
   paperWidth?: ThermalPaperWidth
 ): Promise<{ success: boolean; deviceName: string }> {
-  return sendEscPosJob(() => buildOrderReceipt(order, storeConfig, paperWidth));
+  const logoBitmap = await imageToEscPosRaster(
+    storeConfig.brandLogo || '/dulang-logo.png',
+    paperWidth || storeConfig.printerPaperWidth
+  );
+  return sendEscPosJob(() => buildOrderReceipt(order, storeConfig, paperWidth, logoBitmap));
 }
 
 export async function printClosingRecapViaBluetooth(
@@ -843,7 +947,8 @@ export async function printShiftSlipViaBluetooth(
 export function buildTestReceipt(
   storeConfig: StoreConfig,
   paperWidth?: ThermalPaperWidth,
-  deviceName?: string | null
+  deviceName?: string | null,
+  logoBitmap?: EscPosRasterBitmap | null
 ): Uint8Array {
   const b = new EscPosBuilder();
   const width = getReceiptColumnWidth(storeConfig, paperWidth);
@@ -856,10 +961,14 @@ export function buildTestReceipt(
     minute: '2-digit',
   });
 
-  b.alignCenter().bold(true).sizeDouble();
+  b.alignCenter();
+  if (logoBitmap) {
+    b.rasterBitmap(logoBitmap);
+  }
+  b.bold(true).sizeDouble();
   b.textLine((storeConfig.brandName || 'DAPUR DULANG').toUpperCase());
   b.bold(false).sizeNormal();
-  b.textLine('TEST PRINT PRINTER THERMAL');
+  b.textLine('TES PRINT PRINTER THERMAL');
   b.separator('-', width);
 
   b.alignLeft();
@@ -880,7 +989,11 @@ export async function printTestPageViaBluetooth(
   storeConfig: StoreConfig,
   paperWidth?: ThermalPaperWidth
 ): Promise<{ success: boolean; deviceName: string }> {
-  return sendEscPosJob(() => buildTestReceipt(storeConfig, paperWidth, getConnectedDeviceName()));
+  const logoBitmap = await imageToEscPosRaster(
+    storeConfig.brandLogo || '/dulang-logo.png',
+    paperWidth || storeConfig.printerPaperWidth
+  );
+  return sendEscPosJob(() => buildTestReceipt(storeConfig, paperWidth, getConnectedDeviceName(), logoBitmap));
 }
 
 export function formatBluetoothErrorAlert(err: any): { isCancelled: boolean; message: string } {

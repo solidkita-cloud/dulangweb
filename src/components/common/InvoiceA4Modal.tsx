@@ -124,21 +124,23 @@ export const InvoiceA4Modal: React.FC<InvoiceA4ModalProps> = ({
             
             {/* Kop Surat Header */}
             <div className="flex flex-col sm:flex-row justify-between items-start sm:items-center border-b-2 border-[#111111] pb-6 gap-4">
-              <div>
-                <div className="flex items-center gap-2">
-                  <span className="text-2xl sm:text-3xl">
-                    {storeConfig.businessType === 'cafe' ? '☕' : storeConfig.businessType === 'bakery' ? '🍞' : storeConfig.businessType === 'resto' ? '🍽️' : '🥟'}
-                  </span>
+              <div className="flex items-start gap-3">
+                <img
+                  src={storeConfig.brandLogo || '/dulang-logo.png'}
+                  alt={storeConfig.brandName || 'Dulang Indonesia'}
+                  className="w-12 h-12 rounded-xl object-contain border border-gray-200 bg-white p-1 shrink-0"
+                />
+                <div>
                   <h1 className="font-hand font-extrabold text-2xl sm:text-3xl text-[#111111] tracking-wide">
                     {(storeConfig.brandName || 'DULANG INDONESIA').toUpperCase()}
                   </h1>
+                  <p className="text-xs text-gray-600 mt-1 font-medium">
+                    {storeConfig.brandTagline || 'Spesialis Risoles Lumer, Snack Box Hajatan & Katering Sidoarjo'}
+                  </p>
+                  <p className="text-[11px] text-gray-500 mt-0.5">
+                    {storeConfig.pickupAddressNote || 'Sedati - Kabupaten Sidoarjo, Jawa Timur'} • WA: {storeConfig.brandPhone || BRAND.whatsapp}
+                  </p>
                 </div>
-                <p className="text-xs text-gray-600 mt-1 font-medium">
-                  {storeConfig.brandTagline || 'Spesialis Risoles Lumer, Snack Box Hajatan & Katering Sidoarjo'}
-                </p>
-                <p className="text-[11px] text-gray-500 mt-0.5">
-                  {storeConfig.pickupAddressNote || 'Sedati - Kabupaten Sidoarjo, Jawa Timur'} • WA: {storeConfig.brandPhone || BRAND.whatsapp}
-                </p>
               </div>
 
               <div className="text-left sm:text-right">
@@ -163,13 +165,8 @@ export const InvoiceA4Modal: React.FC<InvoiceA4ModalProps> = ({
                 <div className="font-bold text-sm text-[#111111] mt-1">
                   {order.customer_name}
                 </div>
-                {order.customer_wa && (
-                  <div className="text-gray-600 mt-0.5">
-                    WhatsApp: +{order.customer_wa.replace(/\D/g, '')}
-                  </div>
-                )}
                 <div className="text-gray-600 mt-0.5">
-                  Metode: {order.delivery_method === 'pickup' ? 'Ambil Sendiri di Dapur Dulang' : `Kurir Antar (${order.shipping_district || 'Sidoarjo'})`}
+                  Metode: {order.delivery_method === 'pickup' ? 'Ambil Sendiri di Dapur' : 'Pengantaran Kurir'}
                 </div>
               </div>
 
@@ -180,11 +177,6 @@ export const InvoiceA4Modal: React.FC<InvoiceA4ModalProps> = ({
                 <div className="font-bold text-sm text-[#111111] mt-1 text-emerald-800">
                   {order.delivery_schedule || 'Kloter Hari Ini (Fresh Panas)'}
                 </div>
-                {order.notes && (
-                  <div className="text-gray-600 mt-1 italic text-[11px]">
-                    Catatan: "{order.notes}"
-                  </div>
-                )}
               </div>
             </div>
 
@@ -268,7 +260,7 @@ export const InvoiceA4Modal: React.FC<InvoiceA4ModalProps> = ({
                 )}
 
                 <div className="text-[11px] text-gray-500 max-w-xs">
-                  Pembayaran resmi via <strong>QRIS Dulang Indonesia</strong> (NMID: {storeConfig.qrisNmid || 'ID1020057244342'}){storeConfig.bankBCA ? ` • BCA: ${storeConfig.bankBCA}` : ''} atau Tunai di Dapur.
+                  Pembayaran resmi via <strong>QRIS {storeConfig.brandName || 'Dulang Indonesia'}</strong> (NMID: {storeConfig.qrisNmid || 'ID1020057244342'}){storeConfig.bankBCA ? ` • BCA: ${storeConfig.bankBCA}` : ''}{storeConfig.bankMandiri ? ` • Mandiri: ${storeConfig.bankMandiri}` : ''} atau Tunai di Dapur.
                 </div>
               </div>
 

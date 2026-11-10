@@ -597,11 +597,11 @@ export const LandingView: React.FC<LandingViewProps> = ({
                   </>
                 ) : (
                   <div className="relative z-10 flex flex-col items-center">
-                    <div className="w-[110px] h-[110px] sm:w-[124px] sm:h-[124px] bg-[#111111] rounded-full grid place-items-center rotate-[-6deg] shadow-lg border-2 border-[#111111]">
+                    <div className="w-[110px] h-[110px] sm:w-[124px] sm:h-[124px] bg-[#111111] rounded-full grid place-items-center rotate-[-6deg] shadow-lg border-2 border-[#111111] overflow-hidden p-2">
                       <img
-                        src="/dulang-logo.png"
-                        alt="risoles"
-                        className="w-[80px] h-[80px] sm:w-[90px] sm:h-[90px] object-contain"
+                        src={storeConfig.brandLogo || '/dulang-logo.png'}
+                        alt={storeConfig.brandName || 'Dulang'}
+                        className="w-[80px] h-[80px] sm:w-[90px] sm:h-[90px] object-contain rounded-full"
                       />
                     </div>
                     <div className="mt-3 sm:mt-4 bg-white/95 backdrop-blur-sm px-3.5 sm:px-4 py-1.5 rounded-full font-hand font-bold text-[15px] sm:text-[17px] text-[#111111] rotate-[-2deg] border border-[#111111] shadow-sm">
@@ -616,7 +616,7 @@ export const LandingView: React.FC<LandingViewProps> = ({
               </div>
 
               <div className="pt-2.5 sm:pt-3 px-2 flex justify-between items-center font-sans text-[11px] text-[#5C3D2E]/70 font-semibold">
-                <span>Dapur Dulang Sidoarjo</span>
+                <span className="truncate pr-2">{storeConfig.pickupAddressNote || 'Dapur Dulang Sidoarjo'}</span>
                 <span className="font-bold text-[#111111]">Sejak 2020</span>
               </div>
             </div>

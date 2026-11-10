@@ -337,6 +337,7 @@ export function App() {
             setIsOwnerLoginOpen(true);
           }}
           isOwnerLoggedIn={isOwnerLoggedIn}
+          storeConfig={storeConfig}
           onLogout={() => {
             storageService.setOwnerAuthenticated(false);
             setIsOwnerLoggedIn(false);

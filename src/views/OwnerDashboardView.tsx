@@ -55,6 +55,7 @@ import {
 import {
   printOrderViaBluetooth,
   printShiftSlipViaBluetooth,
+  printTestPageViaBluetooth,
   isBluetoothSupported,
   isPrinterConnected,
   getConnectedDeviceName,
@@ -261,6 +262,7 @@ export const OwnerDashboardView: React.FC<OwnerDashboardViewProps> = ({
   const [audioVibration, setAudioVibrationState] = useState<boolean>(() => isVibrationEnabled());
   const [pantryVersion, setPantryVersion] = useState<number>(0);
   const [isPrintingBluetooth, setIsPrintingBluetooth] = useState<boolean>(false);
+  const [isTestingPrinter, setIsTestingPrinter] = useState<boolean>(false);
 
   // --- CASHIER SHIFT, PETTY CASH, & VOID ORDER STATE (Step 1) ---
   const [activeShift, setActiveShift] = useState<CashierShift | null>(() => storageService.getActiveShift());
@@ -624,6 +626,45 @@ export const OwnerDashboardView: React.FC<OwnerDashboardViewProps> = ({
         cropCallbackRef.current = onDone;
         setCropModalOpen(true);
       }
+    };
+    reader.readAsDataURL(file);
+  };
+
+  /**
+   * Kompres gambar QRIS tanpa crop paksa agar seluruh kode QR & label merchant tetap utuh terbaca.
+   */
+  const processQrisImageUpload = (file: File, onDone: (dataUrl: string) => void) => {
+    if (!file.type.startsWith('image/') || file.type.includes('svg')) {
+      alert('Format gambar QRIS wajib JPG, PNG, atau WebP ya!');
+      return;
+    }
+    if (file.size > 15 * 1024 * 1024) {
+      alert('Ukuran file QRIS terlalu besar (maksimal 15 MB).');
+      return;
+    }
+    const reader = new FileReader();
+    reader.onload = () => {
+      if (typeof reader.result !== 'string') return;
+      const img = new Image();
+      img.onload = () => {
+        const maxDim = 640;
+        const scale = Math.min(1, maxDim / Math.max(img.width || 1, img.height || 1));
+        const w = Math.max(1, Math.round(img.width * scale));
+        const h = Math.max(1, Math.round(img.height * scale));
+        const canvas = document.createElement('canvas');
+        canvas.width = w;
+        canvas.height = h;
+        const ctx = canvas.getContext('2d');
+        if (!ctx) {
+          onDone(reader.result as string);
+          return;
+        }
+        ctx.fillStyle = '#FFFFFF';
+        ctx.fillRect(0, 0, w, h);
+        ctx.drawImage(img, 0, 0, w, h);
+        onDone(canvas.toDataURL('image/webp', 0.88));
+      };
+      img.src = reader.result;
     };
     reader.readAsDataURL(file);
   };
@@ -1968,8 +2009,7 @@ Catatan Kurir: Pastikan posisi dus ditaruh datar agar mayo tidak tumpah ya kak.`
       `*Waktu:* ${dateStr}\n` +
       `*Pelanggan:* ${ord.customer_name}\n` +
       `*Metode Bayar:* ${(ord.payment_method || 'Tunai').toUpperCase()}\n` +
-      `*Layanan:* ${ord.delivery_method === 'delivery' ? `🛵 Antar Kurir (${ord.shipping_district || 'Sidoarjo'})` : `🍳 Ambil di Dapur (${storeConfig.pickupAddressNote || 'Sedati, Sidoarjo'})`}\n` +
-      (ord.delivery_method === 'delivery' && ord.notes ? `*Alamat / Catatan:* ${ord.notes}\n` : '') +
+      `*Layanan:* ${ord.delivery_method === 'delivery' ? '🛵 Antar Kurir' : `🍳 Ambil di Dapur (${storeConfig.pickupAddressNote || 'Sedati, Sidoarjo'})`}\n` +
       `----------------------------------------\n` +
       `${giftInfo}` +
       `${itemsText}\n` +
@@ -2000,9 +2040,14 @@ Catatan Kurir: Pastikan posisi dus ditaruh datar agar mayo tidak tumpah ya kak.`
     const brandDisplayName = storeConfig.brandName || 'Dapur Dulang Indonesia';
 
     const nmid = storeConfig.qrisNmid || 'ID1020057244342';
-    const qrisUrl = typeof window !== 'undefined'
-      ? `${window.location.origin}/qris-dulang.png`
-      : 'https://dulangweb.vercel.app/qris-dulang.png';
+    const rawQrisImg = storeConfig.qrisImage || '/qris-dulang.png';
+    const qrisUrl = rawQrisImg.startsWith('data:')
+      ? ''
+      : rawQrisImg.startsWith('http')
+      ? rawQrisImg
+      : typeof window !== 'undefined'
+      ? `${window.location.origin}${rawQrisImg.startsWith('/') ? rawQrisImg : `/${rawQrisImg}`}`
+      : `https://dulangweb.vercel.app/${rawQrisImg.replace(/^\//, '')}`;
 
     const itemsText = ord.items
       .map((it) => {
@@ -2017,7 +2062,7 @@ Catatan Kurir: Pastikan posisi dus ditaruh datar agar mayo tidak tumpah ya kak.`
     msg += `📋 *RINCIAN TAGIHAN PESANAN (#${ord.id}):*\n`;
     msg += `${itemsText}\n`;
     if (ord.shipping_cost && ord.shipping_cost > 0) {
-      msg += `🛵 Ongkir (${ord.shipping_district || 'Sidoarjo'}): Rp ${ord.shipping_cost.toLocaleString('id-ID')}\n`;
+      msg += `🛵 Ongkir Kurir: Rp ${ord.shipping_cost.toLocaleString('id-ID')}\n`;
     }
     msg += `--------------------------------------\n`;
     msg += `*✨ TOTAL TAGIHAN: Rp ${ord.total_price.toLocaleString('id-ID')}*\n`;
@@ -2027,8 +2072,16 @@ Catatan Kurir: Pastikan posisi dus ditaruh datar agar mayo tidak tumpah ya kak.`
     msg += `• *Nama Merchant:* ${brandDisplayName.toUpperCase()}\n`;
     msg += `• *NMID:* ${nmid}\n`;
     msg += `• *Dukungan:* Bebas transfer dari semua Bank (BCA, Mandiri, BRI, BSI, dll) & E-Wallet (GoPay, OVO, ShopeePay, DANA, AstraPay)\n`;
-    msg += `• *Link Barcode QRIS:* ${qrisUrl}\n`;
-    msg += `• *Cara Bayar:* Silakan scan barcode QRIS yang kami lampirkan di chat ini atau klik link di atas ya Kak 😊\n\n`;
+    if (qrisUrl) {
+      msg += `• *Link Barcode QRIS:* ${qrisUrl}\n`;
+    }
+    if (storeConfig.bankBCA) {
+      msg += `• *Transfer BCA:* ${storeConfig.bankBCA}\n`;
+    }
+    if (storeConfig.bankMandiri) {
+      msg += `• *Transfer Mandiri:* ${storeConfig.bankMandiri}\n`;
+    }
+    msg += `• *Cara Bayar:* Silakan scan barcode QRIS yang kami lampirkan di chat ini${qrisUrl ? ' atau klik link di atas' : ''} ya Kak 😊\n\n`;
 
     msg += `Jika sudah scan & bayar, mohon kirimkan bukti tangkapan layar (screenshot) ke sini ya kak agar pesanan langsung kami proses hangat-hangat 🔥\n\n`;
     msg += `📍 *Pantau Wajan & Status Pesananmu Live:* https://dulangweb.vercel.app/?track=${ord.id}\n\n`;
@@ -2102,6 +2155,31 @@ Catatan Kurir: Pastikan posisi dus ditaruh datar agar mayo tidak tumpah ya kak.`
       }
     } finally {
       setIsPrintingBluetooth(false);
+    }
+  };
+
+  const handleQuickTestPrint = async () => {
+    if (activeRole === 'kitchen') return;
+    if (!isBluetoothSupported()) {
+      alert(
+        'Tes Print Bluetooth langsung memerlukan browser Google Chrome di HP Android.\n' +
+          'Untuk printer USB/WiFi atau iPhone, gunakan tombol "Cetak Biasa / PDF" pada modal struk.'
+      );
+      return;
+    }
+    setIsTestingPrinter(true);
+    try {
+      const res = await printTestPageViaBluetooth(storeConfig, receiptPaperWidth);
+      onShowToast(`Tes print terkirim ke "${res.deviceName}"! 🖨️✓`);
+    } catch (err: any) {
+      const info = formatBluetoothErrorAlert(err);
+      if (info.isCancelled) {
+        onShowToast('Tes print dibatalkan.');
+      } else {
+        alert(info.message);
+      }
+    } finally {
+      setIsTestingPrinter(false);
     }
   };
 
@@ -2696,20 +2774,64 @@ Catatan Kurir: Pastikan posisi dus ditaruh datar agar mayo tidak tumpah ya kak.`
                 </button>
               )}
             </div>
-            <h1 className="font-hand font-bold text-[24px] sm:text-[34px] lg:text-[44px] leading-tight text-white">
-              {storeConfig.brandName || 'Dapur Dulang'}
-            </h1>
-            <p className="font-sans text-[12px] sm:text-[13px] text-[#FFF8E7]/70 mt-0.5 hidden sm:block">
-              {activeRole === 'owner'
-                ? (storeConfig.brandTagline || 'Kelola menu, keuangan, gudang HPP, dan pantau operasional.')
-                : activeRole === 'cashier'
-                ? 'Mode Kasir POS: Input antrean, cetak struk nota, dan pantau pesanan pelanggan.'
-                : 'Mode Layar Dapur (KDS): Tampilan antrean masak pesanan fresh dari wajan.'}
-            </p>
+            <div className="flex items-start sm:items-center gap-3 mt-1">
+              <img
+                src={storeConfig.brandLogo || '/dulang-logo.png'}
+                alt={storeConfig.brandName || 'Dulang Indonesia'}
+                className="w-12 h-12 sm:w-14 sm:h-14 rounded-2xl bg-white border-2 border-[#FFD700] object-contain p-1 shrink-0 shadow-sm"
+              />
+              <div className="min-w-0">
+                <h1 className="font-hand font-bold text-[24px] sm:text-[34px] lg:text-[42px] leading-tight text-white truncate">
+                  {storeConfig.brandName || 'Dapur Dulang'}
+                </h1>
+                <p className="font-sans text-[11px] sm:text-[13px] text-[#FFF8E7]/75 mt-0.5 line-clamp-1">
+                  {activeRole === 'owner'
+                    ? (storeConfig.brandTagline || 'Kelola menu, keuangan, gudang HPP, dan pantau operasional.')
+                    : activeRole === 'cashier'
+                    ? 'Mode Kasir POS: Input antrean, cetak struk nota, dan pantau pesanan pelanggan.'
+                    : 'Mode Layar Dapur (KDS): Tampilan antrean masak pesanan fresh dari wajan.'}
+                </p>
+              </div>
+            </div>
+
+            {/* Ringkasan Profil Usaha + Akses Cepat QR & Profil */}
+            <div className="flex flex-wrap items-center gap-1.5 sm:gap-2 mt-2 text-[11px] font-sans text-[#FFF8E7]/85">
+              <span className="inline-flex items-center gap-1 bg-white/10 px-2.5 py-0.5 rounded-full border border-white/15 max-w-full truncate">
+                <span>📍</span>
+                <span className="truncate">{storeConfig.pickupAddressNote || 'Dapur Dulang - Sedati, Sidoarjo'}</span>
+              </span>
+              <span className="inline-flex items-center gap-1 bg-white/10 px-2.5 py-0.5 rounded-full border border-white/15">
+                <span>📱</span>
+                <span>WA: {storeConfig.brandPhone || '087703397035'}</span>
+              </span>
+              {activeRole !== 'kitchen' && (
+                <button
+                  type="button"
+                  onClick={() => setIsQrisModalOpen(true)}
+                  className="cursor-pointer inline-flex items-center gap-1 bg-[#FFD700]/20 hover:bg-[#FFD700] text-[#FFD700] hover:text-[#111111] px-2.5 py-0.5 rounded-full border border-[#FFD700]/40 font-bold transition"
+                  title="Tampilkan QRIS Pembayaran Usaha"
+                >
+                  <span>💳</span> QR Usaha
+                </button>
+              )}
+              {activeRole === 'owner' && (
+                <button
+                  type="button"
+                  onClick={() => {
+                    setActiveTab('settings');
+                    window.scrollTo({ top: 0, behavior: 'smooth' });
+                  }}
+                  className="cursor-pointer inline-flex items-center gap-1 bg-white/15 hover:bg-white/25 text-white px-2.5 py-0.5 rounded-full border border-white/25 font-bold transition"
+                  title="Edit Logo, Nama Usaha, Alamat, WA & QR Pembayaran"
+                >
+                  <span>🏢</span> Profil Usaha
+                </button>
+              )}
+            </div>
           </div>
 
           {/* Status Live Mini Badge di HP */}
-          <div className="md:hidden flex items-center gap-1.5 bg-white/10 px-2.5 py-1 rounded-full border border-white/20 text-[11px] font-sans font-bold">
+          <div className="md:hidden flex items-center gap-1.5 bg-white/10 px-2.5 py-1 rounded-full border border-white/20 text-[11px] font-sans font-bold shrink-0">
             <span
               className={`w-2 h-2 rounded-full ${
                 supabaseCreds.isConfigured ? 'bg-emerald-400' : 'bg-amber-400'
@@ -2742,27 +2864,45 @@ Catatan Kurir: Pastikan posisi dus ditaruh datar agar mayo tidak tumpah ya kak.`
             </div>
           </div>
 
-          {/* Quick Buttons for Subuh & Closing (Owner Only) */}
-          {activeRole === 'owner' && (
+          {/* Quick Buttons: Subuh, Closing (Owner) & Tes Print (Owner + Kasir) */}
+          {(activeRole === 'owner' || activeRole === 'cashier') && (
             <div className="flex items-center gap-1.5">
               <button
                 type="button"
-                onClick={() => setIsSubuhModalOpen(true)}
-                className="cursor-pointer bg-[#FFD700] hover:bg-[#FFE033] text-[#111111] px-2.5 sm:px-3.5 py-1.5 rounded-full font-sans font-bold text-xs shadow-xs border border-[#111111] transition flex items-center gap-1"
-                title="Kalkulator Kebutuhan Bahan Subuh"
+                disabled={isTestingPrinter}
+                onClick={handleQuickTestPrint}
+                className="cursor-pointer bg-emerald-400 hover:bg-emerald-300 text-[#111111] px-2.5 sm:px-3.5 py-1.5 rounded-full font-sans font-bold text-xs shadow-xs border border-[#111111] transition flex items-center gap-1 disabled:opacity-60"
+                title={
+                  connectedPrinterName
+                    ? `Cetak struk uji cepat ke "${connectedPrinterName}"`
+                    : 'Sambung printer Bluetooth & cetak struk uji pendek'
+                }
               >
-                <span>🌅</span>
-                <span className="hidden xs:inline">Subuh</span>
+                <span>{isTestingPrinter ? '⏳' : '🖨️'}</span>
+                <span>{isTestingPrinter ? 'Mencetak...' : 'Tes Print'}</span>
               </button>
-              <button
-                type="button"
-                onClick={() => setIsClosingModalOpen(true)}
-                className="cursor-pointer bg-white/15 hover:bg-white/25 text-white px-2.5 sm:px-3.5 py-1.5 rounded-full font-sans font-bold text-xs border border-white/25 transition flex items-center gap-1"
-                title="Rekap Tutup Dapur Malam"
-              >
-                <span>🌙</span>
-                <span className="hidden xs:inline">Tutup</span>
-              </button>
+              {activeRole === 'owner' && (
+                <>
+                  <button
+                    type="button"
+                    onClick={() => setIsSubuhModalOpen(true)}
+                    className="cursor-pointer bg-[#FFD700] hover:bg-[#FFE033] text-[#111111] px-2.5 sm:px-3.5 py-1.5 rounded-full font-sans font-bold text-xs shadow-xs border border-[#111111] transition flex items-center gap-1"
+                    title="Kalkulator Kebutuhan Bahan Subuh"
+                  >
+                    <span>🌅</span>
+                    <span className="hidden xs:inline">Subuh</span>
+                  </button>
+                  <button
+                    type="button"
+                    onClick={() => setIsClosingModalOpen(true)}
+                    className="cursor-pointer bg-white/15 hover:bg-white/25 text-white px-2.5 sm:px-3.5 py-1.5 rounded-full font-sans font-bold text-xs border border-white/25 transition flex items-center gap-1"
+                    title="Rekap Tutup Dapur Malam"
+                  >
+                    <span>🌙</span>
+                    <span className="hidden xs:inline">Tutup</span>
+                  </button>
+                </>
+              )}
             </div>
           )}
 
@@ -3556,7 +3696,7 @@ Catatan Kurir: Pastikan posisi dus ditaruh datar agar mayo tidak tumpah ya kak.`
               {activeTab === 'vouchers' && '🎟️ Voucher'}
               {activeTab === 'testimonials' && '💬 Ulasan'}
               {activeTab === 'stats' && '📊 Statistik'}
-              {activeTab === 'settings' && '⚙️ Pengaturan & PIN'}
+              {activeTab === 'settings' && '⚙️ Profil Usaha & Pengaturan'}
             </span>
             <button
               type="button"
@@ -5225,19 +5365,26 @@ Catatan Kurir: Pastikan posisi dus ditaruh datar agar mayo tidak tumpah ya kak.`
                     <div className="bg-[#FFFDF4] rounded-[18px] p-4 border-2 border-[#111111] shadow-[3px_3px_0_#111111] space-y-3">
                       <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-3">
                         <div className="flex items-center gap-3">
-                          <div className="w-12 h-12 bg-white rounded-xl border-2 border-[#111111] p-1 flex items-center justify-center shrink-0 shadow-2xs">
-                            <img src="/qris-dulang.png" alt="QRIS" className="w-full h-full object-contain" />
+                          <div className="w-12 h-12 bg-white rounded-xl border-2 border-[#111111] p-1 flex items-center justify-center shrink-0 shadow-2xs overflow-hidden">
+                            <img src={storeConfig.qrisImage || '/qris-dulang.png'} alt="QRIS" className="w-full h-full object-contain" />
                           </div>
                           <div>
                             <span className="inline-flex items-center gap-1 bg-[#111111] text-[#FFD700] px-2 py-0.5 rounded-full text-[10px] font-bold">
                               <span>📱</span> QRIS RESMI
                             </span>
                             <h4 className="font-hand font-bold text-lg text-[#111111] leading-tight mt-0.5">
-                              DULANG INDONESIA
+                              {(storeConfig.brandName || 'DULANG INDONESIA').toUpperCase()}
                             </h4>
                             <p className="font-mono text-[11px] text-[#5C3D2E] font-bold">
-                              NMID: ID1020057244342 (OVO / GPN)
+                              NMID: {storeConfig.qrisNmid || 'ID1020057244342'}
                             </p>
+                            {(storeConfig.bankBCA || storeConfig.bankMandiri) && (
+                              <p className="font-sans text-[10px] text-[#5C3D2E]/80 mt-0.5">
+                                {storeConfig.bankBCA ? `BCA: ${storeConfig.bankBCA}` : ''}
+                                {storeConfig.bankBCA && storeConfig.bankMandiri ? ' • ' : ''}
+                                {storeConfig.bankMandiri ? `Mandiri: ${storeConfig.bankMandiri}` : ''}
+                              </p>
+                            )}
                           </div>
                         </div>
 
@@ -6771,21 +6918,134 @@ Catatan Kurir: Pastikan posisi dus ditaruh datar agar mayo tidak tumpah ya kak.`
       {/* TAB 2: PENGATURAN TOKO & KEAMANAN */}
       {activeTab === 'settings' && (
         <div className="space-y-8">
-          {/* SECTION 1: IDENTITAS USAHA & WHITE-LABEL BRAND (Prioritas 3) */}
+          {/* SECTION 1: PROFIL USAHA LENGKAP (LOGO, NAMA, ALAMAT, WA, QRIS & BANK) */}
           <div className="bg-white rounded-[24px] p-6 lg:p-8 border-2 border-[#111111] shadow-[4px_4px_0_#111111] space-y-6">
-            <div>
-              <div className="inline-flex items-center gap-2 bg-[#FFD700] text-[#111111] px-3 py-0.5 rounded-full font-sans text-[11px] font-bold uppercase tracking-wider mb-2">
-                🏷️ Identitas Toko & White-Label
+            <div className="flex flex-col sm:flex-row sm:items-start justify-between gap-3">
+              <div>
+                <div className="inline-flex items-center gap-2 bg-[#FFD700] text-[#111111] px-3 py-0.5 rounded-full font-sans text-[11px] font-bold uppercase tracking-wider mb-2">
+                  🏢 Profil Usaha & Identitas Brand
+                </div>
+                <h2 className="font-hand font-bold text-[30px] text-[#111111] leading-none">
+                  Profil Usaha, Logo, QR & Struk Kasir
+                </h2>
+                <p className="font-sans text-xs text-[#5C3D2E]/70 mt-1">
+                  Atur logo toko, nama usaha, alamat, nomor WhatsApp, gambar QRIS pembayaran, dan rekening bank agar otomatis tampil di web, invoice, stiker QR, dan struk kasir.
+                </p>
               </div>
-              <h2 className="font-hand font-bold text-[30px] text-[#111111] leading-none">
-                Identitas Brand & Format Struk Kasir
-              </h2>
-              <p className="font-sans text-xs text-[#5C3D2E]/70 mt-1">
-                Kustomisasi nama usaha, slogan, nomor WhatsApp, dan format struk kasir agar cocok untuk usaha gorengan, kafe, resto, atau bakery Anda.
-              </p>
+              <div className="flex flex-wrap items-center gap-2 shrink-0">
+                <button
+                  type="button"
+                  onClick={() => setIsQrisModalOpen(true)}
+                  className="cursor-pointer bg-[#FFF8E7] hover:bg-[#FFEEC2] text-[#111111] px-3.5 py-2 rounded-full font-sans font-bold text-xs border-2 border-[#111111] shadow-[2px_2px_0_#111111] transition flex items-center gap-1"
+                >
+                  <span>💳</span> Lihat QR Usaha
+                </button>
+                <button
+                  type="button"
+                  disabled={isTestingPrinter}
+                  onClick={handleQuickTestPrint}
+                  className="cursor-pointer bg-emerald-400 hover:bg-emerald-300 text-[#111111] px-3.5 py-2 rounded-full font-sans font-bold text-xs border-2 border-[#111111] shadow-[2px_2px_0_#111111] transition flex items-center gap-1 disabled:opacity-60"
+                >
+                  <span>{isTestingPrinter ? '⏳' : '🖨️'}</span>
+                  <span>{isTestingPrinter ? 'Mencetak...' : 'Tes Print'}</span>
+                </button>
+              </div>
             </div>
 
-            <form onSubmit={handleSaveBrandIdentity} className="space-y-4">
+            {/* Kartu Pratinjau Mini Profil Usaha */}
+            <div className="bg-[#111111] text-[#FFF8E7] rounded-[20px] p-4 sm:p-5 border-2 border-[#FFD700] flex flex-col sm:flex-row sm:items-center justify-between gap-4">
+              <div className="flex items-center gap-3.5 min-w-0">
+                <img
+                  src={localConfig.brandLogo || '/dulang-logo.png'}
+                  alt={localConfig.brandName || 'Logo Usaha'}
+                  className="w-14 h-14 sm:w-16 sm:h-16 rounded-2xl bg-white border-2 border-[#FFD700] object-contain p-1 shrink-0"
+                />
+                <div className="min-w-0">
+                  <div className="font-hand font-bold text-2xl text-white leading-tight truncate">
+                    {localConfig.brandName || 'Dulang Indonesia'}
+                  </div>
+                  <div className="font-sans text-[11px] text-[#FFD700] truncate">
+                    {localConfig.brandTagline || 'Dibuat dengan wajan panas & tulisan tangan'}
+                  </div>
+                  <div className="font-sans text-[11px] text-[#FFF8E7]/80 mt-1 flex flex-wrap gap-x-3 gap-y-0.5">
+                    <span>📍 {localConfig.pickupAddressNote || 'Dapur Dulang - Sedati, Sidoarjo'}</span>
+                    <span>📱 {localConfig.brandPhone || '087703397035'}</span>
+                  </div>
+                </div>
+              </div>
+              <div className="flex items-center gap-2.5 bg-white/10 rounded-2xl p-2.5 border border-white/15 shrink-0">
+                <img
+                  src={localConfig.qrisImage || '/qris-dulang.png'}
+                  alt="Preview QRIS"
+                  className="w-12 h-12 rounded-xl bg-white object-contain p-0.5"
+                />
+                <div className="font-sans text-[10px] leading-snug">
+                  <div className="font-bold text-[#FFD700]">QRIS & Transfer</div>
+                  <div className="text-white/80 font-mono">NMID: {localConfig.qrisNmid || 'ID1020057244342'}</div>
+                  {(localConfig.bankBCA || localConfig.bankMandiri) && (
+                    <div className="text-emerald-300 font-semibold truncate max-w-[160px]">
+                      {localConfig.bankBCA || localConfig.bankMandiri}
+                    </div>
+                  )}
+                </div>
+              </div>
+            </div>
+
+            <form onSubmit={handleSaveBrandIdentity} className="space-y-5">
+              {/* LOGO USAHA */}
+              <div className="bg-[#FFFDF4] rounded-[18px] p-4 border-2 border-[#111111]/20 space-y-3">
+                <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-3">
+                  <div className="flex items-center gap-3.5">
+                    <div className="w-16 h-16 rounded-2xl bg-white border-2 border-[#111111] p-1 flex items-center justify-center shrink-0 overflow-hidden shadow-xs">
+                      <img
+                        src={localConfig.brandLogo || '/dulang-logo.png'}
+                        alt="Logo Usaha"
+                        className="w-full h-full object-contain"
+                      />
+                    </div>
+                    <div>
+                      <div className="font-sans font-bold text-xs text-[#111111]">
+                        Logo Resmi Usaha / Toko
+                      </div>
+                      <p className="font-sans text-[11px] text-[#5C3D2E]/75">
+                        Tampil di Header Website, Dashboard, Invoice A4, & tengah Stiker QR Kardus.
+                      </p>
+                    </div>
+                  </div>
+
+                  <div className="flex flex-wrap items-center gap-2">
+                    <label className="cursor-pointer bg-[#FFD700] hover:brightness-105 text-[#111111] border-2 border-[#111111] px-3.5 py-1.5 rounded-full font-sans text-xs font-bold shadow-[2px_2px_0_#111111] transition flex items-center gap-1">
+                      <span>🖼️</span>
+                      <span>Unggah & Potong Logo</span>
+                      <input
+                        type="file"
+                        accept="image/*"
+                        className="hidden"
+                        onChange={(e) => {
+                          const file = e.target.files?.[0];
+                          if (file) {
+                            triggerImageCrop(file, 'Sesuaikan Logo Usaha (1:1)', (url) => {
+                              setLocalConfig((prev) => ({ ...prev, brandLogo: url }));
+                              onShowToast('Logo siap — klik "Simpan Profil Usaha" untuk menerapkan!');
+                            });
+                            e.target.value = '';
+                          }
+                        }}
+                      />
+                    </label>
+                    {localConfig.brandLogo && localConfig.brandLogo !== '/dulang-logo.png' && (
+                      <button
+                        type="button"
+                        onClick={() => setLocalConfig({ ...localConfig, brandLogo: '/dulang-logo.png' })}
+                        className="cursor-pointer text-xs font-sans font-bold text-red-600 hover:underline px-2 py-1"
+                      >
+                        Reset Default
+                      </button>
+                    )}
+                  </div>
+                </div>
+              </div>
+
               <div className="grid sm:grid-cols-2 gap-4">
                 {/* Nama Usaha */}
                 <div>
@@ -6852,7 +7112,7 @@ Catatan Kurir: Pastikan posisi dus ditaruh datar agar mayo tidak tumpah ya kak.`
                 {/* Alamat Dapur Utama / Lokasi Pengambilan (Fleksibel Cabang) */}
                 <div className="sm:col-span-2">
                   <label className="block font-sans text-xs font-bold text-[#111111] mb-1">
-                    Alamat Dapur Utama / Lokasi Pengambilan (Fleksibel jika Ada Cabang)
+                    Alamat Usaha / Dapur Utama (Tampil di Struk, Invoice & Ambil Mandiri)
                   </label>
                   <input
                     type="text"
@@ -6861,9 +7121,121 @@ Catatan Kurir: Pastikan posisi dus ditaruh datar agar mayo tidak tumpah ya kak.`
                     placeholder="Contoh: Dapur Dulang - Sedati, Sidoarjo"
                     className="w-full rounded-[14px] border-2 border-[#111111] px-4 py-2.5 font-sans text-sm bg-white focus:outline-none focus:border-[#FFD700]"
                   />
-                  <p className="font-sans text-[11px] text-[#5C3D2E]/70 mt-1">
-                    Alamat ini otomatis tercetak di header struk kasir thermal, invoice resmi, dan petunjuk ambil mandiri bagi pembeli.
-                  </p>
+                </div>
+              </div>
+
+              {/* QR PEMBAYARAN (QRIS) & REKENING BANK */}
+              <div className="bg-[#FFF8E7] rounded-[18px] p-4 sm:p-5 border-2 border-[#111111]/20 space-y-4">
+                <div className="flex flex-wrap items-center justify-between gap-2">
+                  <div>
+                    <div className="font-sans text-xs font-bold text-[#111111] uppercase tracking-wider flex items-center gap-1.5">
+                      <span>💳</span> QR Pembayaran (QRIS) & Rekening Bank
+                    </div>
+                    <p className="font-sans text-[11px] text-[#5C3D2E]/75 mt-0.5">
+                      Unggah barcode QRIS toko Anda dan lengkapi info NMID / rekening transfer untuk kasir & tagihan WhatsApp.
+                    </p>
+                  </div>
+                  <button
+                    type="button"
+                    onClick={() => setIsQrisModalOpen(true)}
+                    className="cursor-pointer bg-white hover:bg-[#FFD700] text-[#111111] px-3 py-1 rounded-full font-sans text-[11px] font-bold border border-[#111111]/30 transition"
+                  >
+                    🔍 Pratinjau Layar Penuh
+                  </button>
+                </div>
+
+                <div className="flex flex-col sm:flex-row sm:items-center gap-4 bg-white rounded-[14px] p-3.5 border border-[#111111]/20">
+                  <img
+                    src={localConfig.qrisImage || '/qris-dulang.png'}
+                    alt="QRIS Usaha"
+                    className="w-20 h-20 rounded-xl border border-[#111111]/30 object-contain bg-white p-1 shrink-0"
+                  />
+                  <div className="space-y-2 flex-1 min-w-0">
+                    <div className="font-sans font-bold text-xs text-[#111111]">
+                      Gambar Barcode / Poster QRIS Resmi
+                    </div>
+                    <div className="flex flex-wrap items-center gap-2">
+                      <label className="cursor-pointer bg-[#111111] hover:bg-black text-[#FFD700] px-3.5 py-1.5 rounded-full font-sans text-xs font-bold transition flex items-center gap-1.5">
+                        <span>📷</span>
+                        <span>Unggah Gambar QRIS</span>
+                        <input
+                          type="file"
+                          accept="image/*"
+                          className="hidden"
+                          onChange={(e) => {
+                            const file = e.target.files?.[0];
+                            if (file) {
+                              processQrisImageUpload(file, (url) => {
+                                setLocalConfig((prev) => ({ ...prev, qrisImage: url }));
+                                onShowToast('Gambar QRIS dimuat — klik "Simpan Profil Usaha" untuk menyimpan!');
+                              });
+                              e.target.value = '';
+                            }
+                          }}
+                        />
+                      </label>
+                      {localConfig.qrisImage && localConfig.qrisImage !== '/qris-dulang.png' && (
+                        <button
+                          type="button"
+                          onClick={() => setLocalConfig({ ...localConfig, qrisImage: '/qris-dulang.png' })}
+                          className="cursor-pointer text-xs font-sans font-bold text-red-600 hover:underline px-2 py-1"
+                        >
+                          Reset QR Default
+                        </button>
+                      )}
+                    </div>
+                  </div>
+                </div>
+
+                <div className="grid sm:grid-cols-2 gap-3">
+                  <div>
+                    <label className="block font-sans text-[11px] font-bold text-[#111111] mb-1">
+                      NMID QRIS
+                    </label>
+                    <input
+                      type="text"
+                      value={localConfig.qrisNmid || ''}
+                      onChange={(e) => setLocalConfig({ ...localConfig, qrisNmid: e.target.value })}
+                      placeholder="ID1020057244342"
+                      className="w-full rounded-[12px] border-2 border-[#111111] px-3.5 py-2 font-mono font-bold text-xs bg-white focus:outline-none focus:border-[#FFD700]"
+                    />
+                  </div>
+                  <div>
+                    <label className="block font-sans text-[11px] font-bold text-[#111111] mb-1">
+                      Label / Keterangan QRIS
+                    </label>
+                    <input
+                      type="text"
+                      value={localConfig.qrisTeks || ''}
+                      onChange={(e) => setLocalConfig({ ...localConfig, qrisTeks: e.target.value })}
+                      placeholder="DULANG INDONESIA (Mendukung semua Bank & E-Wallet)"
+                      className="w-full rounded-[12px] border-2 border-[#111111] px-3.5 py-2 font-sans text-xs bg-white focus:outline-none focus:border-[#FFD700]"
+                    />
+                  </div>
+                  <div>
+                    <label className="block font-sans text-[11px] font-bold text-[#111111] mb-1">
+                      Rekening BCA (Opsional)
+                    </label>
+                    <input
+                      type="text"
+                      value={localConfig.bankBCA || ''}
+                      onChange={(e) => setLocalConfig({ ...localConfig, bankBCA: e.target.value })}
+                      placeholder="Contoh: 1234567890 a/n Dulang"
+                      className="w-full rounded-[12px] border-2 border-[#111111] px-3.5 py-2 font-sans text-xs bg-white focus:outline-none focus:border-[#FFD700]"
+                    />
+                  </div>
+                  <div>
+                    <label className="block font-sans text-[11px] font-bold text-[#111111] mb-1">
+                      Rekening Mandiri / Bank Lain (Opsional)
+                    </label>
+                    <input
+                      type="text"
+                      value={localConfig.bankMandiri || ''}
+                      onChange={(e) => setLocalConfig({ ...localConfig, bankMandiri: e.target.value })}
+                      placeholder="Contoh: 1400012345678 a/n Dulang"
+                      className="w-full rounded-[12px] border-2 border-[#111111] px-3.5 py-2 font-sans text-xs bg-white focus:outline-none focus:border-[#FFD700]"
+                    />
+                  </div>
                 </div>
               </div>
 
@@ -6956,7 +7328,7 @@ Catatan Kurir: Pastikan posisi dus ditaruh datar agar mayo tidak tumpah ya kak.`
                   type="submit"
                   className="cursor-pointer bg-[#111111] text-[#FFD700] rounded-full px-6 py-2.5 font-sans font-bold text-xs border-2 border-[#111111] shadow-[2px_2px_0_#FFD700] hover:brightness-110 active:translate-x-0.5 active:translate-y-0.5 transition"
                 >
-                  Simpan Identitas Usaha ✓
+                  Simpan Profil Usaha ✓
                 </button>
               </div>
             </form>
@@ -7591,8 +7963,8 @@ Catatan Kurir: Pastikan posisi dus ditaruh datar agar mayo tidak tumpah ya kak.`
 
                       {currentList.length === 0 && (
                         <div className="col-span-full py-8 text-center bg-white rounded-[14px] border-2 border-dashed border-[#111111]/20">
-                          <div className="w-16 h-16 bg-[#111111] rounded-full grid place-items-center mx-auto shadow-sm">
-                            <img src="/dulang-logo.png" alt="Logo" className="w-12 h-12 object-contain" />
+                          <div className="w-16 h-16 bg-[#111111] rounded-full grid place-items-center mx-auto shadow-sm overflow-hidden p-1.5">
+                            <img src={localConfig.brandLogo || '/dulang-logo.png'} alt="Logo" className="w-12 h-12 object-contain rounded-full" />
                           </div>
                           <div className="font-hand font-bold text-sm text-[#111111] mt-2">
                             Masih Menggunakan Logo Dulang Default
@@ -10498,6 +10870,7 @@ Catatan Kurir: Pastikan posisi dus ditaruh datar agar mayo tidak tumpah ya kak.`
         <div className="pt-1">
           <StickerGeneratorView
             onShowToast={onShowToast}
+            brandLogo={storeConfig.brandLogo}
             onNavigateToScan={(qrId) => {
               window.open(`/?scan=${qrId}`, '_blank', 'noopener,noreferrer');
             }}
@@ -10597,6 +10970,11 @@ Catatan Kurir: Pastikan posisi dus ditaruh datar agar mayo tidak tumpah ya kak.`
                 }`}
               >
                 <div className="text-center pb-2 border-b border-dashed border-gray-400">
+                  <img
+                    src={storeConfig.brandLogo || '/dulang-logo.png'}
+                    alt={storeConfig.brandName || 'Logo Usaha'}
+                    className="w-16 h-16 mx-auto mb-1.5 object-contain grayscale contrast-150"
+                  />
                   <div className="font-bold text-sm">{(storeConfig.brandName || 'DAPUR DULANG INDONESIA').toUpperCase()}</div>
                   <div className="text-[10px] text-gray-600">{storeConfig.brandTagline || 'Dibuat dengan wajan panas & tulisan tangan'}</div>
                   <div className="text-[10px] text-gray-500">{storeConfig.pickupAddressNote || 'Sedati • Sidoarjo, Jawa Timur'}</div>
@@ -10650,12 +11028,6 @@ Catatan Kurir: Pastikan posisi dus ditaruh datar agar mayo tidak tumpah ya kak.`
                     <span>Pelanggan:</span>
                     <span className="font-bold truncate max-w-[150px]">{selectedOrderForReceipt.customer_name}</span>
                   </div>
-                  {selectedOrderForReceipt.customer_wa && (
-                    <div className="flex justify-between text-[10px]">
-                      <span>WhatsApp:</span>
-                      <span>+{selectedOrderForReceipt.customer_wa}</span>
-                    </div>
-                  )}
                   <div className="flex justify-between">
                     <span>Metode Bayar:</span>
                     <span className="font-bold uppercase">{selectedOrderForReceipt.payment_method || 'TUNAI'}</span>
@@ -10668,19 +11040,7 @@ Catatan Kurir: Pastikan posisi dus ditaruh datar agar mayo tidak tumpah ya kak.`
                         : '🍳 AMBIL DI DAPUR'}
                     </span>
                   </div>
-                  {selectedOrderForReceipt.delivery_method === 'delivery' ? (
-                    <div className="pt-1 text-[10px] text-gray-800 bg-amber-50/70 p-1.5 rounded border border-amber-200/80 mt-0.5">
-                      <div className="font-bold flex justify-between text-amber-950">
-                        <span>Tujuan Pengantaran:</span>
-                        <span>{selectedOrderForReceipt.shipping_district ? `Kec. ${selectedOrderForReceipt.shipping_district}` : 'Sidoarjo'}</span>
-                      </div>
-                      {selectedOrderForReceipt.notes && (
-                        <div className="text-gray-700 italic break-words mt-0.5 font-sans text-[10px]">
-                          {selectedOrderForReceipt.notes}
-                        </div>
-                      )}
-                    </div>
-                  ) : (
+                  {selectedOrderForReceipt.delivery_method !== 'delivery' && (
                     <div className="flex justify-between text-[10px] text-gray-500">
                       <span>Lokasi Ambil:</span>
                       <span className="truncate max-w-[170px]">{storeConfig.pickupAddressNote || 'Sedati, Sidoarjo'}</span>
@@ -10726,7 +11086,7 @@ Catatan Kurir: Pastikan posisi dus ditaruh datar agar mayo tidak tumpah ya kak.`
                 <div className="py-2 border-b border-dashed border-gray-400 space-y-1 text-[11px]">
                   {selectedOrderForReceipt.shipping_cost !== undefined && selectedOrderForReceipt.shipping_cost > 0 && (
                     <div className="flex justify-between text-gray-600 text-[10px]">
-                      <span>Ongkir Kurir ({selectedOrderForReceipt.shipping_district || 'Sidoarjo'}):</span>
+                      <span>Ongkir Kurir:</span>
                       <span>Rp {selectedOrderForReceipt.shipping_cost.toLocaleString('id-ID')}</span>
                     </div>
                   )}
@@ -12418,60 +12778,73 @@ Catatan Kurir: Pastikan posisi dus ditaruh datar agar mayo tidak tumpah ya kak.`
       )}
 
       {/* QRIS FULLSCREEN MODAL FOR CASHIER & CUSTOMERS */}
-      {isQrisModalOpen && (
-        <div className="fixed inset-0 z-50 flex items-center justify-center p-3 sm:p-4 bg-black/75 backdrop-blur-xs">
-          <div className="bg-white rounded-[28px] border-3 border-[#111111] shadow-[8px_8px_0_#111111] max-w-sm w-full p-5 sm:p-6 text-center relative animate-in fade-in zoom-in-95 duration-200">
-            <button
-              type="button"
-              onClick={() => setIsQrisModalOpen(false)}
-              className="cursor-pointer absolute top-3.5 right-3.5 w-8 h-8 rounded-full bg-gray-100 hover:bg-[#FFD700] text-[#111111] border-2 border-[#111111] font-bold text-sm flex items-center justify-center transition"
-            >
-              ✕
-            </button>
-            <div className="inline-flex items-center gap-1.5 bg-[#111111] text-[#FFD700] px-3 py-0.5 rounded-full text-[11px] font-bold mb-2">
-              <span>📱</span>
-              <span>QRIS STANDAR NASIONAL (GPN)</span>
-            </div>
-            <h3 className="font-hand font-bold text-2xl text-[#111111]">
-              DULANG INDONESIA
-            </h3>
-            <p className="font-mono text-xs text-[#5C3D2E] font-bold mt-0.5">
-              NMID: ID1020057244342
-            </p>
-
-            <div className="my-3 p-2 bg-[#FFFDF4] rounded-[20px] border-2 border-[#111111] shadow-inner inline-block">
-              <img
-                src="/qris-dulang.png"
-                alt="QRIS DULANG INDONESIA"
-                className="w-64 max-h-[380px] h-auto mx-auto rounded-xl object-contain"
-              />
-            </div>
-
-            <p className="font-sans text-[11px] text-[#5C3D2E]/85">
-              Mendukung semua M-Banking & E-Wallet<br />
-              <span className="text-[10px] text-gray-500 font-medium">Dicetak oleh: OVO • Bebas Biaya Admin</span>
-            </p>
-
-            <div className="mt-4 flex gap-2">
-              <a
-                href="/qris-dulang.png"
-                download="QRIS-Dulang-Indonesia.png"
-                className="flex-1 py-2.5 rounded-full bg-[#111111] text-[#FFD700] hover:bg-[#FFD700] hover:text-[#111111] font-sans font-bold text-xs border-2 border-[#111111] transition flex items-center justify-center gap-1.5 shadow-[2px_2px_0_#111111]"
-              >
-                <span>📥</span>
-                <span>Unduh Gambar</span>
-              </a>
+      {isQrisModalOpen && (() => {
+        const qrisCfg = activeTab === 'settings' ? localConfig : storeConfig;
+        const qrisBrand = (qrisCfg.brandName || 'DULANG INDONESIA').toUpperCase();
+        const qrisImgSrc = qrisCfg.qrisImage || '/qris-dulang.png';
+        return (
+          <div className="fixed inset-0 z-50 flex items-center justify-center p-3 sm:p-4 bg-black/75 backdrop-blur-xs">
+            <div className="bg-white rounded-[28px] border-3 border-[#111111] shadow-[8px_8px_0_#111111] max-w-sm w-full p-5 sm:p-6 text-center relative animate-in fade-in zoom-in-95 duration-200">
               <button
                 type="button"
                 onClick={() => setIsQrisModalOpen(false)}
-                className="cursor-pointer px-4 py-2.5 rounded-full bg-gray-100 hover:bg-gray-200 text-[#111111] font-sans font-bold text-xs border border-[#111111]/30 transition"
+                className="cursor-pointer absolute top-3.5 right-3.5 w-8 h-8 rounded-full bg-gray-100 hover:bg-[#FFD700] text-[#111111] border-2 border-[#111111] font-bold text-sm flex items-center justify-center transition"
               >
-                Tutup
+                ✕
               </button>
+              <div className="inline-flex items-center gap-1.5 bg-[#111111] text-[#FFD700] px-3 py-0.5 rounded-full text-[11px] font-bold mb-2">
+                <span>📱</span>
+                <span>QRIS STANDAR NASIONAL (GPN)</span>
+              </div>
+              <h3 className="font-hand font-bold text-2xl text-[#111111]">
+                {qrisBrand}
+              </h3>
+              <p className="font-mono text-xs text-[#5C3D2E] font-bold mt-0.5">
+                NMID: {qrisCfg.qrisNmid || 'ID1020057244342'}
+              </p>
+
+              <div className="my-3 p-2 bg-[#FFFDF4] rounded-[20px] border-2 border-[#111111] shadow-inner inline-block">
+                <img
+                  src={qrisImgSrc}
+                  alt={`QRIS ${qrisBrand}`}
+                  className="w-64 max-h-[380px] h-auto mx-auto rounded-xl object-contain"
+                />
+              </div>
+
+              <p className="font-sans text-[11px] text-[#5C3D2E]/85">
+                {qrisCfg.qrisTeks || 'Mendukung semua M-Banking & E-Wallet'}<br />
+                {(qrisCfg.bankBCA || qrisCfg.bankMandiri) ? (
+                  <span className="text-[11px] text-[#111111] font-bold block mt-1">
+                    {qrisCfg.bankBCA ? `BCA: ${qrisCfg.bankBCA}` : ''}
+                    {qrisCfg.bankBCA && qrisCfg.bankMandiri ? ' • ' : ''}
+                    {qrisCfg.bankMandiri ? `Mandiri: ${qrisCfg.bankMandiri}` : ''}
+                  </span>
+                ) : (
+                  <span className="text-[10px] text-gray-500 font-medium">Bebas Biaya Admin</span>
+                )}
+              </p>
+
+              <div className="mt-4 flex gap-2">
+                <a
+                  href={qrisImgSrc}
+                  download={`QRIS-${(qrisCfg.brandName || 'Dulang-Indonesia').replace(/\s+/g, '-')}.png`}
+                  className="flex-1 py-2.5 rounded-full bg-[#111111] text-[#FFD700] hover:bg-[#FFD700] hover:text-[#111111] font-sans font-bold text-xs border-2 border-[#111111] transition flex items-center justify-center gap-1.5 shadow-[2px_2px_0_#111111]"
+                >
+                  <span>📥</span>
+                  <span>Unduh Gambar</span>
+                </a>
+                <button
+                  type="button"
+                  onClick={() => setIsQrisModalOpen(false)}
+                  className="cursor-pointer px-4 py-2.5 rounded-full bg-gray-100 hover:bg-gray-200 text-[#111111] font-sans font-bold text-xs border border-[#111111]/30 transition"
+                >
+                  Tutup
+                </button>
+              </div>
             </div>
           </div>
-        </div>
-      )}
+        );
+      })()}
 
       {/* MOBILE SMART ORDER ACTION DRAWER (PROGRESSIVE DISCLOSURE FOR CASHIER) */}
       {mobileActionOrder && (
@@ -13036,9 +13409,9 @@ Catatan Kurir: Pastikan posisi dus ditaruh datar agar mayo tidak tumpah ya kak.`
                       : 'bg-white text-[#111111] shadow-[2px_2px_0_#111111] hover:bg-[#FFF8E7]'
                   }`}
                 >
-                  <div className="text-xl mb-1">🔐</div>
-                  <div className="font-sans font-bold text-xs">Keamanan & PIN</div>
-                  <div className="text-[10px] opacity-75">Identitas, Brand & PIN</div>
+                  <div className="text-xl mb-1">🏢</div>
+                  <div className="font-sans font-bold text-xs">Profil & Pengaturan</div>
+                  <div className="text-[10px] opacity-75">Logo, QR, WA, Printer & PIN</div>
                 </button>
               )}
 

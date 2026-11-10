@@ -409,8 +409,8 @@ export const OrderTrackingView: React.FC<OrderTrackingViewProps> = ({
                   <span className="text-white/60">Metode Pengiriman:</span>
                   <div className="font-bold text-[#FFD700] text-sm">
                     {currentOrder.delivery_method === 'delivery'
-                      ? `Kurir Dulang → ${currentOrder.shipping_district || 'Sidoarjo'}`
-                      : 'Ambil Sendiri di Dapur Dulang (Pasar Payan)'}
+                      ? 'Diantar Kurir'
+                      : 'Ambil Sendiri di Dapur Dulang'}
                   </div>
                 </div>
               </div>
@@ -499,7 +499,7 @@ export const OrderTrackingView: React.FC<OrderTrackingViewProps> = ({
             <div className="pt-3 border-t border-gray-200 space-y-1.5 text-xs font-sans">
               {currentOrder.shipping_cost && currentOrder.shipping_cost > 0 && (
                 <div className="flex justify-between text-[#5C3D2E]/70">
-                  <span>Ongkir ({currentOrder.shipping_district}):</span>
+                  <span>Ongkir Kurir:</span>
                   <span className="font-mono font-bold">Rp {currentOrder.shipping_cost.toLocaleString('id-ID')}</span>
                 </div>
               )}

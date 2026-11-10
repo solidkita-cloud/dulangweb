@@ -8,6 +8,7 @@ import { QRCodeRecord } from '../types';
 interface StickerGeneratorViewProps {
   onShowToast: (msg: string) => void;
   onNavigateToScan: (qrId: string) => void;
+  brandLogo?: string;
 }
 
 type StickerSize = '3.5cm' | '4cm' | '4.5cm';
@@ -38,6 +39,7 @@ function drawRoundedRect(
 export const StickerGeneratorView: React.FC<StickerGeneratorViewProps> = ({
   onShowToast,
   onNavigateToScan,
+  brandLogo,
 }) => {
   const [count, setCount] = useState<number>(20);
   const [prefix, setPrefix] = useState<string>('DULANG-');
@@ -51,15 +53,17 @@ export const StickerGeneratorView: React.FC<StickerGeneratorViewProps> = ({
 
   const logoRef = useRef<HTMLImageElement | null>(null);
 
-  // Preload Dulang circular logo once
+  const resolvedLogoSrc = brandLogo || '/dulang-logo.png';
+
+  // Preload brand circular logo whenever brandLogo changes
   useEffect(() => {
     const img = new Image();
     img.crossOrigin = 'anonymous';
-    img.src = '/dulang-logo.png';
+    img.src = resolvedLogoSrc;
     img.onload = () => {
       logoRef.current = img;
     };
-  }, []);
+  }, [resolvedLogoSrc]);
 
   // Load initial batch
   useEffect(() => {
@@ -90,10 +94,10 @@ export const StickerGeneratorView: React.FC<StickerGeneratorViewProps> = ({
 
       // Ensure logo is loaded
       let logo = logoRef.current;
-      if (!logo || !logo.complete) {
+      if (!logo || !logo.complete || logo.src !== resolvedLogoSrc) {
         logo = new Image();
         logo.crossOrigin = 'anonymous';
-        logo.src = '/dulang-logo.png';
+        logo.src = resolvedLogoSrc;
         await new Promise((resolve) => {
           logo!.onload = resolve;
           logo!.onerror = resolve;
@@ -306,7 +310,7 @@ export const StickerGeneratorView: React.FC<StickerGeneratorViewProps> = ({
     return () => {
       isCancelled = true;
     };
-  }, [qrList, size, theme, tagline]);
+  }, [qrList, size, theme, tagline, resolvedLogoSrc]);
 
   const handleGenerate = async () => {
     setIsGenerating(true);

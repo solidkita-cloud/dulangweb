@@ -83,11 +83,11 @@ export const BluetoothPrinterBar: React.FC<BluetoothPrinterBarProps> = ({
     try {
       const res = await printTestPageViaBluetooth(storeConfig, paperWidth);
       refreshStatus();
-      onShowToast(`Test print terkirim ke "${res.deviceName}"! 🧾✓`);
+      onShowToast(`Tes print terkirim ke "${res.deviceName}"! 🧾✓`);
     } catch (err: any) {
       const info = formatBluetoothErrorAlert(err);
       if (info.isCancelled) {
-        onShowToast('Test print dibatalkan.');
+        onShowToast('Tes print dibatalkan.');
       } else {
         alert(info.message);
       }
@@ -165,7 +165,7 @@ export const BluetoothPrinterBar: React.FC<BluetoothPrinterBarProps> = ({
           className="cursor-pointer bg-[#FFF3C7] hover:bg-[#FFD700] text-[#111111] border border-[#111111]/40 hover:border-[#111111] rounded-full px-2.5 py-1 font-bold text-[11px] transition disabled:opacity-50"
           title="Cetak struk uji pendek untuk memastikan printer baru siap"
         >
-          {isBusy === 'test' ? 'Mencetak...' : '🧪 Test Print'}
+          {isBusy === 'test' ? 'Mencetak...' : '🧪 Tes Print'}
         </button>
 
         {connectedName && (
