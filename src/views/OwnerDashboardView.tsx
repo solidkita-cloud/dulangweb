@@ -13,6 +13,7 @@ import {
   ExpenseRecord,
   ExpenseCategory,
   StaffRole,
+  CashierShift,
 } from '../types';
 import { SIDOARJO_AREAS, INDONESIA_CITIES, CITY_DISTRICTS, MONTHS_INDONESIA, DEFAULT_SIDOARJO_DELIVERY_RATES, checkStoreOpenStatus } from '../lib/constants';
 import { getSupabaseCredentials, saveSupabaseCredentials, clearSupabaseCredentials } from '../lib/supabase';
@@ -47,6 +48,7 @@ import {
 } from '../lib/security';
 import {
   printOrderViaBluetooth,
+  printShiftSlipViaBluetooth,
   isBluetoothSupported,
 } from '../lib/bluetoothPrinter';
 
@@ -207,6 +209,36 @@ export const OwnerDashboardView: React.FC<OwnerDashboardViewProps> = ({
   const [audioVibration, setAudioVibrationState] = useState<boolean>(() => isVibrationEnabled());
   const [pantryVersion, setPantryVersion] = useState<number>(0);
   const [isPrintingBluetooth, setIsPrintingBluetooth] = useState<boolean>(false);
+
+  // --- CASHIER SHIFT, PETTY CASH, & VOID ORDER STATE (Step 1) ---
+  const [activeShift, setActiveShift] = useState<CashierShift | null>(() => storageService.getActiveShift());
+  const [isStartShiftModalOpen, setIsStartShiftModalOpen] = useState<boolean>(false);
+  const [isCloseShiftModalOpen, setIsCloseShiftModalOpen] = useState<boolean>(false);
+  const [isPettyCashModalOpen, setIsPettyCashModalOpen] = useState<boolean>(false);
+  const [isShiftHistoryModalOpen, setIsShiftHistoryModalOpen] = useState<boolean>(false);
+  const [orderToVoid, setOrderToVoid] = useState<OrderRecord | null>(null);
+  const [voidReason, setVoidReason] = useState<string>('Salah input menu / pesanan ganda');
+  const [voidCustomReason, setVoidCustomReason] = useState<string>('');
+
+  // Form shift states
+  const [shiftCashierName, setShiftCashierName] = useState<string>('Siti');
+  const [shiftOpeningFloat, setShiftOpeningFloat] = useState<number | ''>(100000);
+  const [shiftActualCash, setShiftActualCash] = useState<number | ''>('');
+  const [shiftNotes, setShiftNotes] = useState<string>('');
+  const [isPrintingShiftSlip, setIsPrintingShiftSlip] = useState<boolean>(false);
+
+  // Form petty cash states
+  const [pettyCashAmount, setPettyCashAmount] = useState<number | ''>(10000);
+  const [pettyCashReason, setPettyCashReason] = useState<string>('Es Batu Kristal');
+  const [pettyCashCustomReason, setPettyCashCustomReason] = useState<string>('');
+
+  useEffect(() => {
+    const handleShiftUpdated = () => {
+      setActiveShift(storageService.getActiveShift());
+    };
+    window.addEventListener('dulang_shift_updated', handleShiftUpdated);
+    return () => window.removeEventListener('dulang_shift_updated', handleShiftUpdated);
+  }, []);
 
   useEffect(() => {
     const handlePantryUpdate = () => setPantryVersion((v) => v + 1);
@@ -1477,6 +1509,7 @@ Catatan Kurir: Pastikan posisi dus ditaruh datar agar mayo tidak tumpah ya kak.`
       notes: walkInNotes.trim() || (isOjol ? `Pesanan ${channelPrefix} #${ojolId || ''}`.trim() : undefined),
       cash_received: cashRec,
       cash_change: cashChg,
+      cashier_name: activeShift?.cashier_name || 'Stand Dapur Dulang',
     };
     storageService.addOrder(newOrder);
     storageService.updateCustomerIntelligence(newOrder);
@@ -1811,6 +1844,20 @@ Catatan Kurir: Pastikan posisi dus ditaruh datar agar mayo tidak tumpah ya kak.`
   };
 
   const handlePrintReceipt = () => {
+    if (selectedOrderForReceipt) {
+      const updated = storageService.incrementOrderPrintCount(selectedOrderForReceipt.id);
+      if (updated) {
+        setSelectedOrderForReceipt(updated);
+        setOrders(storageService.getOrders());
+        if ((selectedOrderForReceipt.print_count || 0) >= 1) {
+          logSecurityEvent(
+            'LOGIN_SUCCESS',
+            `Cetak ulang nota #${selectedOrderForReceipt.id} (Salinan ke-${(selectedOrderForReceipt.print_count || 0) + 1}) oleh ${activeShift?.cashier_name || 'Kasir'}`,
+            'WARN'
+          );
+        }
+      }
+    }
     window.print();
   };
 
@@ -1830,6 +1877,20 @@ Catatan Kurir: Pastikan posisi dus ditaruh datar agar mayo tidak tumpah ya kak.`
     try {
       const res = await printOrderViaBluetooth(selectedOrderForReceipt, storeConfig);
       onShowToast(`Struk berhasil dicetak ke "${res.deviceName}"! 🖨️✨`);
+
+      // Update print count for reprint tracking
+      const updated = storageService.incrementOrderPrintCount(selectedOrderForReceipt.id);
+      if (updated) {
+        setSelectedOrderForReceipt(updated);
+        setOrders(storageService.getOrders());
+        if ((selectedOrderForReceipt.print_count || 0) >= 1) {
+          logSecurityEvent(
+            'LOGIN_SUCCESS',
+            `Cetak ulang nota #${selectedOrderForReceipt.id} (Salinan ke-${(selectedOrderForReceipt.print_count || 0) + 1}) oleh ${activeShift?.cashier_name || 'Kasir'}`,
+            'WARN'
+          );
+        }
+      }
     } catch (err: any) {
       console.warn('Bluetooth print error:', err);
       const errorMsg = err?.message || 'Gagal tersambung ke printer Bluetooth.';
@@ -1847,6 +1908,83 @@ Catatan Kurir: Pastikan posisi dus ditaruh datar agar mayo tidak tumpah ya kak.`
       }
     } finally {
       setIsPrintingBluetooth(false);
+    }
+  };
+
+  // --- CASHIER SHIFT, PETTY CASH, & VOID ORDER HANDLERS (Step 1) ---
+  const handleStartShiftSubmit = (e: React.FormEvent) => {
+    e.preventDefault();
+    if (!shiftCashierName.trim()) {
+      alert('Nama kasir tidak boleh kosong!');
+      return;
+    }
+    const floatNum = typeof shiftOpeningFloat === 'number' ? shiftOpeningFloat : Number(shiftOpeningFloat) || 0;
+    const newShift = storageService.startShift(shiftCashierName, floatNum);
+    setActiveShift(newShift);
+    setIsStartShiftModalOpen(false);
+    onShowToast(`🌅 Shift kasir dibuka oleh Kak ${newShift.cashier_name}! Modal laci: Rp ${floatNum.toLocaleString('id-ID')}`);
+  };
+
+  const handleCloseShiftSubmit = (e: React.FormEvent) => {
+    e.preventDefault();
+    if (shiftActualCash === '') {
+      alert('Masukkan jumlah uang fisik tunai yang ada di laci saat ini!');
+      return;
+    }
+    const actualNum = Number(shiftActualCash) || 0;
+    const closed = storageService.closeShift(actualNum, shiftNotes);
+    if (closed) {
+      setActiveShift(null);
+      setIsCloseShiftModalOpen(false);
+      onShowToast(`🌙 Shift kasir ${closed.cashier_name} resmi ditutup! Rekap tersimpan di riwayat.`);
+    }
+  };
+
+  const handlePrintClosingShiftSlip = async (shiftData: CashierShift) => {
+    if (!isBluetoothSupported()) {
+      alert('Fitur cetak langsung Bluetooth memerlukan browser Google Chrome di HP Android.');
+      return;
+    }
+    setIsPrintingShiftSlip(true);
+    try {
+      const res = await printShiftSlipViaBluetooth(shiftData, storeConfig);
+      onShowToast(`Slip serah terima shift dicetak ke "${res.deviceName}"! 🖨️✨`);
+    } catch (err: any) {
+      console.warn('Bluetooth print shift error:', err);
+      alert(`Gagal cetak via Bluetooth:\n${err?.message || 'Koneksi terputus'}`);
+    } finally {
+      setIsPrintingShiftSlip(false);
+    }
+  };
+
+  const handlePettyCashSubmit = (e: React.FormEvent) => {
+    e.preventDefault();
+    const amount = typeof pettyCashAmount === 'number' ? pettyCashAmount : Number(pettyCashAmount) || 0;
+    if (amount <= 0) {
+      alert('Nominal pengeluaran kas laci harus lebih dari Rp 0!');
+      return;
+    }
+    const finalReason = pettyCashReason === 'Lainnya' ? (pettyCashCustomReason.trim() || 'Pengeluaran Laci') : pettyCashReason;
+    storageService.addDrawerExpense(finalReason, amount, activeShift?.cashier_name);
+    setExpenses(storageService.getExpenses());
+    setIsPettyCashModalOpen(false);
+    onShowToast(`💵 Pengeluaran laci "Rp ${amount.toLocaleString('id-ID')} (${finalReason})" tercatat! Saldo laci terpotong.`);
+  };
+
+  const handleConfirmVoidOrder = (e: React.FormEvent) => {
+    e.preventDefault();
+    if (!orderToVoid) return;
+    const finalReason = voidReason === 'Lainnya' ? (voidCustomReason.trim() || 'Dibatalkan oleh kasir') : voidReason;
+    const voided = storageService.voidOrder(orderToVoid.id, finalReason, activeShift?.cashier_name);
+    if (voided) {
+      setOrders(storageService.getOrders());
+      logSecurityEvent(
+        'LOGIN_SUCCESS',
+        `Nota #${orderToVoid.id} DIBATALKAN (VOID) oleh ${activeShift?.cashier_name || 'Kasir'}. Alasan: ${finalReason}`,
+        'ALERT'
+      );
+      setOrderToVoid(null);
+      onShowToast(`🚫 Nota #${orderToVoid.id} telah dibatalkan (VOID) dan tercatat di riwayat audit.`);
     }
   };
 
@@ -2138,7 +2276,7 @@ Catatan Kurir: Pastikan posisi dus ditaruh datar agar mayo tidak tumpah ya kak.`
       <div className="bg-[#111111] text-[#FFF8E7] rounded-[20px] sm:rounded-[24px] p-3.5 sm:p-6 lg:p-8 flex flex-col md:flex-row md:items-center justify-between gap-3 sm:gap-4 border-2 border-[#111111] shadow-[4px_4px_0_#FFD700] sm:shadow-[6px_6px_0_#FFD700]">
         <div className="flex items-center justify-between md:block">
           <div>
-            <div className="flex items-center gap-2 mb-1 sm:mb-2">
+            <div className="flex flex-wrap items-center gap-2 mb-1 sm:mb-2">
               <button
                 type="button"
                 onClick={() => {
@@ -2152,6 +2290,64 @@ Catatan Kurir: Pastikan posisi dus ditaruh datar agar mayo tidak tumpah ya kak.`
                 <span>{activeRole === 'owner' ? '👑' : activeRole === 'cashier' ? '🛒' : '🍳'}</span>
                 <span>{activeRole === 'owner' ? 'Owner' : activeRole === 'cashier' ? 'Kasir Stand' : 'Kru Dapur'}</span>
                 <span className="text-[9px] bg-[#111111]/15 px-1.5 py-0.2 rounded-full font-semibold">Ganti ⇄</span>
+              </button>
+
+              {/* CASHIER SHIFT WIDGET */}
+              {activeShift ? (
+                <div className="inline-flex items-center gap-1.5 bg-emerald-950/80 border border-emerald-400/50 text-emerald-200 px-2.5 py-0.5 rounded-full font-sans text-[10px] sm:text-[11px] font-bold shadow-xs">
+                  <span className="w-2 h-2 rounded-full bg-emerald-400 animate-pulse" />
+                  <span>Kasir: {activeShift.cashier_name}</span>
+                  <button
+                    type="button"
+                    onClick={() => {
+                      setPettyCashAmount(10000);
+                      setPettyCashReason('Es Batu Kristal');
+                      setPettyCashCustomReason('');
+                      setIsPettyCashModalOpen(true);
+                    }}
+                    className="cursor-pointer bg-amber-400/20 hover:bg-amber-400/40 text-amber-200 px-1.5 py-0.2 rounded font-semibold text-[9px] transition"
+                    title="Catat pengeluaran kecil dari kas laci (es batu, kresek, dll)"
+                  >
+                    - Kas Laci
+                  </button>
+                  <button
+                    type="button"
+                    onClick={() => {
+                      setShiftActualCash('');
+                      setShiftNotes('');
+                      setIsCloseShiftModalOpen(true);
+                    }}
+                    className="cursor-pointer bg-rose-500/30 hover:bg-rose-500/50 text-rose-200 px-1.5 py-0.2 rounded font-semibold text-[9px] transition"
+                    title="Tutup shift kasir & cetak slip serah terima"
+                  >
+                    Tutup Shift
+                  </button>
+                </div>
+              ) : (
+                <button
+                  type="button"
+                  onClick={() => {
+                    setShiftCashierName('Siti');
+                    setShiftOpeningFloat(100000);
+                    setIsStartShiftModalOpen(true);
+                  }}
+                  className="cursor-pointer inline-flex items-center gap-1.5 bg-emerald-500 hover:bg-emerald-400 text-[#111111] px-2.5 py-0.5 rounded-full font-sans text-[10px] sm:text-[11px] font-bold uppercase tracking-wider transition border border-[#111111]/30 shadow-xs active:scale-95"
+                  title="Buka shift kasir hari ini"
+                >
+                  <span>🌅</span>
+                  <span>Buka Shift Kasir</span>
+                </button>
+              )}
+
+              {/* Tombol Riwayat Shift */}
+              <button
+                type="button"
+                onClick={() => setIsShiftHistoryModalOpen(true)}
+                className="cursor-pointer inline-flex items-center gap-1 bg-white/10 hover:bg-white/20 text-white/80 hover:text-white px-2 py-0.5 rounded-full font-sans text-[10px] font-medium transition"
+                title="Lihat riwayat shift & evaluasi kasir"
+              >
+                <span>📋</span>
+                <span className="hidden sm:inline">Riwayat Shift</span>
               </button>
             </div>
             <h1 className="font-hand font-bold text-[24px] sm:text-[34px] lg:text-[44px] leading-tight text-white">
@@ -5088,15 +5284,24 @@ Catatan Kurir: Pastikan posisi dus ditaruh datar agar mayo tidak tumpah ya kak.`
                               <span className="hidden xs:inline">Resi Live</span>
                             </button>
 
-                            {ord.status === 'menunggu' && (
+                            {ord.status !== 'batal' ? (
                               <button
                                 type="button"
-                                onClick={() => handleUpdateOrderStatus(ord.id, 'batal')}
+                                onClick={() => {
+                                  setOrderToVoid(ord);
+                                  setVoidReason('Salah input menu / pesanan ganda');
+                                  setVoidCustomReason('');
+                                }}
                                 className="cursor-pointer px-2 py-1.5 rounded-full font-sans font-bold text-xs bg-white text-rose-700 hover:bg-rose-50 border border-rose-200 transition"
-                                title="Tandai pesanan batal"
+                                title="Batalkan nota transaksi (VOID) dengan alasan"
                               >
-                                ✕
+                                <span>🚫</span>
+                                <span className="hidden md:inline">Void</span>
                               </button>
+                            ) : (
+                              <span className="px-2 py-0.5 rounded-full font-sans font-bold text-[10px] bg-rose-100 text-rose-800 border border-rose-300">
+                                DIBATALKAN
+                              </span>
                             )}
 
                             {activeRole === 'owner' && (
@@ -9559,6 +9764,29 @@ Catatan Kurir: Pastikan posisi dus ditaruh datar agar mayo tidak tumpah ya kak.`
                   <div className="text-[10px] text-gray-500">WA: {storeConfig.brandPhone || '0877-0339-7035'}</div>
                 </div>
 
+                {/* Reprint Warning Banner (Cetak Ulang) */}
+                {selectedOrderForReceipt.print_count && selectedOrderForReceipt.print_count >= 1 ? (
+                  <div className="my-2 py-1 bg-amber-100 border border-dashed border-amber-600 text-amber-900 text-center font-bold text-[10px] rounded">
+                    <div>*** SALINAN / CETAK ULANG ***</div>
+                    <div className="text-[9px] font-normal">
+                      Cetakan Ke-{selectedOrderForReceipt.print_count + 1}
+                      {selectedOrderForReceipt.last_printed_at && (
+                        <span> | Asli: {new Date(selectedOrderForReceipt.last_printed_at).toLocaleTimeString('id-ID', { hour: '2-digit', minute: '2-digit' })} WIB</span>
+                      )}
+                    </div>
+                  </div>
+                ) : null}
+
+                {/* Void Warning Banner (Nota Dibatalkan) */}
+                {selectedOrderForReceipt.status === 'batal' && (
+                  <div className="my-2 py-1 bg-rose-100 border border-dashed border-rose-600 text-rose-900 text-center font-bold text-[10px] rounded">
+                    <div>*** NOTA DIBATALKAN (VOID) ***</div>
+                    {selectedOrderForReceipt.cancellation_reason && (
+                      <div className="text-[9px] font-normal mt-0.5">Alasan: {selectedOrderForReceipt.cancellation_reason}</div>
+                    )}
+                  </div>
+                )}
+
                 <div className="py-2 border-b border-dashed border-gray-400 text-[11px] space-y-0.5">
                   <div className="flex justify-between">
                     <span>No. Pesanan:</span>
@@ -9574,6 +9802,10 @@ Catatan Kurir: Pastikan posisi dus ditaruh datar agar mayo tidak tumpah ya kak.`
                         minute: '2-digit',
                       })}
                     </span>
+                  </div>
+                  <div className="flex justify-between">
+                    <span>Kasir:</span>
+                    <span className="font-bold truncate max-w-[150px]">{selectedOrderForReceipt.cashier_name || 'Stand Dapur Dulang'}</span>
                   </div>
                   <div className="flex justify-between">
                     <span>Pelanggan:</span>
@@ -9803,6 +10035,574 @@ Catatan Kurir: Pastikan posisi dus ditaruh datar agar mayo tidak tumpah ya kak.`
         storeConfig={storeConfig}
         onShowToast={onShowToast}
       />
+
+      {/* 1. MODAL BUKA SHIFT KASIR (Step 1) */}
+      {isStartShiftModalOpen && (
+        <div className="fixed inset-0 z-50 bg-black/60 backdrop-blur-xs flex items-center justify-center p-3 sm:p-4 overflow-y-auto">
+          <div className="bg-white rounded-[24px] max-w-md w-full border-2 border-[#111111] shadow-[8px_8px_0_#111111] overflow-hidden animate-in zoom-in-95 duration-200">
+            <div className="bg-[#111111] text-[#FFD700] px-5 py-4 flex items-center justify-between">
+              <div className="flex items-center gap-2">
+                <span className="text-xl">🌅</span>
+                <div>
+                  <h3 className="font-hand font-bold text-xl text-white leading-tight">Buka Shift Kasir Baru</h3>
+                  <p className="font-sans text-[11px] text-[#FFD700]/90">Catat nama petugas & modal awal kembalian laci</p>
+                </div>
+              </div>
+              <button
+                type="button"
+                onClick={() => setIsStartShiftModalOpen(false)}
+                className="cursor-pointer text-white/70 hover:text-white text-lg font-bold"
+              >
+                ✕
+              </button>
+            </div>
+
+            <form onSubmit={handleStartShiftSubmit} className="p-5 space-y-4">
+              <div>
+                <label className="block text-xs font-bold text-gray-700 mb-1">Nama Petugas Kasir Jaga</label>
+                <div className="grid grid-cols-3 gap-2 mb-2">
+                  {['Siti', 'Budi', 'Rian'].map((n) => (
+                    <button
+                      key={n}
+                      type="button"
+                      onClick={() => setShiftCashierName(n)}
+                      className={`cursor-pointer py-1.5 px-2 rounded-xl text-xs font-bold border transition ${
+                        shiftCashierName === n
+                          ? 'bg-[#111111] text-[#FFD700] border-[#111111]'
+                          : 'bg-gray-100 hover:bg-gray-200 text-gray-800 border-gray-300'
+                      }`}
+                    >
+                      {n}
+                    </button>
+                  ))}
+                </div>
+                <input
+                  type="text"
+                  required
+                  value={shiftCashierName}
+                  onChange={(e) => setShiftCashierName(e.target.value)}
+                  placeholder="Atau ketik nama kasir..."
+                  className="w-full px-3 py-2 border-2 border-gray-300 focus:border-[#111111] rounded-xl text-sm font-semibold outline-hidden"
+                />
+              </div>
+
+              <div>
+                <label className="block text-xs font-bold text-gray-700 mb-1">
+                  Modal Awal Uang Kembalian di Laci (Rp)
+                </label>
+                <div className="grid grid-cols-3 gap-2 mb-2">
+                  {[50000, 100000, 150000].map((nom) => (
+                    <button
+                      key={nom}
+                      type="button"
+                      onClick={() => setShiftOpeningFloat(nom)}
+                      className={`cursor-pointer py-1.5 px-2 rounded-xl text-xs font-bold border transition ${
+                        shiftOpeningFloat === nom
+                          ? 'bg-[#111111] text-[#FFD700] border-[#111111]'
+                          : 'bg-gray-100 hover:bg-gray-200 text-gray-800 border-gray-300'
+                      }`}
+                    >
+                      Rp {nom.toLocaleString('id-ID')}
+                    </button>
+                  ))}
+                </div>
+                <input
+                  type="number"
+                  min="0"
+                  step="1000"
+                  required
+                  value={shiftOpeningFloat}
+                  onChange={(e) => setShiftOpeningFloat(e.target.value === '' ? '' : Number(e.target.value))}
+                  placeholder="Contoh: 100000"
+                  className="w-full px-3 py-2 border-2 border-gray-300 focus:border-[#111111] rounded-xl text-sm font-semibold outline-hidden"
+                />
+                <p className="text-[10px] text-gray-500 mt-1">
+                  Modal awal ini akan menjadi dasar perhitungan selisih kas saat tutup shift nanti.
+                </p>
+              </div>
+
+              <div className="pt-2 flex items-center gap-2">
+                <button
+                  type="button"
+                  onClick={() => setIsStartShiftModalOpen(false)}
+                  className="cursor-pointer flex-1 py-2.5 rounded-xl border border-gray-300 text-gray-700 font-bold text-xs hover:bg-gray-100"
+                >
+                  Batal
+                </button>
+                <button
+                  type="submit"
+                  className="cursor-pointer flex-1 py-2.5 rounded-xl bg-[#111111] text-[#FFD700] font-bold text-xs hover:bg-gray-900 border border-[#111111] shadow-[2px_2px_0_#FFD700] transition active:translate-y-0.5"
+                >
+                  🌅 Buka Shift Sekarang
+                </button>
+              </div>
+            </form>
+          </div>
+        </div>
+      )}
+
+      {/* 2. MODAL TUTUP SHIFT KASIR (Step 1) */}
+      {isCloseShiftModalOpen && activeShift && (() => {
+        const shiftOrders = orders.filter((o) => {
+          const isTimeValid = new Date(o.created_at) >= new Date(activeShift.started_at);
+          const isStatusValid = o.status === 'lunas' || o.status === 'dp';
+          return isTimeValid && isStatusValid;
+        });
+        const shiftExpenses = storageService.getShiftExpenses(activeShift.started_at);
+        const totalDrawerExp = shiftExpenses.reduce((sum, e) => sum + e.nominal, 0);
+        const cashRev = shiftOrders
+          .filter((o) => o.payment_method === 'tunai')
+          .reduce((sum, o) => sum + (o.status === 'dp' ? (o.dp_amount || 0) : o.total_price), 0);
+        const nonCashRev = shiftOrders
+          .filter((o) => o.payment_method !== 'tunai')
+          .reduce((sum, o) => sum + (o.status === 'dp' ? (o.dp_amount || 0) : o.total_price), 0);
+        const totalRev = cashRev + nonCashRev;
+        const expectedCash = activeShift.opening_cash_float + cashRev - totalDrawerExp;
+        const actualNum = typeof shiftActualCash === 'number' ? shiftActualCash : Number(shiftActualCash) || 0;
+        const isInputted = shiftActualCash !== '';
+        const diff = actualNum - expectedCash;
+
+        const currentPreviewShift: CashierShift = {
+          ...activeShift,
+          ended_at: new Date().toISOString(),
+          status: 'closed',
+          expected_drawer_cash: expectedCash,
+          actual_drawer_cash: actualNum,
+          cash_difference: diff,
+          drawer_expenses: totalDrawerExp,
+          total_orders_count: shiftOrders.length,
+          total_revenue: totalRev,
+          cash_revenue: cashRev,
+          non_cash_revenue: nonCashRev,
+          notes: shiftNotes,
+        };
+
+        return (
+          <div className="fixed inset-0 z-50 bg-black/60 backdrop-blur-xs flex items-center justify-center p-3 sm:p-4 overflow-y-auto">
+            <div className="bg-white rounded-[24px] max-w-lg w-full border-2 border-[#111111] shadow-[8px_8px_0_#111111] overflow-hidden animate-in zoom-in-95 duration-200">
+              <div className="bg-[#111111] text-[#FFD700] px-5 py-4 flex items-center justify-between">
+                <div className="flex items-center gap-2">
+                  <span className="text-xl">🌙</span>
+                  <div>
+                    <h3 className="font-hand font-bold text-xl text-white leading-tight">Tutup Shift Kasir & Serah Terima</h3>
+                    <p className="font-sans text-[11px] text-[#FFD700]/90">Kasir: {activeShift.cashier_name} • Mulai {new Date(activeShift.started_at).toLocaleTimeString('id-ID', { hour: '2-digit', minute: '2-digit' })} WIB</p>
+                  </div>
+                </div>
+                <button
+                  type="button"
+                  onClick={() => setIsCloseShiftModalOpen(false)}
+                  className="cursor-pointer text-white/70 hover:text-white text-lg font-bold"
+                >
+                  ✕
+                </button>
+              </div>
+
+              <form onSubmit={handleCloseShiftSubmit} className="p-5 space-y-4 max-h-[80vh] overflow-y-auto">
+                {/* Rangkuman Hitungan Sistem */}
+                <div className="bg-amber-50/70 p-3.5 rounded-2xl border border-amber-200 space-y-1.5 text-xs font-sans">
+                  <div className="font-bold text-amber-950 flex justify-between border-b border-amber-200 pb-1 mb-1">
+                    <span>Transaksi Berjalan:</span>
+                    <span>{shiftOrders.length} Pesanan</span>
+                  </div>
+                  <div className="flex justify-between text-gray-700">
+                    <span>Modal Awal Kembalian Laci:</span>
+                    <span className="font-semibold">Rp {activeShift.opening_cash_float.toLocaleString('id-ID')}</span>
+                  </div>
+                  <div className="flex justify-between text-emerald-800">
+                    <span>+ Penjualan Tunai Masuk:</span>
+                    <span className="font-semibold">+Rp {cashRev.toLocaleString('id-ID')}</span>
+                  </div>
+                  <div className="flex justify-between text-blue-800">
+                    <span>+ Penjualan QRIS / Transfer:</span>
+                    <span className="font-semibold">+Rp {nonCashRev.toLocaleString('id-ID')}</span>
+                  </div>
+                  {totalDrawerExp > 0 && (
+                    <div className="flex justify-between text-rose-700">
+                      <span>- Pengeluaran Laci (Petty Cash):</span>
+                      <span className="font-semibold">-Rp {totalDrawerExp.toLocaleString('id-ID')}</span>
+                    </div>
+                  )}
+                  <div className="border-t border-amber-200 pt-1.5 flex justify-between font-bold text-sm text-[#111111]">
+                    <span>Kas Tunai Harus Ada di Laci:</span>
+                    <span className="text-amber-900">Rp {expectedCash.toLocaleString('id-ID')}</span>
+                  </div>
+                </div>
+
+                {/* Input Uang Fisik */}
+                <div>
+                  <label className="block text-xs font-bold text-gray-800 mb-1">
+                    Hitung & Masukkan Uang Fisik di Laci Kasir (Rp) *
+                  </label>
+                  <input
+                    type="number"
+                    min="0"
+                    step="500"
+                    required
+                    value={shiftActualCash}
+                    onChange={(e) => setShiftActualCash(e.target.value === '' ? '' : Number(e.target.value))}
+                    placeholder="Hitung lembaran & koin di laci..."
+                    className="w-full px-3.5 py-2.5 border-2 border-gray-300 focus:border-[#111111] rounded-xl text-base font-bold outline-hidden"
+                  />
+                  {isInputted && (
+                    <div className={`mt-2 p-2.5 rounded-xl border font-bold text-xs flex items-center justify-between ${
+                      diff === 0
+                        ? 'bg-emerald-50 border-emerald-300 text-emerald-800'
+                        : diff > 0
+                        ? 'bg-blue-50 border-blue-300 text-blue-800'
+                        : 'bg-rose-50 border-rose-300 text-rose-800'
+                    }`}>
+                      <span>Status Selisih Kas:</span>
+                      <span>
+                        {diff === 0
+                          ? '✓ Uang Pas Sesuai Sistem (Rp 0)'
+                          : diff > 0
+                          ? `LEBIH (+Rp ${diff.toLocaleString('id-ID')})`
+                          : `KURANG (-Rp ${Math.abs(diff).toLocaleString('id-ID')})`}
+                      </span>
+                    </div>
+                  )}
+                </div>
+
+                {/* Catatan Shift */}
+                <div>
+                  <label className="block text-xs font-bold text-gray-700 mb-1">Catatan / Evaluasi Shift (Opsional)</label>
+                  <input
+                    type="text"
+                    value={shiftNotes}
+                    onChange={(e) => setShiftNotes(e.target.value)}
+                    placeholder="Contoh: Titip uang receh Rp 20.000 ke kru sore..."
+                    className="w-full px-3 py-2 border-2 border-gray-300 focus:border-[#111111] rounded-xl text-xs outline-hidden"
+                  />
+                </div>
+
+                {/* Tombol Cetak Slip Bluetooth & Konfirmasi */}
+                <div className="space-y-2 pt-2 border-t border-gray-200">
+                  <button
+                    type="button"
+                    disabled={isPrintingShiftSlip || !isInputted}
+                    onClick={() => handlePrintClosingShiftSlip(currentPreviewShift)}
+                    className="w-full cursor-pointer bg-gradient-to-r from-amber-500 via-amber-400 to-yellow-500 hover:brightness-105 text-[#111111] border-2 border-[#111111] rounded-xl py-2.5 px-3 font-sans font-black text-xs flex items-center justify-center gap-1.5 shadow-[2px_2px_0_#111111] transition active:scale-[0.98] disabled:opacity-50"
+                  >
+                    <span>{isPrintingShiftSlip ? '⏳' : '⚡'}</span>
+                    <span>{isPrintingShiftSlip ? 'Mencetak Slip...' : 'Cetak Slip Serah Terima Bluetooth (RPP02N)'}</span>
+                  </button>
+
+                  <div className="flex items-center gap-2">
+                    <button
+                      type="button"
+                      onClick={() => setIsCloseShiftModalOpen(false)}
+                      className="cursor-pointer flex-1 py-2.5 rounded-xl border border-gray-300 text-gray-700 font-bold text-xs hover:bg-gray-100"
+                    >
+                      Batal
+                    </button>
+                    <button
+                      type="submit"
+                      disabled={!isInputted}
+                      className="cursor-pointer flex-1 py-2.5 rounded-xl bg-[#111111] text-[#FFD700] font-bold text-xs hover:bg-gray-900 border border-[#111111] shadow-[2px_2px_0_#FFD700] transition active:translate-y-0.5 disabled:opacity-50"
+                    >
+                      Selesai & Tutup Shift
+                    </button>
+                  </div>
+                </div>
+              </form>
+            </div>
+          </div>
+        );
+      })()}
+
+      {/* 3. MODAL CATAT PENGELUARAN LACI (PETTY CASH) (Step 1) */}
+      {isPettyCashModalOpen && (
+        <div className="fixed inset-0 z-50 bg-black/60 backdrop-blur-xs flex items-center justify-center p-3 sm:p-4 overflow-y-auto">
+          <div className="bg-white rounded-[24px] max-w-md w-full border-2 border-[#111111] shadow-[8px_8px_0_#111111] overflow-hidden animate-in zoom-in-95 duration-200">
+            <div className="bg-[#111111] text-[#FFD700] px-5 py-4 flex items-center justify-between">
+              <div className="flex items-center gap-2">
+                <span className="text-xl">💵</span>
+                <div>
+                  <h3 className="font-hand font-bold text-xl text-white leading-tight">Catat Pengeluaran Laci (Petty Cash)</h3>
+                  <p className="font-sans text-[11px] text-[#FFD700]/90">Potong langsung uang laci kasir agar fisik tetap pas</p>
+                </div>
+              </div>
+              <button
+                type="button"
+                onClick={() => setIsPettyCashModalOpen(false)}
+                className="cursor-pointer text-white/70 hover:text-white text-lg font-bold"
+              >
+                ✕
+              </button>
+            </div>
+
+            <form onSubmit={handlePettyCashSubmit} className="p-5 space-y-4">
+              <div>
+                <label className="block text-xs font-bold text-gray-700 mb-1">Keperluan Pengeluaran Laci</label>
+                <div className="grid grid-cols-2 gap-2 mb-2">
+                  {[
+                    { label: 'Es Batu Kristal', nominal: 10000 },
+                    { label: 'Kantong Kresek', nominal: 15000 },
+                    { label: 'Isi Galon Air', nominal: 6000 },
+                    { label: 'Minyak Dadakan', nominal: 20000 },
+                  ].map((p) => (
+                    <button
+                      key={p.label}
+                      type="button"
+                      onClick={() => {
+                        setPettyCashReason(p.label);
+                        setPettyCashAmount(p.nominal);
+                      }}
+                      className={`cursor-pointer py-1.5 px-2 rounded-xl text-xs font-bold border transition text-left ${
+                        pettyCashReason === p.label
+                          ? 'bg-[#111111] text-[#FFD700] border-[#111111]'
+                          : 'bg-gray-100 hover:bg-gray-200 text-gray-800 border-gray-300'
+                      }`}
+                    >
+                      <div>{p.label}</div>
+                      <div className="text-[10px] font-normal opacity-80">Rp {p.nominal.toLocaleString('id-ID')}</div>
+                    </button>
+                  ))}
+                </div>
+                <button
+                  type="button"
+                  onClick={() => setPettyCashReason('Lainnya')}
+                  className={`w-full py-1.5 px-3 rounded-xl text-xs font-bold border transition text-center mb-2 ${
+                    pettyCashReason === 'Lainnya'
+                      ? 'bg-[#111111] text-[#FFD700] border-[#111111]'
+                      : 'bg-gray-100 hover:bg-gray-200 text-gray-800 border-gray-300'
+                  }`}
+                >
+                  Keperluan Lainnya / Ketik Manual
+                </button>
+                {pettyCashReason === 'Lainnya' && (
+                  <input
+                    type="text"
+                    required
+                    value={pettyCashCustomReason}
+                    onChange={(e) => setPettyCashCustomReason(e.target.value)}
+                    placeholder="Contoh: Beli bumbu saset, solasi, gas..."
+                    className="w-full px-3 py-2 border-2 border-gray-300 focus:border-[#111111] rounded-xl text-sm font-semibold outline-hidden"
+                  />
+                )}
+              </div>
+
+              <div>
+                <label className="block text-xs font-bold text-gray-700 mb-1">Nominal Uang Keluar (Rp) *</label>
+                <input
+                  type="number"
+                  min="500"
+                  step="500"
+                  required
+                  value={pettyCashAmount}
+                  onChange={(e) => setPettyCashAmount(e.target.value === '' ? '' : Number(e.target.value))}
+                  placeholder="Contoh: 10000"
+                  className="w-full px-3 py-2 border-2 border-gray-300 focus:border-[#111111] rounded-xl text-sm font-bold outline-hidden"
+                />
+              </div>
+
+              <div className="pt-2 flex items-center gap-2">
+                <button
+                  type="button"
+                  onClick={() => setIsPettyCashModalOpen(false)}
+                  className="cursor-pointer flex-1 py-2.5 rounded-xl border border-gray-300 text-gray-700 font-bold text-xs hover:bg-gray-100"
+                >
+                  Batal
+                </button>
+                <button
+                  type="submit"
+                  className="cursor-pointer flex-1 py-2.5 rounded-xl bg-[#111111] text-[#FFD700] font-bold text-xs hover:bg-gray-900 border border-[#111111] shadow-[2px_2px_0_#FFD700] transition active:translate-y-0.5"
+                >
+                  Simpan Pengeluaran Laci
+                </button>
+              </div>
+            </form>
+          </div>
+        </div>
+      )}
+
+      {/* 4. MODAL BATALKAN NOTA (VOID ORDER) (Step 1) */}
+      {orderToVoid && (
+        <div className="fixed inset-0 z-50 bg-black/60 backdrop-blur-xs flex items-center justify-center p-3 sm:p-4 overflow-y-auto">
+          <div className="bg-white rounded-[24px] max-w-md w-full border-2 border-rose-600 shadow-[8px_8px_0_#e11d48] overflow-hidden animate-in zoom-in-95 duration-200">
+            <div className="bg-rose-600 text-white px-5 py-4 flex items-center justify-between">
+              <div className="flex items-center gap-2">
+                <span className="text-xl">🚫</span>
+                <div>
+                  <h3 className="font-hand font-bold text-xl leading-tight">Batalkan Nota (VOID)</h3>
+                  <p className="font-sans text-[11px] text-rose-100">Pesanan #{orderToVoid.id} • {orderToVoid.customer_name}</p>
+                </div>
+              </div>
+              <button
+                type="button"
+                onClick={() => setOrderToVoid(null)}
+                className="cursor-pointer text-white/70 hover:text-white text-lg font-bold"
+              >
+                ✕
+              </button>
+            </div>
+
+            <form onSubmit={handleConfirmVoidOrder} className="p-5 space-y-4">
+              <div className="bg-rose-50 p-3 rounded-xl border border-rose-200 text-xs text-rose-950 font-sans space-y-1">
+                <div className="font-bold">Perhatian:</div>
+                <div>Status pesanan akan diubah menjadi <strong className="text-rose-600">BATAL (VOID)</strong>, tercatat di audit log keamanan, dan kuota porsi menu akan dikembalikan otomatis.</div>
+                <div className="font-semibold pt-1">Total Nilai: Rp {orderToVoid.total_price.toLocaleString('id-ID')}</div>
+              </div>
+
+              <div>
+                <label className="block text-xs font-bold text-gray-700 mb-1">Wajib Pilih Alasan Pembatalan *</label>
+                <div className="space-y-1.5 mb-2">
+                  {[
+                    'Salah input menu / pesanan ganda',
+                    'Pelanggan membatalkan pesanan',
+                    'Stok bahan baku habis mendadak',
+                    'Gorengan rusak / gosong',
+                    'Lainnya',
+                  ].map((r) => (
+                    <label key={r} className="flex items-center gap-2 p-2 rounded-lg border border-gray-200 hover:bg-gray-50 cursor-pointer text-xs font-medium text-gray-800">
+                      <input
+                        type="radio"
+                        name="voidReason"
+                        checked={voidReason === r}
+                        onChange={() => setVoidReason(r)}
+                        className="text-rose-600"
+                      />
+                      <span>{r}</span>
+                    </label>
+                  ))}
+                </div>
+                {voidReason === 'Lainnya' && (
+                  <input
+                    type="text"
+                    required
+                    value={voidCustomReason}
+                    onChange={(e) => setVoidCustomReason(e.target.value)}
+                    placeholder="Tulis alasan pembatalan jelas..."
+                    className="w-full px-3 py-2 border-2 border-gray-300 focus:border-rose-600 rounded-xl text-xs font-semibold outline-hidden"
+                  />
+                )}
+              </div>
+
+              <div className="pt-2 flex items-center gap-2">
+                <button
+                  type="button"
+                  onClick={() => setOrderToVoid(null)}
+                  className="cursor-pointer flex-1 py-2.5 rounded-xl border border-gray-300 text-gray-700 font-bold text-xs hover:bg-gray-100"
+                >
+                  Kembali
+                </button>
+                <button
+                  type="submit"
+                  className="cursor-pointer flex-1 py-2.5 rounded-xl bg-rose-600 hover:bg-rose-700 text-white font-bold text-xs shadow-[2px_2px_0_#9f1239] transition active:translate-y-0.5"
+                >
+                  Konfirmasi VOID Nota
+                </button>
+              </div>
+            </form>
+          </div>
+        </div>
+      )}
+
+      {/* 5. MODAL RIWAYAT SHIFT KASIR & EVALUASI (Step 1) */}
+      {isShiftHistoryModalOpen && (
+        <div className="fixed inset-0 z-50 bg-black/60 backdrop-blur-xs flex items-center justify-center p-3 sm:p-4 overflow-y-auto">
+          <div className="bg-white rounded-[24px] max-w-2xl w-full border-2 border-[#111111] shadow-[8px_8px_0_#111111] overflow-hidden animate-in zoom-in-95 duration-200 flex flex-col max-h-[85vh]">
+            <div className="bg-[#111111] text-[#FFD700] px-5 py-4 flex items-center justify-between shrink-0">
+              <div className="flex items-center gap-2">
+                <span className="text-xl">📋</span>
+                <div>
+                  <h3 className="font-hand font-bold text-xl text-white leading-tight">Riwayat Shift & Evaluasi Kasir</h3>
+                  <p className="font-sans text-[11px] text-[#FFD700]/90">Catatan serah terima laci, omzet per shift, dan selisih kas</p>
+                </div>
+              </div>
+              <button
+                type="button"
+                onClick={() => setIsShiftHistoryModalOpen(false)}
+                className="cursor-pointer text-white/70 hover:text-white text-lg font-bold"
+              >
+                ✕
+              </button>
+            </div>
+
+            <div className="p-5 overflow-y-auto space-y-3">
+              {storageService.getShiftHistory().length === 0 ? (
+                <div className="p-8 text-center text-gray-500 font-sans text-xs">
+                  Belum ada riwayat shift yang ditutup. Riwayat shift akan otomatis tercatat saat kasir melakukan "Tutup Shift".
+                </div>
+              ) : (
+                storageService.getShiftHistory().map((sh) => {
+                  const sDate = new Date(sh.started_at);
+                  const eDate = sh.ended_at ? new Date(sh.ended_at) : null;
+                  const diff = sh.cash_difference || 0;
+                  return (
+                    <div key={sh.id} className="p-4 rounded-2xl border-2 border-gray-200 bg-gray-50/70 space-y-2 text-xs font-sans">
+                      <div className="flex items-center justify-between border-b border-gray-200 pb-2">
+                        <div>
+                          <span className="font-bold text-sm text-gray-900">Kasir: {sh.cashier_name}</span>
+                          <div className="text-[10px] text-gray-500">
+                            {sDate.toLocaleDateString('id-ID', { day: 'numeric', month: 'short', year: 'numeric' })} • {sDate.toLocaleTimeString('id-ID', { hour: '2-digit', minute: '2-digit' })} - {eDate ? eDate.toLocaleTimeString('id-ID', { hour: '2-digit', minute: '2-digit' }) : '-'} WIB
+                          </div>
+                        </div>
+                        <div className="text-right">
+                          <span className={`px-2 py-0.5 rounded-full font-bold text-[10px] border ${
+                            diff === 0
+                              ? 'bg-emerald-100 text-emerald-800 border-emerald-300'
+                              : diff > 0
+                              ? 'bg-blue-100 text-blue-800 border-blue-300'
+                              : 'bg-rose-100 text-rose-800 border-rose-300'
+                          }`}>
+                            {diff === 0 ? '✓ Selisih PAS' : diff > 0 ? `+Rp ${diff.toLocaleString('id-ID')}` : `-Rp ${Math.abs(diff).toLocaleString('id-ID')}`}
+                          </span>
+                        </div>
+                      </div>
+
+                      <div className="grid grid-cols-2 sm:grid-cols-4 gap-2 pt-1 text-[11px]">
+                        <div>
+                          <div className="text-gray-500 text-[10px]">Total Pesanan:</div>
+                          <div className="font-bold">{sh.total_orders_count} Trx</div>
+                        </div>
+                        <div>
+                          <div className="text-gray-500 text-[10px]">Total Omzet:</div>
+                          <div className="font-bold text-emerald-800">Rp {sh.total_revenue.toLocaleString('id-ID')}</div>
+                        </div>
+                        <div>
+                          <div className="text-gray-500 text-[10px]">Uang Fisik Laci:</div>
+                          <div className="font-bold text-gray-900">Rp {(sh.actual_drawer_cash || 0).toLocaleString('id-ID')}</div>
+                        </div>
+                        <div>
+                          <div className="text-gray-500 text-[10px]">Petty Cash:</div>
+                          <div className="font-bold text-rose-700">-Rp {sh.drawer_expenses.toLocaleString('id-ID')}</div>
+                        </div>
+                      </div>
+
+                      {sh.notes && (
+                        <div className="text-[10px] italic text-gray-600 bg-white p-1.5 rounded border border-gray-200">
+                          "{sh.notes}"
+                        </div>
+                      )}
+
+                      <div className="pt-1 flex justify-end">
+                        <button
+                          type="button"
+                          onClick={() => handlePrintClosingShiftSlip(sh)}
+                          className="cursor-pointer bg-white hover:bg-gray-100 text-[#111111] border border-[#111111] px-3 py-1 rounded-full font-bold text-[10px] flex items-center gap-1 transition shadow-xs"
+                        >
+                          <span>⚡</span> Cetak Ulang Slip Shift
+                        </button>
+                      </div>
+                    </div>
+                  );
+                })
+              )}
+            </div>
+
+            <div className="p-4 border-t border-gray-200 shrink-0 flex justify-end">
+              <button
+                type="button"
+                onClick={() => setIsShiftHistoryModalOpen(false)}
+                className="cursor-pointer px-4 py-2 rounded-xl bg-[#111111] text-[#FFD700] font-bold text-xs"
+              >
+                Tutup
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
 
       {/* MODAL GANTI PERAN / SWITCH STAFF ROLE (Priority 2) */}
       {isSwitchRoleModalOpen && (
@@ -10904,17 +11704,19 @@ Catatan Kurir: Pastikan posisi dus ditaruh datar agar mayo tidak tumpah ya kak.`
 
               {/* Batalkan & Hapus */}
               <div className="pt-2 border-t border-[#111111]/10 flex items-center gap-2">
-                {mobileActionOrder.status === 'menunggu' && (
+                {mobileActionOrder.status !== 'batal' && (
                   <button
                     type="button"
                     onClick={() => {
-                      const id = mobileActionOrder.id;
+                      const target = mobileActionOrder;
                       setMobileActionOrder(null);
-                      handleUpdateOrderStatus(id, 'batal');
+                      setOrderToVoid(target);
+                      setVoidReason('Salah input menu / pesanan ganda');
+                      setVoidCustomReason('');
                     }}
                     className="cursor-pointer flex-1 py-2.5 rounded-full font-sans font-bold text-xs bg-rose-50 hover:bg-rose-100 text-rose-700 border border-rose-300 transition"
                   >
-                    ✕ Batalkan Pesanan
+                    🚫 Batalkan Nota (VOID)
                   </button>
                 )}
 

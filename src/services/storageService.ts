@@ -19,6 +19,7 @@ import {
   KitchenCookingStatus,
   StaffRole,
   StockMovementRecord,
+  CashierShift,
 } from '../types';
 import {
   DEFAULT_MENUS,
@@ -59,6 +60,8 @@ const STORAGE_KEYS = {
   PANTRY_INGREDIENTS: 'dulang_pantry_ingredients_v1',
   MENU_RECIPES: 'dulang_menu_recipes_v1',
   STOCK_MOVEMENTS: 'dulang_stock_movements_v1',
+  ACTIVE_SHIFT: 'dulang_active_shift_v1',
+  SHIFT_HISTORY: 'dulang_shift_history_v1',
 };
 
 export const DEFAULT_EXPENSES: ExpenseRecord[] = [];
@@ -2211,6 +2214,67 @@ ${lines.join('\n')}
     return updatedOrder;
   },
 
+  // --- CATAT CETAK ULANG STRUK (REPRINT AUDIT) ---
+  incrementOrderPrintCount(orderId: string): OrderRecord | null {
+    const list = this.getOrders();
+    const idx = list.findIndex((o) => o.id === orderId);
+    if (idx === -1) return null;
+    const current = list[idx];
+    const currentCount = current.print_count || 0;
+    const updated: OrderRecord = {
+      ...current,
+      print_count: currentCount + 1,
+      last_printed_at: new Date().toISOString(),
+    };
+    const updatedList = [...list];
+    updatedList[idx] = updated;
+    this.saveOrders(updatedList);
+    return updated;
+  },
+
+  // --- PEMBATALAN NOTA (VOID ORDER WITH AUDIT) ---
+  voidOrder(orderId: string, reason: string, cancelledBy?: string): OrderRecord | null {
+    const list = this.getOrders();
+    const idx = list.findIndex((o) => o.id === orderId);
+    if (idx === -1) return null;
+    const current = list[idx];
+    const activeShift = this.getActiveShift();
+    const cName = cancelledBy || activeShift?.cashier_name || 'Kasir Stand';
+    const now = new Date().toISOString();
+
+    const updated: OrderRecord = {
+      ...current,
+      status: 'batal',
+      cancellation_reason: reason.trim(),
+      cancelled_by: cName,
+      cancelled_at: now,
+    };
+    const updatedList = [...list];
+    updatedList[idx] = updated;
+    this.saveOrders(updatedList);
+
+    // Kembalikan stok menu jika pesanan sebelumnya aktif
+    if (current.items && current.items.length > 0 && current.status !== 'batal') {
+      try {
+        const menus = this.getMenus();
+        current.items.forEach((item) => {
+          const mIdx = menus.findIndex((m) => m.id === item.menu_id || m.nama === item.nama);
+          if (mIdx >= 0 && menus[mIdx].sisaStok !== null && menus[mIdx].sisaStok !== undefined) {
+            menus[mIdx].sisaStok = (menus[mIdx].sisaStok || 0) + item.qty;
+          }
+        });
+        this.saveMenus(menus);
+      } catch (e) {
+        console.warn('Failed to restore menu stock on void:', e);
+      }
+    }
+
+    if (typeof window !== 'undefined') {
+      window.dispatchEvent(new CustomEvent('dulang_order_voided', { detail: { order: updated } }));
+    }
+    return updated;
+  },
+
   getKitchenOrders(): OrderRecord[] {
     const orders = this.getOrders();
     // Kembalikan semua pesanan yang bukan berstatus batal
@@ -2613,6 +2677,118 @@ _Dapur Dulang Indonesia - Risoles & Katering Sidoarjo_`;
       }
     } catch (e) {
       console.error('Failed to reset demo expenses:', e);
+    }
+  },
+
+  // --- KAS LACI KASIR (PETTY CASH) & SHIFT MANAGEMENT ---
+  addDrawerExpense(namaItem: string, nominal: number, cashierName?: string, catatan?: string): ExpenseRecord {
+    const active = this.getActiveShift();
+    const cName = cashierName || active?.cashier_name || 'Kasir Stand';
+    return this.addExpense({
+      tanggal: new Date().toISOString().split('T')[0],
+      kategori: 'operasional',
+      nama_item: `[Kas Laci] ${namaItem.trim()}`,
+      nominal: Math.max(0, nominal),
+      catatan: catatan ? `${catatan} (Kasir: ${cName})` : `Pengeluaran laci kasir oleh ${cName}`,
+      source: 'kas_laci',
+      cashier_name: cName,
+    });
+  },
+
+  getActiveShift(): CashierShift | null {
+    try {
+      const data = localStorage.getItem(STORAGE_KEYS.ACTIVE_SHIFT);
+      return data ? JSON.parse(data) : null;
+    } catch {
+      return null;
+    }
+  },
+
+  startShift(cashierName: string, openingCashFloat: number): CashierShift {
+    const newShift: CashierShift = {
+      id: `SHIFT-${Date.now()}`,
+      cashier_name: cashierName.trim() || 'Kasir Stand',
+      started_at: new Date().toISOString(),
+      status: 'open',
+      opening_cash_float: Math.max(0, openingCashFloat),
+      drawer_expenses: 0,
+      total_orders_count: 0,
+      total_revenue: 0,
+      cash_revenue: 0,
+      non_cash_revenue: 0,
+    };
+    localStorage.setItem(STORAGE_KEYS.ACTIVE_SHIFT, JSON.stringify(newShift));
+    if (typeof window !== 'undefined') {
+      window.dispatchEvent(new CustomEvent('dulang_shift_updated', { detail: { shift: newShift } }));
+    }
+    return newShift;
+  },
+
+  getShiftExpenses(shiftStartedAt: string): ExpenseRecord[] {
+    const expenses = this.getExpenses();
+    return expenses.filter((e) => {
+      return e.source === 'kas_laci' && new Date(e.created_at) >= new Date(shiftStartedAt);
+    });
+  },
+
+  closeShift(actualCash: number, notes?: string): CashierShift | null {
+    const active = this.getActiveShift();
+    if (!active) return null;
+
+    // Filter seluruh pesanan aktif selama shift
+    const orders = this.getOrders().filter((o) => {
+      const isTimeValid = new Date(o.created_at) >= new Date(active.started_at);
+      const isStatusValid = o.status === 'lunas' || o.status === 'dp';
+      return isTimeValid && isStatusValid;
+    });
+
+    const shiftExpenses = this.getShiftExpenses(active.started_at);
+    const totalDrawerExpenses = shiftExpenses.reduce((sum, e) => sum + e.nominal, 0);
+
+    const cashRevenue = orders
+      .filter((o) => o.payment_method === 'tunai')
+      .reduce((sum, o) => sum + (o.status === 'dp' ? (o.dp_amount || 0) : o.total_price), 0);
+
+    const nonCashRevenue = orders
+      .filter((o) => o.payment_method !== 'tunai')
+      .reduce((sum, o) => sum + (o.status === 'dp' ? (o.dp_amount || 0) : o.total_price), 0);
+
+    const totalRevenue = cashRevenue + nonCashRevenue;
+    const expectedDrawerCash = active.opening_cash_float + cashRevenue - totalDrawerExpenses;
+    const cashDifference = actualCash - expectedDrawerCash;
+
+    const closedShift: CashierShift = {
+      ...active,
+      ended_at: new Date().toISOString(),
+      status: 'closed',
+      expected_drawer_cash: expectedDrawerCash,
+      actual_drawer_cash: actualCash,
+      cash_difference: cashDifference,
+      drawer_expenses: totalDrawerExpenses,
+      total_orders_count: orders.length,
+      total_revenue: totalRevenue,
+      cash_revenue: cashRevenue,
+      non_cash_revenue: nonCashRevenue,
+      notes: notes?.trim() || undefined,
+    };
+
+    const history = this.getShiftHistory();
+    const updatedHistory = [closedShift, ...history].slice(0, 100);
+    localStorage.setItem(STORAGE_KEYS.SHIFT_HISTORY, JSON.stringify(updatedHistory));
+    localStorage.removeItem(STORAGE_KEYS.ACTIVE_SHIFT);
+
+    if (typeof window !== 'undefined') {
+      window.dispatchEvent(new CustomEvent('dulang_shift_updated', { detail: { shift: null } }));
+    }
+    return closedShift;
+  },
+
+  getShiftHistory(): CashierShift[] {
+    try {
+      const raw = localStorage.getItem(STORAGE_KEYS.SHIFT_HISTORY);
+      return raw ? JSON.parse(raw) : [];
+    } catch {
+      return [];
     }
   },
 

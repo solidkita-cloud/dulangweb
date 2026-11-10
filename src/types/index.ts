@@ -194,6 +194,31 @@ export interface OrderRecord {
   is_gift?: boolean;
   gift_recipient?: string;
   gift_message?: string;
+  cashier_name?: string;         // Nama petugas kasir yang melayani transaksi (e.g. 'Siti')
+  print_count?: number;          // Frekuensi cetak struk (1 = asli, >= 2 = cetak ulang/reprint)
+  last_printed_at?: string;      // Waktu terakhir struk dicetak
+  cancellation_reason?: string;  // Alasan pembatalan/void nota (e.g. 'Salah input menu')
+  cancelled_by?: string;         // Nama kasir/owner yang membatalkan nota
+  cancelled_at?: string;         // Waktu pembatalan
+}
+
+// --- SISTEM SHIFT KASIR & SERAH TERIMA LACI ---
+export interface CashierShift {
+  id: string;                    // ID Shift unik (e.g. 'SHIFT-1794275033')
+  cashier_name: string;          // Nama petugas kasir (e.g. 'Siti')
+  started_at: string;            // Waktu buka shift (ISO string)
+  ended_at?: string;             // Waktu tutup shift (ISO string)
+  status: 'open' | 'closed';
+  opening_cash_float: number;    // Modal awal uang kembalian di laci (e.g. 100000)
+  expected_drawer_cash?: number; // Uang tunai yang seharusnya ada di laci menurut sistem
+  actual_drawer_cash?: number;   // Uang fisik di laci yang dihitung saat tutup shift
+  cash_difference?: number;      // Selisih fisik vs sistem (0 = PAS, >0 = LEBIH, <0 = KURANG)
+  drawer_expenses: number;       // Total pengeluaran laci dadakan (petty cash) selama shift
+  total_orders_count: number;    // Total jumlah transaksi sukses pada shift ini
+  total_revenue: number;         // Total omzet bruto shift ini
+  cash_revenue: number;          // Total uang masuk tunai
+  non_cash_revenue: number;      // Total uang masuk non-tunai (QRIS / Transfer)
+  notes?: string;
 }
 
 // --- PENDAPAT / TESTIMONI PELANGGAN (COLLAPSIBLE / ACCORDION) ---
@@ -219,6 +244,8 @@ export interface ExpenseRecord {
   nominal: number;
   catatan?: string;
   created_at: string;
+  source?: 'kas_laci' | 'rekening_owner'; // Sumber dana pengeluaran
+  cashier_name?: string;                 // Kasir pencatat jika dari kas laci
 }
 
 // --- PAKET SNACK BOX / HAJATAN / ARISAN BUILDER ---

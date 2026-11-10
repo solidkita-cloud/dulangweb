@@ -1,4 +1,4 @@
-import { OrderRecord, StoreConfig, KitchenClosingRecap } from '../types';
+import { OrderRecord, StoreConfig, KitchenClosingRecap, CashierShift } from '../types';
 
 // Generic Bluetooth Remote Characteristic interface for compatibility
 export interface BluetoothDeviceChar {
@@ -356,6 +356,35 @@ export function buildOrderReceipt(order: OrderRecord, storeConfig: StoreConfig):
   b.textLine(`WA: ${phone}`);
   b.separator('-', width);
 
+  // 1.5. Peringatan Cetak Ulang (Reprint Indicator)
+  if (order.print_count && order.print_count >= 1) {
+    b.alignCenter().bold(true);
+    b.textLine('*** SALINAN / CETAK ULANG ***');
+    b.textLine(`(Cetakan Ke-${order.print_count + 1})`);
+    if (order.last_printed_at) {
+      const lastTime = new Date(order.last_printed_at).toLocaleTimeString('id-ID', {
+        hour: '2-digit',
+        minute: '2-digit',
+      });
+      b.textLine(`Asli: ${lastTime} WIB`);
+    }
+    b.bold(false);
+    b.separator('-', width);
+  }
+
+  // Peringatan Nota Batal / Void (jika status batal)
+  if (order.status === 'batal') {
+    b.alignCenter().bold(true);
+    b.textLine('*** NOTA DIBATALKAN (VOID) ***');
+    if (order.cancellation_reason) {
+      for (const line of wordWrap(`Alasan: ${order.cancellation_reason}`, width)) {
+        b.textLine(line);
+      }
+    }
+    b.bold(false);
+    b.separator('-', width);
+  }
+
   // 2. Info Transaksi (Format Rapi Seperti di Layar)
   b.alignLeft();
   const dateObj = new Date(order.created_at || new Date().toISOString());
@@ -368,6 +397,7 @@ export function buildOrderReceipt(order: OrderRecord, storeConfig: StoreConfig):
 
   b.twoColumns('No. Pesanan:', `#${order.id.replace(/^ORD-/, 'ORD-')}`, width);
   b.twoColumns('Waktu      :', dateStr, width);
+  b.twoColumns('Kasir      :', order.cashier_name || 'Stand Dapur Dulang', width);
   b.twoColumns('Pelanggan  :', order.customer_name || 'Pelanggan Umum', width);
   if (order.customer_wa) {
     b.twoColumns('WhatsApp   :', `+${order.customer_wa}`, width);
@@ -589,6 +619,84 @@ export async function printClosingRecapViaBluetooth(
 ): Promise<{ success: boolean; deviceName: string }> {
   const char = await getOrConnectPrinter();
   const bytes = buildClosingRecapReceipt(recap, storeConfig);
+  await sendRawEscPos(char, bytes);
+  return { success: true, deviceName: getConnectedDeviceName() || 'RPP02N' };
+}
+
+export function buildShiftClosingSlip(shift: CashierShift, storeConfig: StoreConfig): Uint8Array {
+  const b = new EscPosBuilder();
+  const width = 32;
+
+  b.alignCenter().bold(true).sizeDouble();
+  b.textLine(storeConfig.brandName || 'DAPUR DULANG INDONESIA');
+  b.sizeNormal();
+  b.textLine('SLIP SERAH TERIMA SHIFT KASIR');
+  b.bold(false);
+  b.separator('-', width);
+
+  b.alignLeft();
+  b.twoColumns('Kasir     :', shift.cashier_name, width);
+  const startDate = new Date(shift.started_at);
+  const endDate = shift.ended_at ? new Date(shift.ended_at) : new Date();
+  const startStr = startDate.toLocaleTimeString('id-ID', { hour: '2-digit', minute: '2-digit' });
+  const endStr = endDate.toLocaleTimeString('id-ID', { hour: '2-digit', minute: '2-digit' }) + ' WIB';
+  b.twoColumns('Jam Shift :', `${startStr} - ${endStr}`, width);
+  b.twoColumns('Total Trx :', `${shift.total_orders_count} Transaksi`, width);
+  b.separator('-', width);
+
+  b.twoColumns('Modal Awal :', `Rp ${shift.opening_cash_float.toLocaleString('id-ID')}`, width);
+  b.twoColumns('Tunai Masuk:', `+Rp ${shift.cash_revenue.toLocaleString('id-ID')}`, width);
+  b.twoColumns('QRIS Masuk :', `+Rp ${shift.non_cash_revenue.toLocaleString('id-ID')}`, width);
+  if (shift.drawer_expenses > 0) {
+    b.twoColumns('Kas Keluar :', `-Rp ${shift.drawer_expenses.toLocaleString('id-ID')}`, width);
+  }
+  b.separator('-', width);
+
+  b.bold(true);
+  b.twoColumns('TOTAL OMZET:', `Rp ${shift.total_revenue.toLocaleString('id-ID')}`, width);
+  b.bold(false);
+  b.separator('-', width);
+
+  b.bold(true).sizeDoubleHeight();
+  const uangFisik = shift.actual_drawer_cash !== undefined ? shift.actual_drawer_cash : 0;
+  b.twoColumns('FISIK LACI :', `Rp ${uangFisik.toLocaleString('id-ID')}`, width);
+  b.sizeNormal().bold(false);
+
+  const diff = shift.cash_difference || 0;
+  const diffText =
+    diff === 0
+      ? 'PAS (Rp 0)'
+      : diff > 0
+      ? `LEBIH (+Rp ${diff.toLocaleString('id-ID')})`
+      : `KURANG (-Rp ${Math.abs(diff).toLocaleString('id-ID')})`;
+  b.twoColumns('Selisih Kas:', diffText, width);
+
+  if (shift.notes) {
+    b.separator('-', width);
+    b.alignLeft();
+    for (const line of wordWrap(`Catatan: ${shift.notes}`, width)) {
+      b.textLine(line);
+    }
+  }
+
+  b.separator('-', width);
+  b.alignCenter();
+  b.textLine('Tanda Tangan Kasir:');
+  b.newLine(2);
+  b.textLine(`( ${shift.cashier_name} )`);
+  b.newLine(1);
+  b.textLine('Dapur Dulang Indonesia');
+  b.feedAndCut(4);
+
+  return b.getUint8Array();
+}
+
+export async function printShiftSlipViaBluetooth(
+  shift: CashierShift,
+  storeConfig: StoreConfig
+): Promise<{ success: boolean; deviceName: string }> {
+  const char = await getOrConnectPrinter();
+  const bytes = buildShiftClosingSlip(shift, storeConfig);
   await sendRawEscPos(char, bytes);
   return { success: true, deviceName: getConnectedDeviceName() || 'RPP02N' };
 }
