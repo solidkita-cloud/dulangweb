@@ -10,14 +10,51 @@ export interface BluetoothDeviceChar {
   writeValueWithoutResponse?(value: BufferSource): Promise<void>;
 }
 
+export type ThermalPaperWidth = '58mm' | '80mm';
+
+const LAST_PRINTER_STORAGE_KEY = 'dulang_last_printer_name';
+export const PRINTER_STATUS_EVENT = 'dulang_printer_status_changed';
+
 // In-memory cache for active Bluetooth printer connection during the session
 let cachedDevice: any = null;
 let cachedCharacteristic: BluetoothDeviceChar | null = null;
 
+function notifyPrinterStatusChanged(): void {
+  if (typeof window !== 'undefined') {
+    window.dispatchEvent(new Event(PRINTER_STATUS_EVENT));
+  }
+}
+
+export function getLastConnectedPrinterName(): string | null {
+  try {
+    if (typeof window !== 'undefined') {
+      const saved = localStorage.getItem(LAST_PRINTER_STORAGE_KEY);
+      return saved && saved.trim() ? saved.trim() : null;
+    }
+  } catch {}
+  return null;
+}
+
+function saveLastConnectedPrinterName(name?: string | null): void {
+  try {
+    if (typeof window !== 'undefined' && name && name.trim()) {
+      localStorage.setItem(LAST_PRINTER_STORAGE_KEY, name.trim());
+    }
+  } catch {}
+}
+
+export function getReceiptColumnWidth(
+  storeConfig?: Partial<StoreConfig>,
+  overrideWidth?: ThermalPaperWidth
+): number {
+  const effective = overrideWidth || storeConfig?.printerPaperWidth || '58mm';
+  return effective === '80mm' ? 48 : 32;
+}
+
 // Common Bluetooth Thermal Printer Service UUIDs (58mm/80mm ESC/POS)
 const KNOWN_PRINTER_SERVICES = [
   '000018f0-0000-1000-8000-00805f9b34fb', // Standard 0x18f0 (POS printers)
-  '0000ffe0-0000-1000-8000-00805f9b34fb', // 0xffe0 (RPP02N, MP-58A1, Goojprt, HM-10 UART)
+  '0000ffe0-0000-1000-8000-00805f9b34fb', // 0xffe0 (RPP02N, MP-58A1, Goojprt, VSC, HM-10 UART)
   '0000ff00-0000-1000-8000-00805f9b34fb', // 0xff00
   '49535343-fe7d-4ae5-8fa9-9fafd205e455', // ISSC transparent UART
   'e7810a71-73ae-499d-8c15-faa9aef0c3f2',
@@ -48,31 +85,15 @@ export function disconnectBluetoothPrinter(): void {
   }
   cachedDevice = null;
   cachedCharacteristic = null;
+  notifyPrinterStatusChanged();
 }
 
-export async function getOrConnectPrinter(): Promise<BluetoothDeviceChar> {
-  if (isPrinterConnected()) {
-    return cachedCharacteristic!;
-  }
-
-  if (!isBluetoothSupported()) {
-    throw new Error(
-      'Web Bluetooth tidak didukung di browser ini. Silakan buka web Dapur Dulang lewat Google Chrome di HP Android.'
-    );
-  }
-
-  const navBluetooth = (navigator as any).bluetooth;
-  const device = await navBluetooth.requestDevice({
-    acceptAllDevices: true,
-    optionalServices: KNOWN_PRINTER_SERVICES,
-  });
-
+async function resolveWritableCharacteristic(device: any): Promise<BluetoothDeviceChar> {
   if (!device || !device.gatt) {
     throw new Error('Tidak ada printer Bluetooth yang dipilih.');
   }
 
-  const server = await device.gatt.connect();
-
+  const server = device.gatt.connected ? device.gatt : await device.gatt.connect();
   let writeChar: BluetoothDeviceChar | null = null;
 
   // 1. Cari di daftar service umum thermal printer
@@ -113,19 +134,83 @@ export async function getOrConnectPrinter(): Promise<BluetoothDeviceChar> {
 
   if (!writeChar) {
     throw new Error(
-      `Printer "${device.name || 'Bluetooth'}" tersambung, tetapi channel cetak ESC/POS tidak merespons. Pastikan printer dalam posisi ON & baterai terisi.`
+      `Printer "${device.name || 'Bluetooth'}" tersambung, tetapi channel cetak ESC/POS tidak merespons. Pastikan printer thermal dalam posisi ON & baterai terisi.`
     );
   }
 
   cachedDevice = device;
   cachedCharacteristic = writeChar;
+  saveLastConnectedPrinterName(device.name || null);
 
-  device.addEventListener('gattserverdisconnected', () => {
-    cachedDevice = null;
-    cachedCharacteristic = null;
+  device.addEventListener(
+    'gattserverdisconnected',
+    () => {
+      if (cachedDevice === device) {
+        cachedDevice = null;
+        cachedCharacteristic = null;
+        notifyPrinterStatusChanged();
+      }
+    },
+    { once: true }
+  );
+
+  notifyPrinterStatusChanged();
+  return writeChar;
+}
+
+export async function getOrConnectPrinter(forceNew = false): Promise<BluetoothDeviceChar> {
+  if (!forceNew && isPrinterConnected()) {
+    return cachedCharacteristic!;
+  }
+
+  if (!isBluetoothSupported()) {
+    throw new Error(
+      'Web Bluetooth tidak didukung di browser ini. Silakan buka web Dapur Dulang lewat Google Chrome di HP Android, atau gunakan tombol "Cetak Biasa / PDF".'
+    );
+  }
+
+  if (forceNew) {
+    disconnectBluetoothPrinter();
+  }
+
+  const navBluetooth = (navigator as any).bluetooth;
+
+  // Upaya reconnect otomatis ke perangkat yang pernah diizinkan sebelumnya (jika didukung Chrome)
+  if (!forceNew && typeof navBluetooth.getDevices === 'function') {
+    try {
+      const permittedDevices: any[] = await navBluetooth.getDevices();
+      if (Array.isArray(permittedDevices) && permittedDevices.length > 0) {
+        const lastPrinterName = getLastConnectedPrinterName();
+        const preferred =
+          (lastPrinterName && permittedDevices.find((d) => d?.name === lastPrinterName)) ||
+          permittedDevices[0];
+        if (preferred?.gatt) {
+          try {
+            return await resolveWritableCharacteristic(preferred);
+          } catch {
+            // Lanjutkan ke picker manual jika perangkat belum aktif/tidak terjangkau
+          }
+        }
+      }
+    } catch {
+      // Abaikan jika browser menolak getDevices()
+    }
+  }
+
+  const device = await navBluetooth.requestDevice({
+    acceptAllDevices: true,
+    optionalServices: KNOWN_PRINTER_SERVICES,
   });
 
-  return writeChar;
+  return resolveWritableCharacteristic(device);
+}
+
+/**
+ * Putus koneksi printer saat ini (jika ada) dan langsung buka dialog pemilih printer Bluetooth baru.
+ */
+export async function switchBluetoothPrinter(): Promise<{ deviceName: string }> {
+  await getOrConnectPrinter(true);
+  return { deviceName: getConnectedDeviceName() || 'Printer Thermal' };
 }
 
 // ESC/POS Commands Constants
@@ -331,9 +416,46 @@ export async function sendRawEscPos(
   }
 }
 
-export function buildOrderReceipt(order: OrderRecord, storeConfig: StoreConfig): Uint8Array {
+async function sendEscPosJob(
+  buildBytes: () => Uint8Array
+): Promise<{ success: boolean; deviceName: string }> {
+  const previousDevice = cachedDevice;
+  let char = await getOrConnectPrinter();
+  const payload = buildBytes();
+
+  try {
+    await sendRawEscPos(char, payload);
+  } catch (err) {
+    // Jika printer tertidur / koneksi GATT putus diam-diam saat idle, coba bangunkan 1x otomatis
+    const targetDevice = cachedDevice || previousDevice;
+    cachedDevice = null;
+    cachedCharacteristic = null;
+    notifyPrinterStatusChanged();
+
+    if (targetDevice?.gatt) {
+      try {
+        char = await resolveWritableCharacteristic(targetDevice);
+        await sendRawEscPos(char, payload);
+        return { success: true, deviceName: getConnectedDeviceName() || 'Printer Thermal' };
+      } catch {
+        cachedDevice = null;
+        cachedCharacteristic = null;
+        notifyPrinterStatusChanged();
+      }
+    }
+    throw err;
+  }
+
+  return { success: true, deviceName: getConnectedDeviceName() || 'Printer Thermal' };
+}
+
+export function buildOrderReceipt(
+  order: OrderRecord,
+  storeConfig: StoreConfig,
+  paperWidth?: ThermalPaperWidth
+): Uint8Array {
   const b = new EscPosBuilder();
-  const width = 32;
+  const width = getReceiptColumnWidth(storeConfig, paperWidth);
 
   const brandName = (storeConfig.brandName || 'DAPUR DULANG INDONESIA').toUpperCase();
   const slogan = storeConfig.brandTagline || 'Dibuat dengan wajan panas & tulisan tangan';
@@ -417,7 +539,7 @@ export function buildOrderReceipt(order: OrderRecord, storeConfig: StoreConfig):
       }
     }
   } else {
-    b.twoColumns('Lokasi     :', (storeConfig.pickupAddressNote || 'Sedati, Sidoarjo').slice(0, 19), width);
+    b.twoColumns('Lokasi     :', (storeConfig.pickupAddressNote || 'Sedati, Sidoarjo').slice(0, Math.max(19, width - 13)), width);
   }
 
   if (order.delivery_schedule) {
@@ -529,9 +651,13 @@ export function buildOrderReceipt(order: OrderRecord, storeConfig: StoreConfig):
   return b.getUint8Array();
 }
 
-export function buildClosingRecapReceipt(recap: KitchenClosingRecap, storeConfig: StoreConfig): Uint8Array {
+export function buildClosingRecapReceipt(
+  recap: KitchenClosingRecap,
+  storeConfig: StoreConfig,
+  paperWidth?: ThermalPaperWidth
+): Uint8Array {
   const b = new EscPosBuilder();
-  const width = 32;
+  const width = getReceiptColumnWidth(storeConfig, paperWidth);
 
   b.alignCenter().bold(true).sizeDouble();
   b.textLine(storeConfig.brandName || 'DAPUR DULANG');
@@ -605,27 +731,27 @@ export function buildClosingRecapReceipt(recap: KitchenClosingRecap, storeConfig
 
 export async function printOrderViaBluetooth(
   order: OrderRecord,
-  storeConfig: StoreConfig
+  storeConfig: StoreConfig,
+  paperWidth?: ThermalPaperWidth
 ): Promise<{ success: boolean; deviceName: string }> {
-  const char = await getOrConnectPrinter();
-  const bytes = buildOrderReceipt(order, storeConfig);
-  await sendRawEscPos(char, bytes);
-  return { success: true, deviceName: getConnectedDeviceName() || 'RPP02N' };
+  return sendEscPosJob(() => buildOrderReceipt(order, storeConfig, paperWidth));
 }
 
 export async function printClosingRecapViaBluetooth(
   recap: KitchenClosingRecap,
-  storeConfig: StoreConfig
+  storeConfig: StoreConfig,
+  paperWidth?: ThermalPaperWidth
 ): Promise<{ success: boolean; deviceName: string }> {
-  const char = await getOrConnectPrinter();
-  const bytes = buildClosingRecapReceipt(recap, storeConfig);
-  await sendRawEscPos(char, bytes);
-  return { success: true, deviceName: getConnectedDeviceName() || 'RPP02N' };
+  return sendEscPosJob(() => buildClosingRecapReceipt(recap, storeConfig, paperWidth));
 }
 
-export function buildShiftClosingSlip(shift: CashierShift, storeConfig: StoreConfig): Uint8Array {
+export function buildShiftClosingSlip(
+  shift: CashierShift,
+  storeConfig: StoreConfig,
+  paperWidth?: ThermalPaperWidth
+): Uint8Array {
   const b = new EscPosBuilder();
-  const width = 32;
+  const width = getReceiptColumnWidth(storeConfig, paperWidth);
 
   b.alignCenter().bold(true).sizeDouble();
   b.textLine(storeConfig.brandName || 'DAPUR DULANG INDONESIA');
@@ -708,10 +834,69 @@ export function buildShiftClosingSlip(shift: CashierShift, storeConfig: StoreCon
 
 export async function printShiftSlipViaBluetooth(
   shift: CashierShift,
-  storeConfig: StoreConfig
+  storeConfig: StoreConfig,
+  paperWidth?: ThermalPaperWidth
 ): Promise<{ success: boolean; deviceName: string }> {
-  const char = await getOrConnectPrinter();
-  const bytes = buildShiftClosingSlip(shift, storeConfig);
-  await sendRawEscPos(char, bytes);
-  return { success: true, deviceName: getConnectedDeviceName() || 'RPP02N' };
+  return sendEscPosJob(() => buildShiftClosingSlip(shift, storeConfig, paperWidth));
+}
+
+export function buildTestReceipt(
+  storeConfig: StoreConfig,
+  paperWidth?: ThermalPaperWidth,
+  deviceName?: string | null
+): Uint8Array {
+  const b = new EscPosBuilder();
+  const width = getReceiptColumnWidth(storeConfig, paperWidth);
+  const modeLabel = width >= 48 ? '80mm (48 Kolom)' : '58mm (32 Kolom)';
+  const nowStr = new Date().toLocaleString('id-ID', {
+    day: 'numeric',
+    month: 'short',
+    year: 'numeric',
+    hour: '2-digit',
+    minute: '2-digit',
+  });
+
+  b.alignCenter().bold(true).sizeDouble();
+  b.textLine((storeConfig.brandName || 'DAPUR DULANG').toUpperCase());
+  b.bold(false).sizeNormal();
+  b.textLine('TEST PRINT PRINTER THERMAL');
+  b.separator('-', width);
+
+  b.alignLeft();
+  b.twoColumns('Printer :', (deviceName || 'Bluetooth Thermal').slice(0, Math.max(16, width - 10)), width);
+  b.twoColumns('Format  :', modeLabel, width);
+  b.twoColumns('Waktu   :', nowStr, width);
+  b.separator('-', width);
+  b.bold(true).twoColumns('1x Uji Struk Rapi', 'Rp 10.000', width).bold(false);
+  b.textLine(' > Garis & spasi presisi OK');
+  b.separator('-', width);
+
+  b.alignCenter().bold(true).textLine('*** PRINTER SIAP DIPAKAI ***').bold(false);
+  b.feedAndCut(3);
+  return b.getUint8Array();
+}
+
+export async function printTestPageViaBluetooth(
+  storeConfig: StoreConfig,
+  paperWidth?: ThermalPaperWidth
+): Promise<{ success: boolean; deviceName: string }> {
+  return sendEscPosJob(() => buildTestReceipt(storeConfig, paperWidth, getConnectedDeviceName()));
+}
+
+export function formatBluetoothErrorAlert(err: any): { isCancelled: boolean; message: string } {
+  const errorMsg = err?.message || 'Gagal tersambung ke printer Bluetooth.';
+  const isCancelled =
+    errorMsg.includes('cancelled') ||
+    errorMsg.includes('User cancelled') ||
+    err?.name === 'NotFoundError';
+  return {
+    isCancelled,
+    message:
+      `Gagal mencetak via Bluetooth:\n${errorMsg}\n\n` +
+      'Langkah Pengecekan:\n' +
+      '1. Pastikan Bluetooth di HP sudah AKTIF.\n' +
+      '2. Pastikan printer thermal (RPP02N / VSC / Iware / dll) dalam kondisi MENYALA.\n' +
+      '3. Jika muncul pop-up pairing PIN baru, masukkan PIN bawaan printer (umumnya 0000 atau sesuai buku manual).\n' +
+      '4. Dekatkan printer ke HP, lalu tekan "Ganti Printer" jika ingin memilih perangkat lain.',
+  };
 }

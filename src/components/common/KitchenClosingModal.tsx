@@ -4,7 +4,9 @@ import { storageService } from '../../services/storageService';
 import {
   printClosingRecapViaBluetooth,
   isBluetoothSupported,
+  formatBluetoothErrorAlert,
 } from '../../lib/bluetoothPrinter';
+import { BluetoothPrinterBar } from './BluetoothPrinterBar';
 
 interface KitchenClosingModalProps {
   isOpen: boolean;
@@ -354,22 +356,19 @@ export const KitchenClosingModal: React.FC<KitchenClosingModalProps> = ({
 
     setIsPrintingBluetooth(true);
     try {
-      const res = await printClosingRecapViaBluetooth(recap, storeConfig);
+      const res = await printClosingRecapViaBluetooth(
+        recap,
+        storeConfig,
+        storeConfig.printerPaperWidth || '58mm'
+      );
       onShowToast(`Rekap tutup dapur berhasil dicetak ke "${res.deviceName}"! 🖨️✨`);
     } catch (err: any) {
       console.warn('Bluetooth print closing error:', err);
-      const errorMsg = err?.message || 'Gagal tersambung ke printer Bluetooth.';
-      if (errorMsg.includes('cancelled') || errorMsg.includes('User cancelled')) {
+      const info = formatBluetoothErrorAlert(err);
+      if (info.isCancelled) {
         onShowToast('Pencarian Bluetooth dibatalkan.');
       } else {
-        alert(
-          `Gagal mencetak via Bluetooth:\n${errorMsg}\n\n` +
-          'Langkah Pengecekan:\n' +
-          '1. Pastikan Bluetooth di HP sudah AKTIF.\n' +
-          '2. Pastikan printer RPP02N dalam kondisi MENYALA (lampu biru ON).\n' +
-          '3. Jika muncul pop-up pasangkan/pairing PIN, masukkan PIN: 0000\n' +
-          '4. Dekatkan printer ke HP lalu coba lagi.'
-        );
+        alert(info.message);
       }
     } finally {
       setIsPrintingBluetooth(false);
@@ -766,18 +765,28 @@ export const KitchenClosingModal: React.FC<KitchenClosingModalProps> = ({
           </div>
         </div>
 
+        {/* Status & Switch Printer Bar */}
+        <div className="pt-3 shrink-0">
+          <BluetoothPrinterBar
+            compact
+            storeConfig={storeConfig}
+            paperWidth={storeConfig.printerPaperWidth || '58mm'}
+            onShowToast={onShowToast}
+          />
+        </div>
+
         {/* Action Buttons Footer */}
-        <div className="pt-4 border-t-2 border-[#111111]/15 flex flex-wrap items-center justify-between gap-2.5 shrink-0">
+        <div className="pt-3 border-t-2 border-[#111111]/15 flex flex-wrap items-center justify-between gap-2.5 shrink-0">
           <div className="flex flex-wrap items-center gap-2">
             <button
               type="button"
               disabled={isPrintingBluetooth}
               onClick={handlePrintRecapBluetooth}
               className="cursor-pointer bg-gradient-to-r from-amber-500 via-amber-400 to-yellow-500 hover:brightness-105 text-[#111111] border-2 border-[#111111] px-3.5 py-2 rounded-full font-sans font-black text-xs shadow-[2px_2px_0_#111111] transition flex items-center gap-1.5 active:translate-y-0.5 disabled:opacity-60"
-              title="Cetak langsung ke printer portable RPP02N via Bluetooth"
+              title="Cetak langsung ke printer thermal Bluetooth mana saja (BLE)"
             >
               <span>{isPrintingBluetooth ? '⏳' : '⚡'}</span>
-              <span>{isPrintingBluetooth ? 'Mencetak...' : 'Cetak Bluetooth (RPP02N)'}</span>
+              <span>{isPrintingBluetooth ? 'Mencetak...' : 'Cetak Bluetooth'}</span>
             </button>
             <button
               type="button"

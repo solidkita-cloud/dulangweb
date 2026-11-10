@@ -114,6 +114,7 @@ export interface StoreConfig {
   grabfoodCommissionPercent?: number;   // Default: 20%
   cashierDailyTargetPortions?: number;  // Target porsi harian per kasir (default: 100)
   cashierBonusPerPortion?: number;      // Nominal bonus insentif per porsi jika tembus target (default: Rp 100)
+  printerPaperWidth?: '58mm' | '80mm';  // Default lebar kertas cetak langsung Bluetooth ('58mm')
 }
 
 export interface ChildVoucherPerk {

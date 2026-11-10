@@ -40,6 +40,7 @@ import { KitchenClosingModal } from '../components/common/KitchenClosingModal';
 import { InvoiceA4Modal } from '../components/common/InvoiceA4Modal';
 import { RecipeInventoryTab } from '../components/owner/RecipeInventoryTab';
 import { KitchenDisplaySystem } from '../components/kitchen/KitchenDisplaySystem';
+import { BluetoothPrinterBar } from '../components/common/BluetoothPrinterBar';
 import { StickerGeneratorView } from './StickerGeneratorView';
 import {
   logSecurityEvent,
@@ -55,6 +56,11 @@ import {
   printOrderViaBluetooth,
   printShiftSlipViaBluetooth,
   isBluetoothSupported,
+  isPrinterConnected,
+  getConnectedDeviceName,
+  formatBluetoothErrorAlert,
+  PRINTER_STATUS_EVENT,
+  ThermalPaperWidth,
 } from '../lib/bluetoothPrinter';
 
 interface OwnerDashboardViewProps {
@@ -182,10 +188,51 @@ export const OwnerDashboardView: React.FC<OwnerDashboardViewProps> = ({
   const [walkInChannel, setWalkInChannel] = useState<'walk_in' | 'gofood' | 'shopeefood' | 'grabfood'>('walk_in');
   const [walkInOjolOrderId, setWalkInOjolOrderId] = useState<string>('');
   const [selectedOrderForReceipt, setSelectedOrderForReceipt] = useState<OrderRecord | null>(null);
-  const [receiptPaperWidth, setReceiptPaperWidth] = useState<'58mm' | '80mm'>('58mm');
+  const [receiptPaperWidth, setReceiptPaperWidth] = useState<ThermalPaperWidth>(() => {
+    try {
+      const saved = typeof window !== 'undefined' ? localStorage.getItem('dulang_paper_width') : null;
+      if (saved === '80mm' || saved === '58mm') return saved;
+    } catch {}
+    return storeConfig.printerPaperWidth || '58mm';
+  });
+  const [connectedPrinterName, setConnectedPrinterName] = useState<string | null>(() =>
+    isPrinterConnected() ? getConnectedDeviceName() : null
+  );
   const [receiptQrDataUrl, setReceiptQrDataUrl] = useState<string>('');
   const [quickWaOrderText, setQuickWaOrderText] = useState('');
   const [mobileActionOrder, setMobileActionOrder] = useState<OrderRecord | null>(null);
+
+  useEffect(() => {
+    if (storeConfig.printerPaperWidth === '58mm' || storeConfig.printerPaperWidth === '80mm') {
+      setReceiptPaperWidth(storeConfig.printerPaperWidth);
+    }
+  }, [storeConfig.printerPaperWidth]);
+
+  useEffect(() => {
+    const syncPrinterName = () => {
+      setConnectedPrinterName(isPrinterConnected() ? getConnectedDeviceName() : null);
+    };
+    syncPrinterName();
+    window.addEventListener(PRINTER_STATUS_EVENT, syncPrinterName);
+    return () => {
+      window.removeEventListener(PRINTER_STATUS_EVENT, syncPrinterName);
+    };
+  }, []);
+
+  const handleChangePaperWidth = (width: ThermalPaperWidth) => {
+    setReceiptPaperWidth(width);
+    try {
+      if (typeof window !== 'undefined') {
+        localStorage.setItem('dulang_paper_width', width);
+      }
+    } catch {}
+    if (activeRole === 'owner' && localConfig.printerPaperWidth !== width) {
+      const updated: StoreConfig = { ...localConfig, printerPaperWidth: width };
+      setLocalConfig(updated);
+      onUpdateStoreConfig(updated);
+      storageService.saveStoreConfig(updated);
+    }
+  };
 
   // Generate QR Code for thermal receipt
   useEffect(() => {
@@ -2029,7 +2076,7 @@ Catatan Kurir: Pastikan posisi dus ditaruh datar agar mayo tidak tumpah ya kak.`
 
     setIsPrintingBluetooth(true);
     try {
-      const res = await printOrderViaBluetooth(selectedOrderForReceipt, storeConfig);
+      const res = await printOrderViaBluetooth(selectedOrderForReceipt, storeConfig, receiptPaperWidth);
       onShowToast(`Struk berhasil dicetak ke "${res.deviceName}"! 🖨️✨`);
 
       // Update print count for reprint tracking
@@ -2047,18 +2094,11 @@ Catatan Kurir: Pastikan posisi dus ditaruh datar agar mayo tidak tumpah ya kak.`
       }
     } catch (err: any) {
       console.warn('Bluetooth print error:', err);
-      const errorMsg = err?.message || 'Gagal tersambung ke printer Bluetooth.';
-      if (errorMsg.includes('cancelled') || errorMsg.includes('User cancelled')) {
+      const info = formatBluetoothErrorAlert(err);
+      if (info.isCancelled) {
         onShowToast('Pencarian Bluetooth dibatalkan.');
       } else {
-        alert(
-          `Gagal mencetak via Bluetooth:\n${errorMsg}\n\n` +
-          'Langkah Pengecekan:\n' +
-          '1. Pastikan Bluetooth di HP sudah AKTIF.\n' +
-          '2. Pastikan printer RPP02N dalam kondisi MENYALA (lampu biru ON).\n' +
-          '3. Jika muncul pop-up pasangkan/pairing PIN, masukkan PIN: 0000\n' +
-          '4. Dekatkan printer ke HP lalu coba lagi.'
-        );
+        alert(info.message);
       }
     } finally {
       setIsPrintingBluetooth(false);
@@ -2109,11 +2149,16 @@ Catatan Kurir: Pastikan posisi dus ditaruh datar agar mayo tidak tumpah ya kak.`
     }
     setIsPrintingShiftSlip(true);
     try {
-      const res = await printShiftSlipViaBluetooth(shiftData, storeConfig);
+      const res = await printShiftSlipViaBluetooth(shiftData, storeConfig, receiptPaperWidth);
       onShowToast(`Slip serah terima shift dicetak ke "${res.deviceName}"! 🖨️✨`);
     } catch (err: any) {
       console.warn('Bluetooth print shift error:', err);
-      alert(`Gagal cetak via Bluetooth:\n${err?.message || 'Koneksi terputus'}`);
+      const info = formatBluetoothErrorAlert(err);
+      if (info.isCancelled) {
+        onShowToast('Pencarian Bluetooth dibatalkan.');
+      } else {
+        alert(info.message);
+      }
     } finally {
       setIsPrintingShiftSlip(false);
     }
@@ -8115,7 +8160,7 @@ Catatan Kurir: Pastikan posisi dus ditaruh datar agar mayo tidak tumpah ya kak.`
                   </span>
                 </div>
                 <p className="font-sans text-xs text-[#5C3D2E]/80">
-                  Nominal rupiah bonus per porsi jika kasir berhasil tembus target harian. Terhitung otomatis di slip serah terima shift Bluetooth (RPP02N).
+                  Nominal rupiah bonus per porsi jika kasir berhasil tembus target harian. Terhitung otomatis di slip serah terima shift printer thermal Bluetooth.
                 </p>
                 <div>
                   <label className="block font-sans text-[11px] font-bold uppercase text-[#5C3D2E]/80 mb-1">
@@ -8146,6 +8191,68 @@ Catatan Kurir: Pastikan posisi dus ditaruh datar agar mayo tidak tumpah ya kak.`
               </button>
             </div>
           </form>
+
+          {/* SECTION C-PRINTER: PENGATURAN PRINTER THERMAL KASIR */}
+          <div className="bg-white rounded-[24px] p-6 lg:p-8 border-2 border-[#111111] shadow-[4px_4px_0_#111111] space-y-4">
+            <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-3">
+              <div>
+                <div className="inline-flex items-center gap-2 bg-[#FFD700] text-[#111111] px-3 py-0.5 rounded-full font-sans text-[11px] font-bold uppercase tracking-wider mb-2">
+                  🖨️ Printer Thermal & Lebar Struk
+                </div>
+                <h2 className="font-hand font-bold text-[30px] text-[#111111] leading-none">
+                  Ganti Printer & Ukuran Kertas Kasir
+                </h2>
+                <p className="font-sans text-xs text-[#5C3D2E]/70 mt-1">
+                  Mendukung segala printer thermal Bluetooth BLE (58mm/80mm) tanpa instal aplikasi tambahan. Ubah ukuran kertas atau ganti printer baru langsung dari sini.
+                </p>
+              </div>
+            </div>
+
+            <div className="flex flex-wrap items-center justify-between gap-3 bg-[#FFF8E7] rounded-[16px] p-4 border border-[#111111]/20 text-xs font-sans">
+              <div>
+                <div className="font-bold text-[#111111]">Ukuran Kertas Default (Cetak Bluetooth & PDF):</div>
+                <div className="text-[11px] text-[#5C3D2E]/75">
+                  Pilih 58mm untuk mini printer portable, atau 80mm untuk printer kasir meja lebar.
+                </div>
+              </div>
+              <div className="flex items-center gap-2">
+                <button
+                  type="button"
+                  onClick={() => {
+                    handleChangePaperWidth('58mm');
+                    onShowToast('Format default diset ke 58mm (32 kolom) ✓');
+                  }}
+                  className={`cursor-pointer px-4 py-1.5 rounded-full font-bold text-xs border transition ${
+                    receiptPaperWidth === '58mm'
+                      ? 'bg-[#111111] text-[#FFD700] border-[#111111]'
+                      : 'bg-white text-[#111111] border-[#111111]/25 hover:border-[#111111]'
+                  }`}
+                >
+                  58mm (Mini)
+                </button>
+                <button
+                  type="button"
+                  onClick={() => {
+                    handleChangePaperWidth('80mm');
+                    onShowToast('Format default diset ke 80mm (48 kolom) ✓');
+                  }}
+                  className={`cursor-pointer px-4 py-1.5 rounded-full font-bold text-xs border transition ${
+                    receiptPaperWidth === '80mm'
+                      ? 'bg-[#111111] text-[#FFD700] border-[#111111]'
+                      : 'bg-white text-[#111111] border-[#111111]/25 hover:border-[#111111]'
+                  }`}
+                >
+                  80mm (Lebar)
+                </button>
+              </div>
+            </div>
+
+            <BluetoothPrinterBar
+              storeConfig={localConfig}
+              paperWidth={receiptPaperWidth}
+              onShowToast={onShowToast}
+            />
+          </div>
 
           {/* SECTION C2: AUDIT LOG & RIWAYAT KEAMANAN DAPUR (Poin 27) */}
           <div className="bg-white rounded-[24px] p-6 lg:p-8 border-2 border-[#111111] shadow-[4px_4px_0_#111111] space-y-4">
@@ -10445,32 +10552,40 @@ Catatan Kurir: Pastikan posisi dus ditaruh datar agar mayo tidak tumpah ya kak.`
             </div>
 
             {/* Paper Width Selector */}
-            <div className="bg-[#FFF8E7] px-6 py-2.5 border-b border-[#111111]/15 flex items-center justify-between text-xs font-sans">
-              <span className="font-bold text-[#5C3D2E]">Format Kertas Thermal:</span>
-              <div className="flex items-center gap-1.5">
-                <button
-                  type="button"
-                  onClick={() => setReceiptPaperWidth('58mm')}
-                  className={`cursor-pointer px-3 py-1 rounded-full font-bold text-xs transition ${
-                    receiptPaperWidth === '58mm'
-                      ? 'bg-[#111111] text-[#FFD700]'
-                      : 'bg-white text-[#111111] border border-[#111111]/20'
-                  }`}
-                >
-                  58mm (Mini)
-                </button>
-                <button
-                  type="button"
-                  onClick={() => setReceiptPaperWidth('80mm')}
-                  className={`cursor-pointer px-3 py-1 rounded-full font-bold text-xs transition ${
-                    receiptPaperWidth === '80mm'
-                      ? 'bg-[#111111] text-[#FFD700]'
-                      : 'bg-white text-[#111111] border border-[#111111]/20'
-                  }`}
-                >
-                  80mm (Standar)
-                </button>
+            <div className="bg-[#FFF8E7] px-5 py-2.5 border-b border-[#111111]/15 space-y-2 text-xs font-sans">
+              <div className="flex items-center justify-between gap-2">
+                <span className="font-bold text-[#5C3D2E]">Format Kertas Thermal:</span>
+                <div className="flex items-center gap-1.5">
+                  <button
+                    type="button"
+                    onClick={() => handleChangePaperWidth('58mm')}
+                    className={`cursor-pointer px-3 py-1 rounded-full font-bold text-xs transition ${
+                      receiptPaperWidth === '58mm'
+                        ? 'bg-[#111111] text-[#FFD700]'
+                        : 'bg-white text-[#111111] border border-[#111111]/20'
+                    }`}
+                  >
+                    58mm (Mini)
+                  </button>
+                  <button
+                    type="button"
+                    onClick={() => handleChangePaperWidth('80mm')}
+                    className={`cursor-pointer px-3 py-1 rounded-full font-bold text-xs transition ${
+                      receiptPaperWidth === '80mm'
+                        ? 'bg-[#111111] text-[#FFD700]'
+                        : 'bg-white text-[#111111] border border-[#111111]/20'
+                    }`}
+                  >
+                    80mm (Lebar)
+                  </button>
+                </div>
               </div>
+              <BluetoothPrinterBar
+                compact
+                storeConfig={storeConfig}
+                paperWidth={receiptPaperWidth}
+                onShowToast={onShowToast}
+              />
             </div>
 
             {/* Thermal Receipt Visual Preview */}
@@ -10709,7 +10824,13 @@ Catatan Kurir: Pastikan posisi dus ditaruh datar agar mayo tidak tumpah ya kak.`
                 className="w-full cursor-pointer bg-gradient-to-r from-amber-500 via-amber-400 to-yellow-500 hover:brightness-105 text-[#111111] border-2 border-[#111111] rounded-2xl py-3 px-3 font-sans font-black text-sm flex items-center justify-center gap-2 shadow-[3px_3px_0_#111111] transition active:scale-[0.98] disabled:opacity-60"
               >
                 <span className="text-base">{isPrintingBluetooth ? '⏳' : '⚡'}</span>
-                <span>{isPrintingBluetooth ? 'Menghubungkan ke Printer...' : 'Cetak Langsung Bluetooth (RPP02N)'}</span>
+                <span>
+                  {isPrintingBluetooth
+                    ? 'Menghubungkan ke Printer...'
+                    : connectedPrinterName
+                    ? `Cetak Langsung (${connectedPrinterName})`
+                    : 'Cetak Langsung Bluetooth'}
+                </span>
               </button>
 
               <div className="grid grid-cols-2 gap-2">
@@ -11001,6 +11122,12 @@ Catatan Kurir: Pastikan posisi dus ditaruh datar agar mayo tidak tumpah ya kak.`
 
                 {/* Tombol Cetak Slip Bluetooth & Konfirmasi */}
                 <div className="space-y-2 pt-2 border-t border-gray-200">
+                  <BluetoothPrinterBar
+                    compact
+                    storeConfig={storeConfig}
+                    paperWidth={receiptPaperWidth}
+                    onShowToast={onShowToast}
+                  />
                   <button
                     type="button"
                     disabled={isPrintingShiftSlip || !isInputted}
@@ -11008,7 +11135,13 @@ Catatan Kurir: Pastikan posisi dus ditaruh datar agar mayo tidak tumpah ya kak.`
                     className="w-full cursor-pointer bg-gradient-to-r from-amber-500 via-amber-400 to-yellow-500 hover:brightness-105 text-[#111111] border-2 border-[#111111] rounded-xl py-2.5 px-3 font-sans font-black text-xs flex items-center justify-center gap-1.5 shadow-[2px_2px_0_#111111] transition active:scale-[0.98] disabled:opacity-50"
                   >
                     <span>{isPrintingShiftSlip ? '⏳' : '⚡'}</span>
-                    <span>{isPrintingShiftSlip ? 'Mencetak Slip...' : 'Cetak Slip Serah Terima Bluetooth (RPP02N)'}</span>
+                    <span>
+                      {isPrintingShiftSlip
+                        ? 'Mencetak Slip...'
+                        : connectedPrinterName
+                        ? `Cetak Slip Shift (${connectedPrinterName})`
+                        : 'Cetak Slip Serah Terima Bluetooth'}
+                    </span>
                   </button>
 
                   <div className="flex items-center gap-2">
@@ -11415,6 +11548,12 @@ Catatan Kurir: Pastikan posisi dus ditaruh datar agar mayo tidak tumpah ya kak.`
               </div>
             ) : (
               <div className="p-5 overflow-y-auto space-y-3">
+                <BluetoothPrinterBar
+                  compact
+                  storeConfig={storeConfig}
+                  paperWidth={receiptPaperWidth}
+                  onShowToast={onShowToast}
+                />
                 {storageService.getShiftHistory().length === 0 ? (
                   <div className="p-8 text-center text-gray-500 font-sans text-xs">
                     Belum ada riwayat shift yang ditutup. Riwayat shift akan otomatis tercatat saat kasir melakukan "Tutup Shift".
