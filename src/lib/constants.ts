@@ -105,6 +105,8 @@ export const DEFAULT_STORE_CONFIG: StoreConfig = {
   gofoodCommissionPercent: 20,
   shopeefoodCommissionPercent: 20,
   grabfoodCommissionPercent: 20,
+  cashierDailyTargetPortions: 100,
+  cashierBonusPerPortion: 100,
 };
 
 export const DEFAULT_SIDOARJO_DELIVERY_RATES: Record<string, number> = {

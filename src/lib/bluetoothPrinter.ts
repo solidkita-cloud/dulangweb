@@ -642,6 +642,9 @@ export function buildShiftClosingSlip(shift: CashierShift, storeConfig: StoreCon
   const endStr = endDate.toLocaleTimeString('id-ID', { hour: '2-digit', minute: '2-digit' }) + ' WIB';
   b.twoColumns('Jam Shift :', `${startStr} - ${endStr}`, width);
   b.twoColumns('Total Trx :', `${shift.total_orders_count} Transaksi`, width);
+  if (shift.total_portions !== undefined) {
+    b.twoColumns('Porsi Jual:', `${shift.total_portions} Porsi`, width);
+  }
   b.separator('-', width);
 
   b.twoColumns('Modal Awal :', `Rp ${shift.opening_cash_float.toLocaleString('id-ID')}`, width);
@@ -670,6 +673,18 @@ export function buildShiftClosingSlip(shift: CashierShift, storeConfig: StoreCon
       ? `LEBIH (+Rp ${diff.toLocaleString('id-ID')})`
       : `KURANG (-Rp ${Math.abs(diff).toLocaleString('id-ID')})`;
   b.twoColumns('Selisih Kas:', diffText, width);
+
+  if (shift.target_portions !== undefined) {
+    b.separator('-', width);
+    const targetStatus = shift.target_achieved ? 'TEMBUS TARGET! ✓' : 'Belum Tembus';
+    b.twoColumns('Target Porsi:', `${shift.total_portions || 0}/${shift.target_portions} Porsi`, width);
+    b.twoColumns('Status Target:', targetStatus, width);
+    if (shift.bonus_earned && shift.bonus_earned > 0) {
+      b.bold(true);
+      b.twoColumns('Bonus Kasir :', `Rp ${shift.bonus_earned.toLocaleString('id-ID')}`, width);
+      b.bold(false);
+    }
+  }
 
   if (shift.notes) {
     b.separator('-', width);

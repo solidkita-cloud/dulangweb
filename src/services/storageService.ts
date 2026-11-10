@@ -20,6 +20,7 @@ import {
   StaffRole,
   StockMovementRecord,
   CashierShift,
+  CashierLeaderboardEntry,
 } from '../types';
 import {
   DEFAULT_MENUS,
@@ -2757,6 +2758,17 @@ _Dapur Dulang Indonesia - Risoles & Katering Sidoarjo_`;
     const expectedDrawerCash = active.opening_cash_float + cashRevenue - totalDrawerExpenses;
     const cashDifference = actualCash - expectedDrawerCash;
 
+    // Hitung total porsi makanan terjual selama shift
+    const totalPortions = orders.reduce((sum, o) => {
+      return sum + (o.items || []).reduce((itemSum, item) => itemSum + (item.qty || 1), 0);
+    }, 0);
+
+    const storeConfig = this.getStoreConfig();
+    const targetPortions = storeConfig.cashierDailyTargetPortions || 100;
+    const bonusPerPortion = storeConfig.cashierBonusPerPortion || 100;
+    const targetAchieved = totalPortions >= targetPortions;
+    const bonusEarned = targetAchieved ? totalPortions * bonusPerPortion : 0;
+
     const closedShift: CashierShift = {
       ...active,
       ended_at: new Date().toISOString(),
@@ -2769,6 +2781,10 @@ _Dapur Dulang Indonesia - Risoles & Katering Sidoarjo_`;
       total_revenue: totalRevenue,
       cash_revenue: cashRevenue,
       non_cash_revenue: nonCashRevenue,
+      total_portions: totalPortions,
+      target_portions: targetPortions,
+      target_achieved: targetAchieved,
+      bonus_earned: bonusEarned,
       notes: notes?.trim() || undefined,
     };
 
@@ -2781,6 +2797,190 @@ _Dapur Dulang Indonesia - Risoles & Katering Sidoarjo_`;
       window.dispatchEvent(new CustomEvent('dulang_shift_updated', { detail: { shift: null } }));
     }
     return closedShift;
+  },
+
+  getActiveShiftMetrics(): {
+    activeShift: CashierShift | null;
+    totalOrders: number;
+    totalPortions: number;
+    cashRevenue: number;
+    nonCashRevenue: number;
+    totalRevenue: number;
+    drawerExpenses: number;
+    expectedDrawerCash: number;
+    targetPortions: number;
+    targetAchieved: boolean;
+    bonusPerPortion: number;
+    bonusEarned: number;
+  } {
+    const active = this.getActiveShift();
+    const storeConfig = this.getStoreConfig();
+    const targetPortions = storeConfig.cashierDailyTargetPortions || 100;
+    const bonusPerPortion = storeConfig.cashierBonusPerPortion || 100;
+
+    if (!active) {
+      return {
+        activeShift: null,
+        totalOrders: 0,
+        totalPortions: 0,
+        cashRevenue: 0,
+        nonCashRevenue: 0,
+        totalRevenue: 0,
+        drawerExpenses: 0,
+        expectedDrawerCash: 0,
+        targetPortions,
+        targetAchieved: false,
+        bonusPerPortion,
+        bonusEarned: 0,
+      };
+    }
+
+    const orders = this.getOrders().filter((o) => {
+      const isTimeValid = new Date(o.created_at) >= new Date(active.started_at);
+      const isStatusValid = o.status === 'lunas' || o.status === 'dp';
+      return isTimeValid && isStatusValid;
+    });
+
+    const shiftExpenses = this.getShiftExpenses(active.started_at);
+    const drawerExpenses = shiftExpenses.reduce((sum, e) => sum + e.nominal, 0);
+
+    const cashRevenue = orders
+      .filter((o) => o.payment_method === 'tunai')
+      .reduce((sum, o) => sum + (o.status === 'dp' ? (o.dp_amount || 0) : o.total_price), 0);
+
+    const nonCashRevenue = orders
+      .filter((o) => o.payment_method !== 'tunai')
+      .reduce((sum, o) => sum + (o.status === 'dp' ? (o.dp_amount || 0) : o.total_price), 0);
+
+    const totalRevenue = cashRevenue + nonCashRevenue;
+    const expectedDrawerCash = active.opening_cash_float + cashRevenue - drawerExpenses;
+
+    const totalPortions = orders.reduce((sum, o) => {
+      return sum + (o.items || []).reduce((itemSum, item) => itemSum + (item.qty || 1), 0);
+    }, 0);
+
+    const targetAchieved = totalPortions >= targetPortions;
+    const bonusEarned = targetAchieved ? totalPortions * bonusPerPortion : 0;
+
+    return {
+      activeShift: active,
+      totalOrders: orders.length,
+      totalPortions,
+      cashRevenue,
+      nonCashRevenue,
+      totalRevenue,
+      drawerExpenses,
+      expectedDrawerCash,
+      targetPortions,
+      targetAchieved,
+      bonusPerPortion,
+      bonusEarned,
+    };
+  },
+
+  getCashierLeaderboard(): CashierLeaderboardEntry[] {
+    const history = this.getShiftHistory();
+    const active = this.getActiveShift();
+    const allOrders = this.getOrders().filter((o) => o.status !== 'batal');
+    const storeConfig = this.getStoreConfig();
+    const targetPortions = storeConfig.cashierDailyTargetPortions || 100;
+    const bonusPerPortion = storeConfig.cashierBonusPerPortion || 100;
+
+    // Kumpulkan nama kasir dari shift history, active shift, dan pesanan
+    const cashierMap = new Map<string, {
+      shifts: CashierShift[];
+      hasActiveShift: boolean;
+    }>();
+
+    for (const sh of history) {
+      const name = sh.cashier_name?.trim() || 'Kasir Stand';
+      if (!cashierMap.has(name)) {
+        cashierMap.set(name, { shifts: [], hasActiveShift: false });
+      }
+      cashierMap.get(name)!.shifts.push(sh);
+    }
+
+    if (active) {
+      const name = active.cashier_name?.trim() || 'Kasir Stand';
+      if (!cashierMap.has(name)) {
+        cashierMap.set(name, { shifts: [], hasActiveShift: true });
+      } else {
+        cashierMap.get(name)!.hasActiveShift = true;
+      }
+    }
+
+    for (const ord of allOrders) {
+      if (ord.cashier_name && ord.cashier_name.trim()) {
+        const name = ord.cashier_name.trim();
+        if (!cashierMap.has(name)) {
+          cashierMap.set(name, { shifts: [], hasActiveShift: false });
+        }
+      }
+    }
+
+    if (cashierMap.size === 0) {
+      cashierMap.set('Siti', { shifts: [], hasActiveShift: false });
+    }
+
+    const leaderboard: CashierLeaderboardEntry[] = [];
+
+    cashierMap.forEach((data, name) => {
+      const shifts = data.shifts;
+      const totalShifts = shifts.length + (data.hasActiveShift ? 1 : 0);
+
+      const cashierOrders = allOrders.filter((o) => (o.cashier_name || '').toLowerCase() === name.toLowerCase());
+      const totalOrdersFromOrders = cashierOrders.length;
+      const totalPortionsFromOrders = cashierOrders.reduce((sum, o) => {
+        return sum + (o.items || []).reduce((itemSum, item) => itemSum + (item.qty || 1), 0);
+      }, 0);
+
+      const totalOrdersFromShifts = shifts.reduce((sum, s) => sum + (s.total_orders_count || 0), 0);
+      const totalPortionsFromShifts = shifts.reduce((sum, s) => sum + (s.total_portions || 0), 0);
+      const totalRevenueFromShifts = shifts.reduce((sum, s) => sum + (s.total_revenue || 0), 0);
+      const cashRevenueFromShifts = shifts.reduce((sum, s) => sum + (s.cash_revenue || 0), 0);
+      const nonCashRevenueFromShifts = shifts.reduce((sum, s) => sum + (s.non_cash_revenue || 0), 0);
+      const totalExpensesFromShifts = shifts.reduce((sum, s) => sum + (s.drawer_expenses || 0), 0);
+      const totalDiscrepancy = shifts.reduce((sum, s) => sum + (s.cash_difference || 0), 0);
+      const exactShiftsCount = shifts.filter((s) => (s.cash_difference || 0) === 0).length;
+      const targetAchievedCount = shifts.filter((s) => s.target_achieved).length;
+      const totalBonusFromShifts = shifts.reduce((sum, s) => sum + (s.bonus_earned || 0), 0);
+
+      const finalOrders = Math.max(totalOrdersFromShifts, totalOrdersFromOrders);
+      const finalPortions = Math.max(totalPortionsFromShifts, totalPortionsFromOrders);
+      const finalRevenue = totalRevenueFromShifts > 0 ? totalRevenueFromShifts : cashierOrders.reduce((sum, o) => sum + o.total_price, 0);
+
+      const effectiveShiftCount = Math.max(1, totalShifts);
+      const avgPortions = Math.round(finalPortions / effectiveShiftCount);
+      const honestyRate = shifts.length > 0 ? Math.round((exactShiftsCount / shifts.length) * 100) : 100;
+      const isTargetAchieved = avgPortions >= targetPortions || targetAchievedCount > 0;
+      const totalBonusEarned = totalBonusFromShifts > 0 ? totalBonusFromShifts : (isTargetAchieved ? finalPortions * bonusPerPortion : 0);
+
+      const lastShift = shifts[0];
+      const lastActiveAt = lastShift?.ended_at || lastShift?.started_at || (cashierOrders[0]?.created_at) || undefined;
+
+      leaderboard.push({
+        cashier_name: name,
+        total_shifts: totalShifts,
+        total_orders: finalOrders,
+        total_portions: finalPortions,
+        total_revenue: finalRevenue,
+        cash_revenue: cashRevenueFromShifts,
+        non_cash_revenue: nonCashRevenueFromShifts,
+        total_drawer_expenses: totalExpensesFromShifts,
+        total_discrepancy: totalDiscrepancy,
+        exact_shifts_count: exactShiftsCount,
+        honesty_rate: honestyRate,
+        avg_portions_per_shift: avgPortions,
+        target_portions: targetPortions,
+        target_achieved_count: targetAchievedCount,
+        is_target_achieved: isTargetAchieved,
+        bonus_per_portion: bonusPerPortion,
+        total_bonus_earned: totalBonusEarned,
+        last_active_at: lastActiveAt,
+      });
+    });
+
+    return leaderboard.sort((a, b) => b.total_portions - a.total_portions);
   },
 
   getShiftHistory(): CashierShift[] {

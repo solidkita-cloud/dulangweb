@@ -14,6 +14,7 @@ import {
   ExpenseCategory,
   StaffRole,
   CashierShift,
+  CashierLeaderboardEntry,
 } from '../types';
 import { SIDOARJO_AREAS, INDONESIA_CITIES, CITY_DISTRICTS, MONTHS_INDONESIA, DEFAULT_SIDOARJO_DELIVERY_RATES, checkStoreOpenStatus } from '../lib/constants';
 import { getSupabaseCredentials, saveSupabaseCredentials, clearSupabaseCredentials } from '../lib/supabase';
@@ -232,6 +233,9 @@ export const OwnerDashboardView: React.FC<OwnerDashboardViewProps> = ({
   const [pettyCashReason, setPettyCashReason] = useState<string>('Es Batu Kristal');
   const [pettyCashCustomReason, setPettyCashCustomReason] = useState<string>('');
 
+  // Step 2: Tab state for Shift & Leaderboard Modal
+  const [shiftModalTab, setShiftModalTab] = useState<'leaderboard' | 'history'>('leaderboard');
+
   useEffect(() => {
     const handleShiftUpdated = () => {
       setActiveShift(storageService.getActiveShift());
@@ -275,6 +279,15 @@ export const OwnerDashboardView: React.FC<OwnerDashboardViewProps> = ({
   const [expItemName, setExpItemName] = useState('');
   const [expNominal, setExpNominal] = useState<number | ''>(38000);
   const [expNotes, setExpNotes] = useState('');
+
+  // Real-time Cashier Shift Metrics & Leaderboard
+  const shiftMetrics = useMemo(() => {
+    return storageService.getActiveShiftMetrics();
+  }, [activeShift, orders, expenses, storeConfig]);
+
+  const cashierLeaderboard: CashierLeaderboardEntry[] = useMemo(() => {
+    return storageService.getCashierLeaderboard();
+  }, [activeShift, orders, storeConfig]);
 
   // Listen to expenses update event
   useEffect(() => {
@@ -2185,6 +2198,21 @@ Catatan Kurir: Pastikan posisi dus ditaruh datar agar mayo tidak tumpah ya kak.`
     onShowToast('PIN Kasir & Dapur berhasil diperbarui! 🔑✓');
   };
 
+  const handleSaveCashierBonusSettings = (e: React.FormEvent) => {
+    e.preventDefault();
+    const targetPortions = Number(localConfig.cashierDailyTargetPortions) || 100;
+    const bonusPerPortion = Number(localConfig.cashierBonusPerPortion) || 100;
+    const updated: StoreConfig = {
+      ...localConfig,
+      cashierDailyTargetPortions: targetPortions,
+      cashierBonusPerPortion: bonusPerPortion,
+    };
+    setLocalConfig(updated);
+    onUpdateStoreConfig(updated);
+    storageService.saveStoreConfig(updated);
+    onShowToast('Target porsi & bonus insentif kasir berhasil disimpan! 🎯💰');
+  };
+
   const handleSwitchRoleSubmit = async (e?: React.FormEvent) => {
     if (e) e.preventDefault();
     const clean = switchRolePinInput.trim();
@@ -2925,6 +2953,151 @@ Catatan Kurir: Pastikan posisi dus ditaruh datar agar mayo tidak tumpah ya kak.`
         </div>
       )}
 
+      {/* ==============================================================================
+          CASHIER STAND COCKPIT: TAMPILAN KHUSUS KASIR (TRANSAKSI CEPAT & TARGET HARIAN)
+      ============================================================================== */}
+      {activeRole === 'cashier' && (
+        <div className="bg-[#111111] text-[#FFF8E7] rounded-[22px] p-3.5 sm:p-4 border-2 border-emerald-400 shadow-[4px_4px_0_#10B981] space-y-3">
+          {/* Header Cockpit Kasir */}
+          <div className="flex flex-wrap items-center justify-between gap-2">
+            <div className="flex items-center gap-2">
+              <span className="text-xl">🛒</span>
+              <div>
+                <h2 className="font-hand font-bold text-lg sm:text-xl text-emerald-300 leading-tight">
+                  Cockpit Kasir Stand Dulang
+                </h2>
+                <p className="font-sans text-[11px] text-white/70">
+                  {activeShift
+                    ? `Shift Aktif: Kak ${activeShift.cashier_name} • Buka: ${new Date(activeShift.started_at).toLocaleTimeString('id-ID', { hour: '2-digit', minute: '2-digit' })} WIB`
+                    : 'Shift kasir belum aktif'}
+                </p>
+              </div>
+            </div>
+            <button
+              type="button"
+              onClick={() => {
+                setShiftModalTab('leaderboard');
+                setIsShiftHistoryModalOpen(true);
+              }}
+              className="cursor-pointer bg-white/10 hover:bg-white/20 text-[#FFD700] border border-[#FFD700]/40 px-2.5 py-1 rounded-full font-sans text-[10px] sm:text-[11px] font-bold flex items-center gap-1 transition shadow-xs"
+            >
+              <span>🏆</span> Papan Peringkat & Bonus Kasir
+            </button>
+          </div>
+
+          {activeShift ? (
+            <div className="space-y-2.5">
+              {/* Target Progress Bar Kasir */}
+              <div className="bg-white/10 rounded-xl p-2.5 border border-white/15 space-y-1">
+                <div className="flex items-center justify-between font-sans text-[11px]">
+                  <span className="font-bold text-white flex items-center gap-1">
+                    <span>🎯</span> Target Penjualan Hari Ini:
+                  </span>
+                  <span className="font-bold text-[#FFD700]">
+                    {shiftMetrics.totalPortions} / {shiftMetrics.targetPortions} Porsi
+                    {shiftMetrics.targetAchieved ? ' (🎉 TEMBUS!)' : ''}
+                  </span>
+                </div>
+                <div className="w-full bg-white/20 h-2.5 rounded-full overflow-hidden">
+                  <div
+                    className={`h-full rounded-full transition-all duration-500 ${
+                      shiftMetrics.targetAchieved ? 'bg-gradient-to-r from-emerald-400 to-[#FFD700]' : 'bg-emerald-400'
+                    }`}
+                    style={{
+                      width: `${Math.min(100, Math.round((shiftMetrics.totalPortions / Math.max(1, shiftMetrics.targetPortions)) * 100))}%`,
+                    }}
+                  />
+                </div>
+                {shiftMetrics.targetAchieved && (
+                  <div className="text-[10px] text-emerald-300 font-semibold text-right">
+                    Bonus Insentif: +Rp {shiftMetrics.bonusEarned.toLocaleString('id-ID')} (Rp {shiftMetrics.bonusPerPortion}/porsi)
+                  </div>
+                )}
+              </div>
+
+              {/* 3 Metric Cards Ringkas Kasir */}
+              <div className="grid grid-cols-3 gap-2 text-center font-sans">
+                <div className="bg-white/10 rounded-xl p-2 border border-white/15">
+                  <span className="text-[9px] text-white/70 block uppercase">Porsi Terjual</span>
+                  <span className="font-bold text-sm text-[#FFD700] block">{shiftMetrics.totalPortions} Porsi</span>
+                  <span className="text-[9px] text-white/60 block">{shiftMetrics.totalOrders} Transaksi</span>
+                </div>
+                <div className="bg-white/10 rounded-xl p-2 border border-white/15">
+                  <span className="text-[9px] text-white/70 block uppercase">Tunai Laci Masuk</span>
+                  <span className="font-bold text-sm text-emerald-300 block">Rp {shiftMetrics.cashRevenue.toLocaleString('id-ID')}</span>
+                  <span className="text-[9px] text-white/60 block">Kas laci saat ini</span>
+                </div>
+                <div className="bg-white/10 rounded-xl p-2 border border-white/15">
+                  <span className="text-[9px] text-white/70 block uppercase">QRIS / Non-Tunai</span>
+                  <span className="font-bold text-sm text-sky-300 block">Rp {shiftMetrics.nonCashRevenue.toLocaleString('id-ID')}</span>
+                  <span className="text-[9px] text-white/60 block">Otomatis Lunas</span>
+                </div>
+              </div>
+
+              {/* Quick Actions Kasir */}
+              <div className="grid grid-cols-3 gap-2 pt-1 border-t border-white/10">
+                <button
+                  type="button"
+                  onClick={() => {
+                    setActiveTab('orders');
+                    setIsAddingWalkInOrder(true);
+                  }}
+                  className="cursor-pointer bg-[#FFD700] hover:bg-[#FFE033] text-[#111111] py-2 px-2 rounded-xl font-sans font-bold text-[11px] border border-[#111111] flex items-center justify-center gap-1 active:scale-95 shadow-xs"
+                >
+                  <span>+</span>
+                  <span>Order Kasir</span>
+                </button>
+
+                <button
+                  type="button"
+                  onClick={() => {
+                    setPettyCashAmount(10000);
+                    setPettyCashReason('Es Batu Kristal');
+                    setPettyCashCustomReason('');
+                    setIsPettyCashModalOpen(true);
+                  }}
+                  className="cursor-pointer bg-white/15 hover:bg-white/25 text-white py-2 px-2 rounded-xl font-sans font-bold text-[11px] border border-white/25 flex items-center justify-center gap-1 active:scale-95"
+                >
+                  <span>💸</span>
+                  <span>- Kas Laci</span>
+                </button>
+
+                <button
+                  type="button"
+                  onClick={() => {
+                    setShiftActualCash('');
+                    setShiftNotes('');
+                    setIsCloseShiftModalOpen(true);
+                  }}
+                  className="cursor-pointer bg-rose-500/30 hover:bg-rose-500/50 text-rose-200 py-2 px-2 rounded-xl font-sans font-bold text-[11px] border border-rose-400/40 flex items-center justify-center gap-1 active:scale-95"
+                >
+                  <span>🌙</span>
+                  <span>Tutup Shift</span>
+                </button>
+              </div>
+            </div>
+          ) : (
+            <div className="bg-emerald-950/60 border border-emerald-400/40 rounded-xl p-3 flex flex-col sm:flex-row sm:items-center justify-between gap-2.5">
+              <div className="text-xs font-sans text-emerald-100">
+                <span className="font-bold block text-sm text-[#FFD700]">🌅 Buka Shift Untuk Mulai Melayani</span>
+                Input nama kasir dan uang modal awal kembalian di laci sebelum menerima transaksi baru.
+              </div>
+              <button
+                type="button"
+                onClick={() => {
+                  setShiftCashierName('Siti');
+                  setShiftOpeningFloat(100000);
+                  setIsStartShiftModalOpen(true);
+                }}
+                className="cursor-pointer bg-emerald-400 hover:bg-emerald-300 text-[#111111] px-4 py-2 rounded-xl font-sans font-bold text-xs uppercase tracking-wider shrink-0 transition active:scale-95 shadow-xs"
+              >
+                🌅 Buka Shift Sekarang
+              </button>
+            </div>
+          )}
+        </div>
+      )}
+
       {/* Navigation Pills (Compact on Mobile, Full on Desktop) */}
       <div className="flex items-center gap-1.5 sm:gap-2 overflow-x-auto no-scrollbar py-1 sm:py-2 border-b border-[#111111]/10 sm:border-b-2">
         {/* Orders Tab: Shown to Owner & Cashier */}
@@ -3082,60 +3255,67 @@ Catatan Kurir: Pastikan posisi dus ditaruh datar agar mayo tidak tumpah ya kak.`
                 Total {menus.length} menu aktif. Di HP sentuh menu untuk edit harga, stok & ketersediaan.
               </p>
             </div>
-            <div className="flex flex-wrap items-center gap-2">
-              <button
-                type="button"
-                onClick={handleRefillAllStock}
-                className="cursor-pointer bg-[#FFF8E7] hover:bg-[#FFEEC2] text-[#5C3D2E] rounded-full px-3 sm:px-4 py-1.5 sm:py-2 font-sans font-bold text-[11px] sm:text-[12px] border-2 border-amber-400 hover:border-[#111111] transition flex items-center gap-1.5 shadow-xs"
-                title="Isi ulang sisa stok porsi seluruh menu ke kuota harian masing-masing"
-              >
-                <span>🌅</span> Refill Kuota Pagi
-              </button>
-              <button
-                type="button"
-                onClick={handleRefillAllStock}
-                className="cursor-pointer bg-emerald-50 text-emerald-800 rounded-full px-3 sm:px-4 py-1.5 sm:py-2 font-sans font-bold text-[11px] sm:text-[12px] border-2 border-emerald-500/40 hover:border-emerald-600 transition flex items-center gap-1"
-                title="Isi penuh kembali sisa stok seluruh menu ke kuota porsi harian masing-masing"
-              >
-                <span>🔄</span>
-                <span>Isi Penuh Stok</span>
-              </button>
-              <button
-                type="button"
-                onClick={handleBulkSetStock}
-                className="cursor-pointer bg-amber-50 text-[#5C3D2E] rounded-full px-3 sm:px-4 py-1.5 sm:py-2 font-sans font-bold text-[11px] sm:text-[12px] border-2 border-amber-500/40 hover:border-[#111111] transition flex items-center gap-1"
-                title="Atur kuota porsi harian untuk seluruh menu sekaligus"
-              >
-                <span>⚡</span>
-                <span>Set Kuota Masal</span>
-              </button>
-              <button
-                type="button"
-                onClick={() => {
-                  const conf = window.confirm(
-                    'Muat ulang seluruh menu standar Dapur Dulang (termasuk varian Gorengan Matang & Frozen Pack)?'
-                  );
-                  if (conf) {
-                    const fresh = storageService.resetDefaultMenus();
-                    onUpdateMenus(fresh);
-                    onShowToast('Seluruh menu standar Dulang berhasil dimuat ulang! ✓');
-                  }
-                }}
-                className="cursor-pointer bg-white text-[#5C3D2E] rounded-full px-3 sm:px-4 py-1.5 sm:py-2 font-sans font-bold text-[11px] sm:text-[12px] border-2 border-[#111111]/30 hover:border-[#111111] transition"
-              >
-                Muat Standar
-              </button>
-              <button
-                type="button"
-                onClick={() => {
-                  setIsAddingMenu(true);
-                  setEditingItem(null);
-                }}
-                className="cursor-pointer bg-[#FFD700] text-[#111111] rounded-full px-4 sm:px-5 py-1.5 sm:py-2 font-sans font-bold text-xs sm:text-[13px] border-2 border-[#111111] shadow-[2px_2px_0_#111111] hover:brightness-105"
-              >
-                + Tambah Menu Baru
-              </button>
-            </div>
+            {activeRole === 'owner' ? (
+              <div className="flex flex-wrap items-center gap-2">
+                <button
+                  type="button"
+                  onClick={handleRefillAllStock}
+                  className="cursor-pointer bg-[#FFF8E7] hover:bg-[#FFEEC2] text-[#5C3D2E] rounded-full px-3 sm:px-4 py-1.5 sm:py-2 font-sans font-bold text-[11px] sm:text-[12px] border-2 border-amber-400 hover:border-[#111111] transition flex items-center gap-1.5 shadow-xs"
+                  title="Isi ulang sisa stok porsi seluruh menu ke kuota harian masing-masing"
+                >
+                  <span>🌅</span> Refill Kuota Pagi
+                </button>
+                <button
+                  type="button"
+                  onClick={handleRefillAllStock}
+                  className="cursor-pointer bg-emerald-50 text-emerald-800 rounded-full px-3 sm:px-4 py-1.5 sm:py-2 font-sans font-bold text-[11px] sm:text-[12px] border-2 border-emerald-500/40 hover:border-emerald-600 transition flex items-center gap-1"
+                  title="Isi penuh kembali sisa stok seluruh menu ke kuota porsi harian masing-masing"
+                >
+                  <span>🔄</span>
+                  <span>Isi Penuh Stok</span>
+                </button>
+                <button
+                  type="button"
+                  onClick={handleBulkSetStock}
+                  className="cursor-pointer bg-amber-50 text-[#5C3D2E] rounded-full px-3 sm:px-4 py-1.5 sm:py-2 font-sans font-bold text-[11px] sm:text-[12px] border-2 border-amber-500/40 hover:border-[#111111] transition flex items-center gap-1"
+                  title="Atur kuota porsi harian untuk seluruh menu sekaligus"
+                >
+                  <span>⚡</span>
+                  <span>Set Kuota Masal</span>
+                </button>
+                <button
+                  type="button"
+                  onClick={() => {
+                    const conf = window.confirm(
+                      'Muat ulang seluruh menu standar Dapur Dulang (termasuk varian Gorengan Matang & Frozen Pack)?'
+                    );
+                    if (conf) {
+                      const fresh = storageService.resetDefaultMenus();
+                      onUpdateMenus(fresh);
+                      onShowToast('Seluruh menu standar Dulang berhasil dimuat ulang! ✓');
+                    }
+                  }}
+                  className="cursor-pointer bg-white text-[#5C3D2E] rounded-full px-3 sm:px-4 py-1.5 sm:py-2 font-sans font-bold text-[11px] sm:text-[12px] border-2 border-[#111111]/30 hover:border-[#111111] transition"
+                >
+                  Muat Standar
+                </button>
+                <button
+                  type="button"
+                  onClick={() => {
+                    setIsAddingMenu(true);
+                    setEditingItem(null);
+                  }}
+                  className="cursor-pointer bg-[#FFD700] text-[#111111] rounded-full px-4 sm:px-5 py-1.5 sm:py-2 font-sans font-bold text-xs sm:text-[13px] border-2 border-[#111111] shadow-[2px_2px_0_#111111] hover:brightness-105"
+                >
+                  + Tambah Menu Baru
+                </button>
+              </div>
+            ) : (
+              <div className="inline-flex items-center gap-1.5 bg-emerald-50 text-emerald-800 border border-emerald-300 px-3.5 py-1.5 rounded-full text-xs font-bold font-sans shadow-xs">
+                <span>🛒</span>
+                <span>Mode Kasir Stand: Pantau Stok & Ketersediaan (Sentuh menu untuk ubah status habis)</span>
+              </div>
+            )}
           </div>
 
           {/* Modal / Bottom Sheet: Tambah Menu Baru */}
@@ -3760,8 +3940,12 @@ Catatan Kurir: Pastikan posisi dus ditaruh datar agar mayo tidak tumpah ya kak.`
               <div
                 key={m.id}
                 onClick={() => {
-                  setEditingItem({ ...m });
-                  setIsAddingMenu(false);
+                  if (activeRole === 'owner') {
+                    setEditingItem({ ...m });
+                    setIsAddingMenu(false);
+                  } else {
+                    handleToggleTersedia(m.id);
+                  }
                 }}
                 className="cursor-pointer bg-white rounded-[18px] p-2.5 border-2 border-[#111111] shadow-[2px_2px_0_#111111] hover:shadow-[3px_3px_0_#FFD700] transition active:scale-[0.98] flex flex-col justify-between"
               >
@@ -4011,17 +4195,19 @@ Catatan Kurir: Pastikan posisi dus ditaruh datar agar mayo tidak tumpah ya kak.`
                 </div>
 
                 <div className="flex items-center gap-2 self-end md:self-center shrink-0">
-                  <button
-                    type="button"
-                    onClick={() => {
-                      setEditingItem({ ...m });
-                      setIsAddingMenu(false);
-                      window.scrollTo({ top: 200, behavior: 'smooth' });
-                    }}
-                    className="cursor-pointer px-4 py-1.5 rounded-full font-sans font-bold text-xs bg-white text-[#111111] border-2 border-[#111111] shadow-[1px_1px_0_#111111] hover:bg-gray-50"
-                  >
-                    ✏️ Edit
-                  </button>
+                  {activeRole === 'owner' && (
+                    <button
+                      type="button"
+                      onClick={() => {
+                        setEditingItem({ ...m });
+                        setIsAddingMenu(false);
+                        window.scrollTo({ top: 200, behavior: 'smooth' });
+                      }}
+                      className="cursor-pointer px-4 py-1.5 rounded-full font-sans font-bold text-xs bg-white text-[#111111] border-2 border-[#111111] shadow-[1px_1px_0_#111111] hover:bg-gray-50"
+                    >
+                      ✏️ Edit
+                    </button>
+                  )}
 
                   <button
                     type="button"
@@ -7542,6 +7728,98 @@ Catatan Kurir: Pastikan posisi dus ditaruh datar agar mayo tidak tumpah ya kak.`
             </div>
           </form>
 
+          {/* SECTION C-BONUS: TARGET PENJUALAN HARIAN & BONUS INSENTIF KASIR (Poin 5) */}
+          <form
+            onSubmit={handleSaveCashierBonusSettings}
+            className="bg-white rounded-[24px] p-6 lg:p-8 border-2 border-[#111111] shadow-[4px_4px_0_#111111] space-y-6"
+          >
+            <div>
+              <div className="inline-flex items-center gap-2 bg-[#FFD700] text-[#111111] px-3 py-0.5 rounded-full font-sans text-[11px] font-bold uppercase tracking-wider mb-2">
+                🎯 Target & Insentif Karyawan
+              </div>
+              <h2 className="font-hand font-bold text-[30px] text-[#111111] leading-none">
+                Target Penjualan Harian & Bonus Kasir Stand
+              </h2>
+              <p className="font-sans text-xs text-[#5C3D2E]/70 mt-1">
+                Atur target porsi harian dan insentif bonus per porsi bagi kasir stand untuk memacu semangat penjualan dan pelayanan pelanggan.
+              </p>
+            </div>
+
+            <div className="grid sm:grid-cols-2 gap-6">
+              {/* Target Porsi Harian */}
+              <div className="bg-[#FFF8E7] rounded-[20px] p-5 border-2 border-[#111111]/20 space-y-3">
+                <div className="flex items-center justify-between">
+                  <div className="flex items-center gap-2 font-hand font-bold text-lg text-[#111111]">
+                    <span>🎯</span> Target Porsi per Shift
+                  </div>
+                  <span className="text-[10px] font-sans font-bold bg-[#FFD700] text-[#111111] px-2 py-0.5 rounded-full border border-[#111111]/20">
+                    Target
+                  </span>
+                </div>
+                <p className="font-sans text-xs text-[#5C3D2E]/80">
+                  Jumlah porsi makanan (risoles, pastel, tahu, kebab) minimal yang harus terjual per shift agar berhak mendapatkan bonus insentif.
+                </p>
+                <div>
+                  <label className="block font-sans text-[11px] font-bold uppercase text-[#5C3D2E]/80 mb-1">
+                    Target Kuota (Porsi):
+                  </label>
+                  <input
+                    type="number"
+                    min="1"
+                    value={localConfig.cashierDailyTargetPortions ?? 100}
+                    onChange={(e) => setLocalConfig({ ...localConfig, cashierDailyTargetPortions: parseInt(e.target.value, 10) || 0 })}
+                    placeholder="100"
+                    className="w-full rounded-[12px] border-2 border-[#111111] px-4 py-2 font-mono font-bold text-base bg-white focus:outline-none focus:border-[#FFD700]"
+                  />
+                </div>
+                <div className="text-[11px] font-sans text-[#5C3D2E]/70">
+                  Standar rekomendasi: <strong>100 Porsi/Shift</strong>
+                </div>
+              </div>
+
+              {/* Bonus per Porsi */}
+              <div className="bg-[#FFF8E7] rounded-[20px] p-5 border-2 border-[#111111]/20 space-y-3">
+                <div className="flex items-center justify-between">
+                  <div className="flex items-center gap-2 font-hand font-bold text-lg text-[#111111]">
+                    <span>💰</span> Bonus Insentif per Porsi
+                  </div>
+                  <span className="text-[10px] font-sans font-bold bg-[#111111] text-[#FFD700] px-2 py-0.5 rounded-full border border-[#FFD700]/40">
+                    Insentif
+                  </span>
+                </div>
+                <p className="font-sans text-xs text-[#5C3D2E]/80">
+                  Nominal rupiah bonus per porsi jika kasir berhasil tembus target harian. Terhitung otomatis di slip serah terima shift Bluetooth (RPP02N).
+                </p>
+                <div>
+                  <label className="block font-sans text-[11px] font-bold uppercase text-[#5C3D2E]/80 mb-1">
+                    Nominal Bonus (Rp/Porsi):
+                  </label>
+                  <input
+                    type="number"
+                    min="0"
+                    step="50"
+                    value={localConfig.cashierBonusPerPortion ?? 100}
+                    onChange={(e) => setLocalConfig({ ...localConfig, cashierBonusPerPortion: parseInt(e.target.value, 10) || 0 })}
+                    placeholder="100"
+                    className="w-full rounded-[12px] border-2 border-[#111111] px-4 py-2 font-mono font-bold text-base bg-white focus:outline-none focus:border-[#FFD700]"
+                  />
+                </div>
+                <div className="text-[11px] font-sans text-[#5C3D2E]/70">
+                  Contoh: 120 porsi terjual × Rp 100 = <strong>Rp 12.000 Bonus Kasir</strong>
+                </div>
+              </div>
+            </div>
+
+            <div className="flex justify-end pt-2">
+              <button
+                type="submit"
+                className="cursor-pointer bg-[#111111] text-[#FFD700] rounded-full px-6 py-2.5 font-sans font-bold text-xs border-2 border-[#111111] shadow-[2px_2px_0_#FFD700] hover:brightness-110 active:translate-x-0.5 active:translate-y-0.5 transition"
+              >
+                Simpan Target & Bonus Kasir ✓
+              </button>
+            </div>
+          </form>
+
           {/* SECTION C2: AUDIT LOG & RIWAYAT KEAMANAN DAPUR (Poin 27) */}
           <div className="bg-white rounded-[24px] p-6 lg:p-8 border-2 border-[#111111] shadow-[4px_4px_0_#111111] space-y-4">
             <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-3">
@@ -9624,40 +9902,153 @@ Catatan Kurir: Pastikan posisi dus ditaruh datar agar mayo tidak tumpah ya kak.`
         </div>
       )}
 
-      {/* TAB 5: KLASTER WILAYAH PENGIRIMAN */}
+      {/* TAB 5: KLASTER WILAYAH PENGIRIMAN & EVALUASI KINERJA KASIR */}
       {activeTab === 'stats' && (
-        <div className="bg-white rounded-[24px] p-6 lg:p-8 border-2 border-[#111111] shadow-[4px_4px_0_#111111] space-y-6">
-          <div>
-            <h2 className="font-hand font-bold text-[30px] text-[#111111] leading-none">
-              Sebaran Klaster Pelanggan (Sidoarjo, Surabaya & Sekitarnya)
-            </h2>
-            <p className="font-sans text-xs text-[#5C3D2E]/70 mt-1">
-              Data teragregasi dari alamat yang diinput pelanggan saat pertama kali scan stiker dus.
-            </p>
-          </div>
-
-          <div className="space-y-3 pt-2">
-            {areaCounts
-              .filter((a) => a.count > 0)
-              .map((item) => (
-                <div key={item.area} className="space-y-1">
-                  <div className="flex justify-between font-sans text-[12px] font-bold">
-                    <span>{item.area}</span>
-                    <span>{item.count} pelanggan</span>
-                  </div>
-                  <div className="h-3 w-full rounded-full bg-gray-100 overflow-hidden border border-[#111111]/10">
-                    <div
-                      className="h-full bg-[#111111] rounded-full transition-all duration-500"
-                      style={{ width: `${(item.count / maxCount) * 100}%` }}
-                    />
-                  </div>
+        <div className="space-y-6">
+          {/* SECTION: EVALUASI KINERJA KASIR & TARGET BONUS (Owner Only - Step 2) */}
+          <div className="bg-white rounded-[24px] p-6 lg:p-8 border-2 border-[#111111] shadow-[4px_4px_0_#111111] space-y-5">
+            <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-3">
+              <div>
+                <div className="inline-flex items-center gap-1.5 bg-[#FFD700] text-[#111111] px-3 py-0.5 rounded-full font-sans text-[11px] font-bold uppercase tracking-wider mb-2">
+                  🏆 Evaluasi Kinerja & Bonus Kasir
                 </div>
-              ))}
+                <h2 className="font-hand font-bold text-[30px] text-[#111111] leading-none">
+                  Peringkat Produktivitas & Insentif Kasir Stand
+                </h2>
+                <p className="font-sans text-xs text-[#5C3D2E]/70 mt-1">
+                  Target harian: <b>{storeConfig.cashierDailyTargetPortions || 100} porsi/shift</b> • Bonus insentif: <b>Rp {(storeConfig.cashierBonusPerPortion || 100).toLocaleString('id-ID')}/porsi</b> jika tembus target.
+                </p>
+              </div>
+              <button
+                type="button"
+                onClick={() => {
+                  setShiftModalTab('leaderboard');
+                  setIsShiftHistoryModalOpen(true);
+                }}
+                className="cursor-pointer bg-[#111111] hover:bg-[#222222] text-[#FFD700] px-4 py-2.5 rounded-xl font-sans font-bold text-xs border border-[#111111] shadow-xs flex items-center justify-center gap-1.5 transition active:scale-95 shrink-0"
+              >
+                <span>🏆</span> Papan Peringkat Lengkap
+              </button>
+            </div>
+
+            {/* 3 Executive Metric Cards */}
+            <div className="grid grid-cols-1 sm:grid-cols-3 gap-3">
+              <div className="bg-[#FFF8E7] rounded-[18px] p-4 border border-[#FFD700]">
+                <span className="text-[10px] uppercase font-bold text-[#5C3D2E]/80 block">Kasir Terlaris Bulan Ini 🥇</span>
+                <span className="font-hand font-bold text-2xl text-[#111111] block mt-1">
+                  {cashierLeaderboard[0]?.cashier_name || 'Belum Ada'}
+                </span>
+                <span className="text-xs font-bold text-emerald-800 block mt-0.5">
+                  {cashierLeaderboard[0]?.total_portions || 0} Porsi ({cashierLeaderboard[0]?.total_orders || 0} Trx)
+                </span>
+              </div>
+
+              <div className="bg-emerald-50 rounded-[18px] p-4 border border-emerald-300">
+                <span className="text-[10px] uppercase font-bold text-emerald-800 block">Total Hak Bonus Kasir 💰</span>
+                <span className="font-hand font-bold text-2xl text-emerald-900 block mt-1">
+                  Rp {cashierLeaderboard.reduce((sum, c) => sum + c.total_bonus_earned, 0).toLocaleString('id-ID')}
+                </span>
+                <span className="text-xs text-emerald-700 block mt-0.5">
+                  Akumulasi seluruh shift yang tembus target
+                </span>
+              </div>
+
+              <div className="bg-sky-50 rounded-[18px] p-4 border border-sky-300">
+                <span className="text-[10px] uppercase font-bold text-sky-800 block">Rata-Rata Kejujuran Kasir 🤝</span>
+                <span className="font-hand font-bold text-2xl text-sky-900 block mt-1">
+                  {cashierLeaderboard.length > 0
+                    ? Math.round(cashierLeaderboard.reduce((sum, c) => sum + c.honesty_rate, 0) / cashierLeaderboard.length)
+                    : 100}% PAS
+                </span>
+                <span className="text-xs text-sky-700 block mt-0.5">
+                  Kesesuaian fisik laci vs sistem saat tutup shift
+                </span>
+              </div>
+            </div>
+
+            {/* Leaderboard Table Preview */}
+            <div className="overflow-x-auto pt-2">
+              <table className="w-full text-left font-sans text-xs">
+                <thead>
+                  <tr className="border-b-2 border-[#111111]/15 text-[#5C3D2E]/80 uppercase text-[10px]">
+                    <th className="py-2.5 px-3">Rank</th>
+                    <th className="py-2.5 px-3">Nama Kasir</th>
+                    <th className="py-2.5 px-3 text-center">Total Shift</th>
+                    <th className="py-2.5 px-3 text-right">Porsi Terjual</th>
+                    <th className="py-2.5 px-3 text-right">Total Omzet</th>
+                    <th className="py-2.5 px-3 text-center">Akurasi Kas</th>
+                    <th className="py-2.5 px-3 text-right">Hak Bonus</th>
+                  </tr>
+                </thead>
+                <tbody className="divide-y divide-[#111111]/10">
+                  {cashierLeaderboard.map((c, idx) => (
+                    <tr key={c.cashier_name} className="hover:bg-amber-50/40">
+                      <td className="py-2.5 px-3 font-mono font-bold">
+                        {idx === 0 ? '🥇 #1' : idx === 1 ? '🥈 #2' : idx === 2 ? '🥉 #3' : `#${idx + 1}`}
+                      </td>
+                      <td className="py-2.5 px-3 font-bold text-gray-900">
+                        {c.cashier_name}
+                      </td>
+                      <td className="py-2.5 px-3 text-center text-gray-600">
+                        {c.total_shifts} Shift
+                      </td>
+                      <td className="py-2.5 px-3 text-right font-bold text-gray-900">
+                        {c.total_portions} Porsi
+                      </td>
+                      <td className="py-2.5 px-3 text-right font-bold text-emerald-800">
+                        Rp {c.total_revenue.toLocaleString('id-ID')}
+                      </td>
+                      <td className="py-2.5 px-3 text-center">
+                        <span className={`px-2 py-0.5 rounded-full font-bold text-[10px] border ${
+                          c.honesty_rate === 100 ? 'bg-emerald-100 text-emerald-800 border-emerald-300' : 'bg-amber-100 text-amber-800 border-amber-300'
+                        }`}>
+                          {c.honesty_rate}% PAS
+                        </span>
+                      </td>
+                      <td className="py-2.5 px-3 text-right font-bold text-emerald-700">
+                        Rp {c.total_bonus_earned.toLocaleString('id-ID')}
+                      </td>
+                    </tr>
+                  ))}
+                </tbody>
+              </table>
+            </div>
           </div>
 
-          <div className="bg-[#FFF8E7] rounded-[16px] p-4 border border-[#FFD700] font-sans text-xs text-[#5C3D2E] leading-relaxed">
-            💡 <b>Insight Dapur:</b> Pelanggan terbanyak saat ini terkonsentrasi di wilayah{' '}
-            <b>{areaCounts[0]?.area || 'Sidoarjo Kota'}</b>. Cocok untuk promo ongkir khusus atau pengiriman rombongan batch sore!
+          {/* Sebaran Klaster Pelanggan (Sidoarjo, Surabaya & Sekitarnya) */}
+          <div className="bg-white rounded-[24px] p-6 lg:p-8 border-2 border-[#111111] shadow-[4px_4px_0_#111111] space-y-6">
+            <div>
+              <h2 className="font-hand font-bold text-[30px] text-[#111111] leading-none">
+                Sebaran Klaster Pelanggan (Sidoarjo, Surabaya & Sekitarnya)
+              </h2>
+              <p className="font-sans text-xs text-[#5C3D2E]/70 mt-1">
+                Data teragregasi dari alamat yang diinput pelanggan saat pertama kali scan stiker dus.
+              </p>
+            </div>
+
+            <div className="space-y-3 pt-2">
+              {areaCounts
+                .filter((a) => a.count > 0)
+                .map((item) => (
+                  <div key={item.area} className="space-y-1">
+                    <div className="flex justify-between font-sans text-[12px] font-bold">
+                      <span>{item.area}</span>
+                      <span>{item.count} pelanggan</span>
+                    </div>
+                    <div className="h-3 w-full rounded-full bg-gray-100 overflow-hidden border border-[#111111]/10">
+                      <div
+                        className="h-full bg-[#111111] rounded-full transition-all duration-500"
+                        style={{ width: `${(item.count / maxCount) * 100}%` }}
+                      />
+                    </div>
+                  </div>
+                ))}
+            </div>
+
+            <div className="bg-[#FFF8E7] rounded-[16px] p-4 border border-[#FFD700] font-sans text-xs text-[#5C3D2E] leading-relaxed">
+              💡 <b>Insight Dapur:</b> Pelanggan terbanyak saat ini terkonsentrasi di wilayah{' '}
+              <b>{areaCounts[0]?.area || 'Sidoarjo Kota'}</b>. Cocok untuk promo ongkir khusus atau pengiriman rombongan batch sore!
+            </div>
           </div>
         </div>
       )}
@@ -10498,16 +10889,17 @@ Catatan Kurir: Pastikan posisi dus ditaruh datar agar mayo tidak tumpah ya kak.`
         </div>
       )}
 
-      {/* 5. MODAL RIWAYAT SHIFT KASIR & EVALUASI (Step 1) */}
+      {/* 5. MODAL RIWAYAT SHIFT KASIR & EVALUASI (Step 1 & Step 2) */}
       {isShiftHistoryModalOpen && (
         <div className="fixed inset-0 z-50 bg-black/60 backdrop-blur-xs flex items-center justify-center p-3 sm:p-4 overflow-y-auto">
-          <div className="bg-white rounded-[24px] max-w-2xl w-full border-2 border-[#111111] shadow-[8px_8px_0_#111111] overflow-hidden animate-in zoom-in-95 duration-200 flex flex-col max-h-[85vh]">
+          <div className="bg-white rounded-[24px] max-w-2xl w-full border-2 border-[#111111] shadow-[8px_8px_0_#111111] overflow-hidden animate-in zoom-in-95 duration-200 flex flex-col max-h-[88vh]">
+            {/* Modal Header */}
             <div className="bg-[#111111] text-[#FFD700] px-5 py-4 flex items-center justify-between shrink-0">
               <div className="flex items-center gap-2">
-                <span className="text-xl">📋</span>
+                <span className="text-xl">🏆</span>
                 <div>
-                  <h3 className="font-hand font-bold text-xl text-white leading-tight">Riwayat Shift & Evaluasi Kasir</h3>
-                  <p className="font-sans text-[11px] text-[#FFD700]/90">Catatan serah terima laci, omzet per shift, dan selisih kas</p>
+                  <h3 className="font-hand font-bold text-xl text-white leading-tight">Evaluasi Kinerja & Riwayat Shift Kasir</h3>
+                  <p className="font-sans text-[11px] text-[#FFD700]/90">Papan peringkat porsi, bonus insentif, serah terima laci, dan selisih kas</p>
                 </div>
               </div>
               <button
@@ -10519,77 +10911,257 @@ Catatan Kurir: Pastikan posisi dus ditaruh datar agar mayo tidak tumpah ya kak.`
               </button>
             </div>
 
-            <div className="p-5 overflow-y-auto space-y-3">
-              {storageService.getShiftHistory().length === 0 ? (
-                <div className="p-8 text-center text-gray-500 font-sans text-xs">
-                  Belum ada riwayat shift yang ditutup. Riwayat shift akan otomatis tercatat saat kasir melakukan "Tutup Shift".
+            {/* Modal Navigation Tabs (Papan Peringkat vs Riwayat Shift) */}
+            <div className="flex border-b border-gray-200 bg-gray-100/90 px-4 pt-2 gap-2 shrink-0">
+              <button
+                type="button"
+                onClick={() => setShiftModalTab('leaderboard')}
+                className={`cursor-pointer px-4 py-2 font-sans font-bold text-xs rounded-t-xl transition border-t-2 border-x-2 ${
+                  shiftModalTab === 'leaderboard'
+                    ? 'bg-white text-[#111111] border-[#111111] -mb-[2px] shadow-xs'
+                    : 'bg-transparent text-gray-500 border-transparent hover:text-gray-900'
+                }`}
+              >
+                <span>🏆 Papan Peringkat & Bonus Kasir</span>
+              </button>
+              <button
+                type="button"
+                onClick={() => setShiftModalTab('history')}
+                className={`cursor-pointer px-4 py-2 font-sans font-bold text-xs rounded-t-xl transition border-t-2 border-x-2 ${
+                  shiftModalTab === 'history'
+                    ? 'bg-white text-[#111111] border-[#111111] -mb-[2px] shadow-xs'
+                    : 'bg-transparent text-gray-500 border-transparent hover:text-gray-900'
+                }`}
+              >
+                <span>📋 Riwayat Serah Terima Shift</span>
+              </button>
+            </div>
+
+            {/* TAB CONTENT */}
+            {shiftModalTab === 'leaderboard' ? (
+              <div className="p-5 overflow-y-auto space-y-4">
+                {/* Target & Bonus Rule Banner */}
+                <div className="bg-amber-50 border border-amber-300 rounded-2xl p-3 flex items-center justify-between text-xs font-sans">
+                  <div>
+                    <span className="font-bold text-[#111111] block">🎯 Aturan Bonus Insentif Kasir:</span>
+                    <span className="text-gray-600 text-[11px]">
+                      Target minimal: <b>{storeConfig.cashierDailyTargetPortions || 100} porsi/shift</b> • Bonus insentif: <b>Rp {(storeConfig.cashierBonusPerPortion || 100).toLocaleString('id-ID')}/porsi</b>
+                    </span>
+                  </div>
+                  <span className="text-2xl">💰</span>
                 </div>
-              ) : (
-                storageService.getShiftHistory().map((sh) => {
-                  const sDate = new Date(sh.started_at);
-                  const eDate = sh.ended_at ? new Date(sh.ended_at) : null;
-                  const diff = sh.cash_difference || 0;
-                  return (
-                    <div key={sh.id} className="p-4 rounded-2xl border-2 border-gray-200 bg-gray-50/70 space-y-2 text-xs font-sans">
-                      <div className="flex items-center justify-between border-b border-gray-200 pb-2">
-                        <div>
-                          <span className="font-bold text-sm text-gray-900">Kasir: {sh.cashier_name}</span>
-                          <div className="text-[10px] text-gray-500">
-                            {sDate.toLocaleDateString('id-ID', { day: 'numeric', month: 'short', year: 'numeric' })} • {sDate.toLocaleTimeString('id-ID', { hour: '2-digit', minute: '2-digit' })} - {eDate ? eDate.toLocaleTimeString('id-ID', { hour: '2-digit', minute: '2-digit' }) : '-'} WIB
+
+                {/* Podium Top 3 */}
+                <div className="grid grid-cols-3 gap-2 text-center pt-1 font-sans">
+                  {/* Juara 2 */}
+                  <div className="bg-gray-50 rounded-2xl p-3 border border-gray-200 flex flex-col justify-end">
+                    <span className="text-2xl">🥈</span>
+                    <span className="font-bold text-xs text-gray-800 truncate mt-1">
+                      {cashierLeaderboard[1]?.cashier_name || '-'}
+                    </span>
+                    <span className="text-[10px] text-gray-500 font-bold">
+                      {cashierLeaderboard[1] ? `${cashierLeaderboard[1].total_portions} Porsi` : '-'}
+                    </span>
+                    <span className="text-[9px] text-emerald-700 font-semibold mt-0.5">
+                      {cashierLeaderboard[1]?.total_bonus_earned ? `Rp ${cashierLeaderboard[1].total_bonus_earned.toLocaleString('id-ID')}` : '-'}
+                    </span>
+                  </div>
+
+                  {/* Juara 1 */}
+                  <div className="bg-[#FFF8E7] rounded-2xl p-3 border-2 border-[#FFD700] shadow-sm flex flex-col justify-end transform -translate-y-1">
+                    <span className="text-3xl">👑🥇</span>
+                    <span className="font-bold text-sm text-[#111111] truncate mt-1">
+                      {cashierLeaderboard[0]?.cashier_name || 'Belum Ada'}
+                    </span>
+                    <span className="text-xs text-amber-900 font-bold">
+                      {cashierLeaderboard[0] ? `${cashierLeaderboard[0].total_portions} Porsi` : '0 Porsi'}
+                    </span>
+                    <span className="text-[10px] text-emerald-800 font-bold mt-0.5">
+                      {cashierLeaderboard[0]?.total_bonus_earned ? `Rp ${cashierLeaderboard[0].total_bonus_earned.toLocaleString('id-ID')}` : 'Rp 0'}
+                    </span>
+                    <span className="text-[9px] bg-[#FFD700] text-[#111111] font-bold px-1.5 py-0.2 rounded-full mt-1 inline-block mx-auto">
+                      Top Kasir
+                    </span>
+                  </div>
+
+                  {/* Juara 3 */}
+                  <div className="bg-gray-50 rounded-2xl p-3 border border-gray-200 flex flex-col justify-end">
+                    <span className="text-2xl">🥉</span>
+                    <span className="font-bold text-xs text-gray-800 truncate mt-1">
+                      {cashierLeaderboard[2]?.cashier_name || '-'}
+                    </span>
+                    <span className="text-[10px] text-gray-500 font-bold">
+                      {cashierLeaderboard[2] ? `${cashierLeaderboard[2].total_portions} Porsi` : '-'}
+                    </span>
+                    <span className="text-[9px] text-emerald-700 font-semibold mt-0.5">
+                      {cashierLeaderboard[2]?.total_bonus_earned ? `Rp ${cashierLeaderboard[2].total_bonus_earned.toLocaleString('id-ID')}` : '-'}
+                    </span>
+                  </div>
+                </div>
+
+                {/* List Detail Semua Kasir */}
+                <div className="space-y-2.5 pt-2">
+                  <h4 className="font-sans font-bold text-xs text-gray-700 uppercase tracking-wider">
+                    Daftar Kinerja Seluruh Kasir Stand
+                  </h4>
+                  {cashierLeaderboard.map((entry, idx) => {
+                    const isTop = idx === 0;
+                    return (
+                      <div
+                        key={entry.cashier_name}
+                        className={`p-3.5 rounded-2xl border-2 font-sans text-xs space-y-2 transition ${
+                          isTop ? 'bg-amber-50/50 border-amber-300 shadow-xs' : 'bg-white border-gray-200'
+                        }`}
+                      >
+                        <div className="flex items-center justify-between">
+                          <div className="flex items-center gap-2">
+                            <span className="font-mono font-bold text-sm text-gray-500 w-5">#{idx + 1}</span>
+                            <div>
+                              <span className="font-bold text-sm text-gray-900 flex items-center gap-1.5">
+                                {entry.cashier_name}
+                                {isTop && <span className="text-amber-500">👑</span>}
+                              </span>
+                              <span className="text-[10px] text-gray-500">
+                                {entry.total_shifts} Shift • {entry.total_orders} Transaksi
+                              </span>
+                            </div>
+                          </div>
+                          <div className="text-right">
+                            <span className={`px-2 py-0.5 rounded-full font-bold text-[10px] border ${
+                              entry.is_target_achieved
+                                ? 'bg-emerald-100 text-emerald-800 border-emerald-300'
+                                : 'bg-gray-100 text-gray-700 border-gray-300'
+                            }`}>
+                              {entry.is_target_achieved ? '🎯 Tembus Target' : 'Menuju Target'}
+                            </span>
+                            <div className="text-[11px] font-bold text-emerald-700 mt-0.5">
+                              Bonus: Rp {entry.total_bonus_earned.toLocaleString('id-ID')}
+                            </div>
                           </div>
                         </div>
-                        <div className="text-right">
-                          <span className={`px-2 py-0.5 rounded-full font-bold text-[10px] border ${
-                            diff === 0
-                              ? 'bg-emerald-100 text-emerald-800 border-emerald-300'
-                              : diff > 0
-                              ? 'bg-blue-100 text-blue-800 border-blue-300'
-                              : 'bg-rose-100 text-rose-800 border-rose-300'
-                          }`}>
-                            {diff === 0 ? '✓ Selisih PAS' : diff > 0 ? `+Rp ${diff.toLocaleString('id-ID')}` : `-Rp ${Math.abs(diff).toLocaleString('id-ID')}`}
-                          </span>
+
+                        {/* Progress Bar Target */}
+                        <div className="space-y-1">
+                          <div className="flex justify-between text-[10px] text-gray-600 font-medium">
+                            <span>Porsi Terjual: <b>{entry.total_portions} Porsi</b> (Rata-rata {entry.avg_portions_per_shift}/shift)</span>
+                            <span>Target: {entry.target_portions} Porsi</span>
+                          </div>
+                          <div className="w-full bg-gray-200 h-2 rounded-full overflow-hidden">
+                            <div
+                              className={`h-full rounded-full transition-all duration-300 ${
+                                entry.is_target_achieved ? 'bg-emerald-500' : 'bg-amber-400'
+                              }`}
+                              style={{ width: `${Math.min(100, Math.round((entry.avg_portions_per_shift / Math.max(1, entry.target_portions)) * 100))}%` }}
+                            />
+                          </div>
+                        </div>
+
+                        {/* Metric Row: Omzet & Akurasi Kas */}
+                        <div className="grid grid-cols-3 gap-2 pt-1 border-t border-gray-100 text-[11px]">
+                          <div>
+                            <span className="text-gray-500 text-[10px] block">Total Omzet:</span>
+                            <span className="font-bold text-gray-900">Rp {entry.total_revenue.toLocaleString('id-ID')}</span>
+                          </div>
+                          <div>
+                            <span className="text-gray-500 text-[10px] block">Akurasi Kas Laci:</span>
+                            <span className={`font-bold ${entry.honesty_rate === 100 ? 'text-emerald-700' : 'text-amber-700'}`}>
+                              {entry.honesty_rate}% PAS ({entry.exact_shifts_count}/{entry.total_shifts} Shift)
+                            </span>
+                          </div>
+                          <div>
+                            <span className="text-gray-500 text-[10px] block">Total Selisih:</span>
+                            <span className={`font-bold ${entry.total_discrepancy === 0 ? 'text-emerald-700' : entry.total_discrepancy > 0 ? 'text-blue-700' : 'text-rose-700'}`}>
+                              {entry.total_discrepancy === 0 ? 'PAS (Rp 0)' : entry.total_discrepancy > 0 ? `+Rp ${entry.total_discrepancy.toLocaleString('id-ID')}` : `-Rp ${Math.abs(entry.total_discrepancy).toLocaleString('id-ID')}`}
+                            </span>
+                          </div>
                         </div>
                       </div>
+                    );
+                  })}
+                </div>
+              </div>
+            ) : (
+              <div className="p-5 overflow-y-auto space-y-3">
+                {storageService.getShiftHistory().length === 0 ? (
+                  <div className="p-8 text-center text-gray-500 font-sans text-xs">
+                    Belum ada riwayat shift yang ditutup. Riwayat shift akan otomatis tercatat saat kasir melakukan "Tutup Shift".
+                  </div>
+                ) : (
+                  storageService.getShiftHistory().map((sh) => {
+                    const sDate = new Date(sh.started_at);
+                    const eDate = sh.ended_at ? new Date(sh.ended_at) : null;
+                    const diff = sh.cash_difference || 0;
+                    return (
+                      <div key={sh.id} className="p-4 rounded-2xl border-2 border-gray-200 bg-gray-50/70 space-y-2 text-xs font-sans">
+                        <div className="flex items-center justify-between border-b border-gray-200 pb-2">
+                          <div>
+                            <span className="font-bold text-sm text-gray-900">Kasir: {sh.cashier_name}</span>
+                            <div className="text-[10px] text-gray-500">
+                              {sDate.toLocaleDateString('id-ID', { day: 'numeric', month: 'short', year: 'numeric' })} • {sDate.toLocaleTimeString('id-ID', { hour: '2-digit', minute: '2-digit' })} - {eDate ? eDate.toLocaleTimeString('id-ID', { hour: '2-digit', minute: '2-digit' }) : '-'} WIB
+                            </div>
+                          </div>
+                          <div className="text-right">
+                            <span className={`px-2 py-0.5 rounded-full font-bold text-[10px] border ${
+                              diff === 0
+                                ? 'bg-emerald-100 text-emerald-800 border-emerald-300'
+                                : diff > 0
+                                ? 'bg-blue-100 text-blue-800 border-blue-300'
+                                : 'bg-rose-100 text-rose-800 border-rose-300'
+                            }`}>
+                              {diff === 0 ? '✓ Selisih PAS' : diff > 0 ? `+Rp ${diff.toLocaleString('id-ID')}` : `-Rp ${Math.abs(diff).toLocaleString('id-ID')}`}
+                            </span>
+                          </div>
+                        </div>
 
-                      <div className="grid grid-cols-2 sm:grid-cols-4 gap-2 pt-1 text-[11px]">
-                        <div>
-                          <div className="text-gray-500 text-[10px]">Total Pesanan:</div>
-                          <div className="font-bold">{sh.total_orders_count} Trx</div>
+                        <div className="grid grid-cols-2 sm:grid-cols-4 gap-2 pt-1 text-[11px]">
+                          <div>
+                            <div className="text-gray-500 text-[10px]">Total Pesanan:</div>
+                            <div className="font-bold">{sh.total_orders_count} Trx {sh.total_portions ? `(${sh.total_portions} Porsi)` : ''}</div>
+                          </div>
+                          <div>
+                            <div className="text-gray-500 text-[10px]">Total Omzet:</div>
+                            <div className="font-bold text-emerald-800">Rp {sh.total_revenue.toLocaleString('id-ID')}</div>
+                          </div>
+                          <div>
+                            <div className="text-gray-500 text-[10px]">Uang Fisik Laci:</div>
+                            <div className="font-bold text-gray-900">Rp {(sh.actual_drawer_cash || 0).toLocaleString('id-ID')}</div>
+                          </div>
+                          <div>
+                            <div className="text-gray-500 text-[10px]">Petty Cash:</div>
+                            <div className="font-bold text-rose-700">-Rp {sh.drawer_expenses.toLocaleString('id-ID')}</div>
+                          </div>
                         </div>
-                        <div>
-                          <div className="text-gray-500 text-[10px]">Total Omzet:</div>
-                          <div className="font-bold text-emerald-800">Rp {sh.total_revenue.toLocaleString('id-ID')}</div>
-                        </div>
-                        <div>
-                          <div className="text-gray-500 text-[10px]">Uang Fisik Laci:</div>
-                          <div className="font-bold text-gray-900">Rp {(sh.actual_drawer_cash || 0).toLocaleString('id-ID')}</div>
-                        </div>
-                        <div>
-                          <div className="text-gray-500 text-[10px]">Petty Cash:</div>
-                          <div className="font-bold text-rose-700">-Rp {sh.drawer_expenses.toLocaleString('id-ID')}</div>
+
+                        {sh.target_portions !== undefined && (
+                          <div className="flex items-center justify-between bg-white px-2.5 py-1 rounded-lg border border-gray-200 text-[10px]">
+                            <span>🎯 Target: {sh.total_portions || 0}/{sh.target_portions} Porsi</span>
+                            <span className={sh.target_achieved ? 'text-emerald-700 font-bold' : 'text-gray-500'}>
+                              {sh.target_achieved ? `Tembus! Bonus +Rp ${(sh.bonus_earned || 0).toLocaleString('id-ID')}` : 'Belum Tembus Target'}
+                            </span>
+                          </div>
+                        )}
+
+                        {sh.notes && (
+                          <div className="text-[10px] italic text-gray-600 bg-white p-1.5 rounded border border-gray-200">
+                            "{sh.notes}"
+                          </div>
+                        )}
+
+                        <div className="pt-1 flex justify-end">
+                          <button
+                            type="button"
+                            onClick={() => handlePrintClosingShiftSlip(sh)}
+                            className="cursor-pointer bg-white hover:bg-gray-100 text-[#111111] border border-[#111111] px-3 py-1 rounded-full font-bold text-[10px] flex items-center gap-1 transition shadow-xs"
+                          >
+                            <span>⚡</span> Cetak Ulang Slip Shift
+                          </button>
                         </div>
                       </div>
-
-                      {sh.notes && (
-                        <div className="text-[10px] italic text-gray-600 bg-white p-1.5 rounded border border-gray-200">
-                          "{sh.notes}"
-                        </div>
-                      )}
-
-                      <div className="pt-1 flex justify-end">
-                        <button
-                          type="button"
-                          onClick={() => handlePrintClosingShiftSlip(sh)}
-                          className="cursor-pointer bg-white hover:bg-gray-100 text-[#111111] border border-[#111111] px-3 py-1 rounded-full font-bold text-[10px] flex items-center gap-1 transition shadow-xs"
-                        >
-                          <span>⚡</span> Cetak Ulang Slip Shift
-                        </button>
-                      </div>
-                    </div>
-                  );
-                })
-              )}
-            </div>
+                    );
+                  })
+                )}
+              </div>
+            )}
 
             <div className="p-4 border-t border-gray-200 shrink-0 flex justify-end">
               <button
@@ -11849,6 +12421,21 @@ Catatan Kurir: Pastikan posisi dus ditaruh datar agar mayo tidak tumpah ya kak.`
                   <div className="text-[10px] opacity-75">Stiker dus risoles</div>
                 </button>
               )}
+
+              {/* Papan Peringkat & Riwayat Shift Kasir (All Roles) */}
+              <button
+                type="button"
+                onClick={() => {
+                  setIsMobileDrawerOpen(false);
+                  setShiftModalTab('leaderboard');
+                  setIsShiftHistoryModalOpen(true);
+                }}
+                className="p-3 rounded-[16px] border-2 border-[#111111] text-left transition cursor-pointer bg-white text-[#111111] shadow-[2px_2px_0_#111111] hover:bg-[#FFF8E7]"
+              >
+                <div className="text-xl mb-1">🏆</div>
+                <div className="font-sans font-bold text-xs">Peringkat & Bonus Kasir</div>
+                <div className="text-[10px] opacity-75">Target porsi & serah terima laci</div>
+              </button>
 
               {/* Pelanggan: Owner Only */}
               {activeRole === 'owner' && (

@@ -111,6 +111,8 @@ export interface StoreConfig {
   gofoodCommissionPercent?: number;     // Default: 20%
   shopeefoodCommissionPercent?: number; // Default: 20%
   grabfoodCommissionPercent?: number;   // Default: 20%
+  cashierDailyTargetPortions?: number;  // Target porsi harian per kasir (default: 100)
+  cashierBonusPerPortion?: number;      // Nominal bonus insentif per porsi jika tembus target (default: Rp 100)
 }
 
 export interface ChildVoucherPerk {
@@ -218,7 +220,33 @@ export interface CashierShift {
   total_revenue: number;         // Total omzet bruto shift ini
   cash_revenue: number;          // Total uang masuk tunai
   non_cash_revenue: number;      // Total uang masuk non-tunai (QRIS / Transfer)
+  total_portions?: number;       // Total porsi makanan terjual pada shift ini
+  target_portions?: number;      // Target porsi harian pada shift ini
+  target_achieved?: boolean;     // Apakah target porsi harian tembus
+  bonus_earned?: number;         // Nominal bonus insentif kasir yang berhak diterima (Rp)
   notes?: string;
+}
+
+// --- EVALUASI & PAPAN PERINGKAT KASIR (LEADERBOARD & BONUS) ---
+export interface CashierLeaderboardEntry {
+  cashier_name: string;
+  total_shifts: number;
+  total_orders: number;
+  total_portions: number;
+  total_revenue: number;
+  cash_revenue: number;
+  non_cash_revenue: number;
+  total_drawer_expenses: number;
+  total_discrepancy: number;     // Total selisih kas fisik vs sistem
+  exact_shifts_count: number;    // Jumlah shift dengan selisih Rp 0 (PAS)
+  honesty_rate: number;          // Persentase kejujuran kasir (0 - 100%)
+  avg_portions_per_shift: number;
+  target_portions: number;
+  target_achieved_count: number; // Jumlah shift yang berhasil tembus target
+  is_target_achieved: boolean;
+  bonus_per_portion: number;
+  total_bonus_earned: number;    // Akumulasi rupiah bonus insentif
+  last_active_at?: string;
 }
 
 // --- PENDAPAT / TESTIMONI PELANGGAN (COLLAPSIBLE / ACCORDION) ---
