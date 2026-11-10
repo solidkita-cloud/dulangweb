@@ -82,9 +82,10 @@ export interface StoreConfig {
   heroHeadlineSub?: string;
   jamBukaTeks: string;
   schedules: ScheduleItem[];
-  ownerPin: string;
-  cashierPin?: string;       // Default: '1234'
-  kitchenPin?: string;       // Default: '0000'
+  ownerPin?: string;
+  cashierPin?: string;
+  kitchenPin?: string;
+  deletedMenuIds?: string[];
   brandName?: string;        // Default: 'Dulang Indonesia'
   brandTagline?: string;     // Default: 'Dibuat dengan wajan panas & tulisan tangan'
   brandLogo?: string;        // Default: '/dulang-logo.png'

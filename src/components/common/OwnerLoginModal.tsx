@@ -25,6 +25,15 @@ export const OwnerLoginModal: React.FC<OwnerLoginModalProps> = ({
   const [isSubmitting, setIsSubmitting] = useState(false);
   const [lockout, setLockout] = useState<LockoutStatus>(() => checkLoginAttempts());
 
+  useEffect(() => {
+    if (isOpen) {
+      setCode('');
+      setError(null);
+      setLockout(checkLoginAttempts());
+      storageService.syncAuthMetaFromSupabase().catch(() => {});
+    }
+  }, [isOpen]);
+
   // Countdown timer for anti-brute force lockout
   useEffect(() => {
     if (!lockout.isLocked) return;
@@ -40,8 +49,6 @@ export const OwnerLoginModal: React.FC<OwnerLoginModalProps> = ({
 
   if (!isOpen) return null;
 
-  const validEnvCode = import.meta.env?.VITE_OWNER_CODE || '';
-
   const handleSubmit = async (e?: React.FormEvent) => {
     if (e) e.preventDefault();
     if (lockout.isLocked || isSubmitting) return;
@@ -52,19 +59,16 @@ export const OwnerLoginModal: React.FC<OwnerLoginModalProps> = ({
     setIsSubmitting(true);
 
     try {
-      // 1. Check if matches environment code or any registered PIN
-      const isEnvMatch = Boolean(validEnvCode && clean.toLowerCase() === validEnvCode.toLowerCase());
       const pinResult = await storageService.verifyAnyPin(clean);
 
-      if (isEnvMatch || pinResult.success) {
-        const assignedRole: 'owner' | 'cashier' | 'kitchen' = isEnvMatch ? 'owner' : pinResult.role;
-        const roleLabel = isEnvMatch ? '👑 Pemilik Usaha (Owner)' : pinResult.label;
+      if (pinResult.success) {
+        const assignedRole = pinResult.role;
+        const roleLabel = pinResult.label;
 
         // Reset rate limiter on successful authentication
         resetLoginAttempts();
         logSecurityEvent('LOGIN_SUCCESS', `Staff berhasil login sebagai ${roleLabel}.`, 'INFO');
-        storageService.setOwnerAuthenticated(true);
-        storageService.setStaffRole(assignedRole);
+        storageService.setOwnerAuthenticated(true, assignedRole);
         setError(null);
         setCode('');
         onSuccess();
@@ -93,7 +97,7 @@ export const OwnerLoginModal: React.FC<OwnerLoginModalProps> = ({
             'WARN'
           );
           setError(
-            `PIN tidak cocok! (${updatedLock.attempts}/5 percobaan). Masukkan PIN Owner, Kasir (1234), atau Dapur (0000) 😅`
+            `PIN atau kata sandi tidak cocok! (${updatedLock.attempts}/5 percobaan). Masukkan kredensial Owner, Kasir Stand, atau Kru Dapur. 😅`
           );
         }
 
@@ -194,13 +198,11 @@ export const OwnerLoginModal: React.FC<OwnerLoginModalProps> = ({
           </button>
         </form>
 
-        <div className="mt-4 pt-3 border-t border-[#111111]/10 space-y-1.5 text-center font-sans text-[11px] text-[#5C3D2E]/70">
-          <div className="font-bold text-[#111111]">💡 PIN Default Karyawan:</div>
-          <div className="flex flex-wrap justify-center items-center gap-1.5 text-[10px]">
-            <span className="bg-white border border-[#111111]/20 px-2 py-0.5 rounded-full">🛒 Kasir: <strong>1234</strong></span>
-            <span className="bg-white border border-[#111111]/20 px-2 py-0.5 rounded-full">🍳 Dapur: <strong>0000</strong></span>
-            <span className="bg-[#FFD700]/30 border border-[#111111]/20 px-2 py-0.5 rounded-full font-bold">👑 Owner (PIN Khusus)</span>
-          </div>
+        <div className="mt-4 pt-3 border-t border-[#111111]/10 space-y-1 text-center font-sans text-[11px] text-[#5C3D2E]/70">
+          <div className="font-bold text-[#111111]">🔐 Login Terproteksi Peran Staf</div>
+          <p className="text-[10px]">
+            Masukkan kata sandi Owner atau PIN pribadi Kasir Stand / Kru Dapur.
+          </p>
         </div>
       </div>
     </div>

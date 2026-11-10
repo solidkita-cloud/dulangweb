@@ -46,6 +46,10 @@ import {
   getSecurityAuditLogs,
   clearSecurityAuditLogs,
   SecurityAuditEntry,
+  csvRow,
+  checkLoginAttempts,
+  recordFailedAttempt,
+  resetLoginAttempts,
 } from '../lib/security';
 import {
   printOrderViaBluetooth,
@@ -362,15 +366,23 @@ export const OwnerDashboardView: React.FC<OwnerDashboardViewProps> = ({
   const [showClosedPreview, setShowClosedPreview] = useState(false);
   const [isQuickEditReasonOpen, setIsQuickEditReasonOpen] = useState(false);
   const [quickReasonInput, setQuickReasonInput] = useState('');
-  const [activePin, setActivePin] = useState(() => storageService.getOwnerPin());
+  const [isDefaultOwnerPin, setIsDefaultOwnerPin] = useState<boolean>(true);
   const [oldPin, setOldPin] = useState('');
   const [newPin, setNewPin] = useState('');
   const [confirmPin, setConfirmPin] = useState('');
+  const [newCashierPin, setNewCashierPin] = useState('');
+  const [newKitchenPin, setNewKitchenPin] = useState('');
+  const [staffPinOwnerVerify, setStaffPinOwnerVerify] = useState('');
+  const [isSavingStaffPins, setIsSavingStaffPins] = useState(false);
   const [securityLogs, setSecurityLogs] = useState<SecurityAuditEntry[]>(() => getSecurityAuditLogs());
 
   const openStatus = checkStoreOpenStatus(localConfig);
 
   const handleQuickHoursChange = (openHour: string, closeHour: string) => {
+    if (activeRole !== 'owner') {
+      onShowToast('Akses ditolak! Hanya Owner yang berhak mengubah jam operasional toko. 🔒');
+      return;
+    }
     const updated: StoreConfig = {
       ...localConfig,
       openHour,
@@ -380,10 +392,15 @@ export const OwnerDashboardView: React.FC<OwnerDashboardViewProps> = ({
     setLocalConfig(updated);
     onUpdateStoreConfig(updated);
     storageService.saveStoreConfig(updated);
+    logSecurityEvent('SETTINGS_UPDATED', `Jam operasional diubah menjadi ${openHour} - ${closeHour} WIB.`, 'INFO');
     onShowToast(`Jam buka disetel: ${openHour} - ${closeHour} WIB ✓`);
   };
 
   const handleQuickAutoHoursToggle = (auto: boolean) => {
+    if (activeRole !== 'owner') {
+      onShowToast('Akses ditolak! Hanya Owner yang berhak mengubah mode buka/tutup otomatis. 🔒');
+      return;
+    }
     const updated: StoreConfig = {
       ...localConfig,
       autoOperatingHours: auto,
@@ -391,6 +408,7 @@ export const OwnerDashboardView: React.FC<OwnerDashboardViewProps> = ({
     setLocalConfig(updated);
     onUpdateStoreConfig(updated);
     storageService.saveStoreConfig(updated);
+    logSecurityEvent('SETTINGS_UPDATED', `Mode buka/tutup otomatis diset ${auto ? 'AKTIF' : 'NONAKTIF'}.`, 'INFO');
     onShowToast(
       auto
         ? 'Buka/Tutup otomatis aktif sesuai jam operasional ✓'
@@ -400,6 +418,10 @@ export const OwnerDashboardView: React.FC<OwnerDashboardViewProps> = ({
 
   const handleSaveQuickReason = (e: React.FormEvent) => {
     e.preventDefault();
+    if (activeRole !== 'owner') {
+      onShowToast('Akses ditolak! Hanya Owner yang berhak mengubah pesan libur toko. 🔒');
+      return;
+    }
     const updated: StoreConfig = {
       ...localConfig,
       closedReason: quickReasonInput.trim() || localConfig.closedReason,
@@ -408,8 +430,21 @@ export const OwnerDashboardView: React.FC<OwnerDashboardViewProps> = ({
     onUpdateStoreConfig(updated);
     storageService.saveStoreConfig(updated);
     setIsQuickEditReasonOpen(false);
+    logSecurityEvent('SETTINGS_UPDATED', 'Pesan pengumuman libur toko diperbarui.', 'INFO');
     onShowToast('Pesan pengumuman libur berhasil disimpan! ✓');
   };
+
+  useEffect(() => {
+    const refreshDefaultStatus = () => {
+      storageService.isDefaultOwnerPinActive().then(setIsDefaultOwnerPin);
+    };
+    refreshDefaultStatus();
+    storageService.syncAuthMetaFromSupabase().then(refreshDefaultStatus);
+    window.addEventListener('dulang_auth_meta_updated', refreshDefaultStatus);
+    return () => {
+      window.removeEventListener('dulang_auth_meta_updated', refreshDefaultStatus);
+    };
+  }, []);
 
   useEffect(() => {
     const handleSecLogs = () => {
@@ -725,6 +760,10 @@ export const OwnerDashboardView: React.FC<OwnerDashboardViewProps> = ({
 
   const handleAddNewCustomer = async (e: React.FormEvent) => {
     e.preventDefault();
+    if (activeRole !== 'owner') {
+      onShowToast('Akses ditolak! Hanya Owner yang dapat menambah data pelanggan. 🔒');
+      return;
+    }
     if (!custName.trim() || !custWa.trim() || !custStreetDetail.trim()) {
       alert('Nama, Nomor WhatsApp, dan Detail Jalan/Alamat wajib diisi yaa');
       return;
@@ -782,6 +821,10 @@ export const OwnerDashboardView: React.FC<OwnerDashboardViewProps> = ({
 
   const handleCreateVoucher = async (e: React.FormEvent) => {
     e.preventDefault();
+    if (activeRole !== 'owner') {
+      onShowToast('Akses ditolak! Hanya Owner yang dapat membuat voucher. 🔒');
+      return;
+    }
     if (!vRecipient.trim() || !vCode.trim() || vDiscountValue <= 0) {
       alert('Nama penerima, kode voucher, dan nilai diskon wajib diisi!');
       return;
@@ -816,6 +859,10 @@ export const OwnerDashboardView: React.FC<OwnerDashboardViewProps> = ({
   };
 
   const handleToggleVoucherUsed = async (v: Voucher) => {
+    if (activeRole !== 'owner') {
+      onShowToast('Akses ditolak! Hanya Owner yang dapat mengubah status voucher. 🔒');
+      return;
+    }
     const updated = { ...v, isUsed: !v.isUsed, usedAt: !v.isUsed ? new Date().toISOString() : undefined };
     await storageService.saveVoucher(updated);
     setVouchers(storageService.getVouchers());
@@ -823,6 +870,10 @@ export const OwnerDashboardView: React.FC<OwnerDashboardViewProps> = ({
   };
 
   const handleDeleteVoucher = async (code: string) => {
+    if (activeRole !== 'owner') {
+      onShowToast('Akses ditolak! Hanya Owner yang dapat menghapus voucher. 🔒');
+      return;
+    }
     if (confirm(`Hapus voucher "${code}" dari sistem?`)) {
       await storageService.deleteVoucher(code);
       setVouchers(storageService.getVouchers());
@@ -847,6 +898,10 @@ export const OwnerDashboardView: React.FC<OwnerDashboardViewProps> = ({
   };
 
   const handleSendBirthdayGreeting = (c: Customer) => {
+    if (activeRole !== 'owner') {
+      onShowToast('Akses ditolak! Hanya Owner yang dapat mengirim voucher ultah. 🔒');
+      return;
+    }
     const bdayCode = `${c.name.split(' ')[0].toUpperCase()}-ULTAH-${c.birth_day || 27}`;
     storageService.saveVoucher({
       code: bdayCode,
@@ -872,11 +927,16 @@ export const OwnerDashboardView: React.FC<OwnerDashboardViewProps> = ({
     onShowToast(`Pesan traktiran ultah Kak ${c.name} disiapkan di WA! Voucher ${bdayCode} aktif ✓`);
   };
 
-  const handleDeleteCustomer = (id: string, name: string) => {
+  const handleDeleteCustomer = async (id: string, name: string) => {
+    if (activeRole !== 'owner') {
+      onShowToast('Akses ditolak! Hanya Owner yang berhak menghapus data pelanggan. 🔒');
+      return;
+    }
     if (confirm(`Hapus data pelanggan "${name}" dari daftar?`)) {
-      storageService.deleteCustomer(id);
+      await storageService.deleteCustomer(id);
       setCustomers(storageService.getCustomers());
       setViewingCustDetail((prev) => (prev?.id === id ? null : prev));
+      logSecurityEvent('DATA_CLEARED', `Data pelanggan "${name}" dihapus oleh Owner.`, 'WARN');
       onShowToast(`Data "${name}" berhasil dihapus.`);
     }
   };
@@ -926,6 +986,10 @@ Catatan Kurir: Pastikan posisi dus ditaruh datar agar mayo tidak tumpah ya kak.`
 
   const handleAddExpense = (e: React.FormEvent) => {
     e.preventDefault();
+    if (activeRole !== 'owner') {
+      onShowToast('Akses ditolak! Hanya Owner yang dapat mencatat buku kas harian. 🔒');
+      return;
+    }
     if (!expItemName.trim() || !expNominal || Number(expNominal) <= 0) {
       alert('Nama item belanja dan nominal pengeluaran wajib diisi!');
       return;
@@ -948,6 +1012,10 @@ Catatan Kurir: Pastikan posisi dus ditaruh datar agar mayo tidak tumpah ya kak.`
   };
 
   const handleDeleteExpense = (id: string, name: string) => {
+    if (activeRole !== 'owner') {
+      onShowToast('Akses ditolak! Hanya Owner yang dapat menghapus catatan pengeluaran. 🔒');
+      return;
+    }
     if (confirm(`Hapus catatan pengeluaran "${name}"?`)) {
       storageService.deleteExpense(id);
       setExpenses(storageService.getExpenses());
@@ -1121,6 +1189,10 @@ Catatan Kurir: Pastikan posisi dus ditaruh datar agar mayo tidak tumpah ya kak.`
   }, [orders, expenses, menus, pantryVersion]);
 
   const handleExportExpensesCSV = () => {
+    if (activeRole !== 'owner') {
+      onShowToast('Akses ditolak! Hanya Owner yang dapat mengunduh laporan keuangan CSV. 🔒');
+      return;
+    }
     const {
       periodLabel,
       totalOmsetKotor,
@@ -1143,44 +1215,50 @@ Catatan Kurir: Pastikan posisi dus ditaruh datar agar mayo tidak tumpah ya kak.`
       lainnya: 'Lain-lain / Transport',
     };
 
-    let csv = '\uFEFF';
-    csv += `"LAPORAN KEUANGAN & LABA BERSIH - ${(storeConfig.brandName || 'DAPUR DULANG').toUpperCase()}"\n`;
-    csv += `"Periode:","${periodLabel}"\n`;
-    csv += `"Tanggal Unduh:","${new Date().toLocaleString('id-ID')}"\n\n`;
+    const lines: string[] = [
+      csvRow([`LAPORAN KEUANGAN & LABA BERSIH - ${(storeConfig.brandName || 'DAPUR DULANG').toUpperCase()}`]),
+      csvRow(['Periode:', periodLabel]),
+      csvRow(['Tanggal Unduh:', new Date().toLocaleString('id-ID')]),
+      '',
+      csvRow(['=== RINGKASAN EKSEKUTIF KEUANGAN ===']),
+      csvRow(['Metrik Keuangan', 'Nominal (Rp)', 'Keterangan / Rasio']),
+      csvRow(['Omset Penjualan Bersih (Lunas)', totalOmsetKotor, `${periodPaidOrders.length} transaksi penjualan`]),
+      csvRow(['Estimasi HPP Bahan Terjual', totalHppBahan, `Dihitung dari ${totalPcsTerjual} pcs gorengan/risoles terjual`]),
+      csvRow(['Laba Kotor Produk (Gross Profit)', labaKotor, `Gross Margin: ${grossProfitMargin}%`]),
+      csvRow(['Total Belanja Kas Dapur', totalBelanjaDapur, `${periodExpenses.length} transaksi pengeluaran`]),
+      csvRow(['Laba Bersih Kas (Surplus)', netProfit, `Net Margin: ${netProfitMargin}%`]),
+      '',
+      csvRow(['=== RINCIAN PENGELUARAN PER KATEGORI ===']),
+      csvRow(['Kategori', 'Nominal (Rp)', 'Persentase']),
+      csvRow(['Bahan Baku & Isian', expenseByCategory.bahan_baku, `${totalBelanjaDapur > 0 ? ((expenseByCategory.bahan_baku / totalBelanjaDapur) * 100).toFixed(1) : 0}%`]),
+      csvRow(['Operasional & Gas', expenseByCategory.operasional, `${totalBelanjaDapur > 0 ? ((expenseByCategory.operasional / totalBelanjaDapur) * 100).toFixed(1) : 0}%`]),
+      csvRow(['Kemasan & Dus Box', expenseByCategory.kemasan, `${totalBelanjaDapur > 0 ? ((expenseByCategory.kemasan / totalBelanjaDapur) * 100).toFixed(1) : 0}%`]),
+      csvRow(['Lain-lain / Transport', expenseByCategory.lainnya, `${totalBelanjaDapur > 0 ? ((expenseByCategory.lainnya / totalBelanjaDapur) * 100).toFixed(1) : 0}%`]),
+      '',
+      csvRow(['=== DAFTAR TRANSAKSI BELANJA KAS ===']),
+      csvRow(['No', 'Tanggal', 'Kategori', 'Nama Barang', 'Nominal (Rp)', 'Catatan']),
+      ...periodExpenses.map((exp, idx) => {
+        const catText = categoryLabels[exp.kategori] || exp.kategori;
+        return csvRow([idx + 1, exp.tanggal, catText, exp.nama_item, exp.nominal, exp.catatan || '']);
+      }),
+      '',
+      csvRow(['=== DAFTAR TRANSAKSI PENJUALAN LUNAS ===']),
+      csvRow(['No. Order', 'Tanggal', 'Pelanggan', 'Metode Kirim', 'Metode Bayar', 'Rincian Menu', 'Total (Rp)']),
+      ...periodPaidOrders.map((ord) => {
+        const itemDesc = (ord.items || []).map((i) => `${i.qty}x ${i.nama}`).join('; ');
+        return csvRow([
+          `#${ord.id}`,
+          new Date(ord.created_at).toLocaleDateString('id-ID'),
+          ord.customer_name,
+          ord.delivery_method,
+          ord.payment_method,
+          itemDesc,
+          ord.total_price,
+        ]);
+      }),
+    ];
 
-    // 1. Ringkasan Eksekutif
-    csv += `"=== RINGKASAN EKSEKUTIF KEUANGAN ==="\n`;
-    csv += `"Metrik Keuangan","Nominal (Rp)","Keterangan / Rasio"\n`;
-    csv += `"Omset Penjualan Bersih (Lunas)","${totalOmsetKotor}","${periodPaidOrders.length} transaksi penjualan"\n`;
-    csv += `"Estimasi HPP Bahan Terjual","${totalHppBahan}","Dihitung dari ${totalPcsTerjual} pcs gorengan/risoles terjual"\n`;
-    csv += `"Laba Kotor Produk (Gross Profit)","${labaKotor}","Gross Margin: ${grossProfitMargin}%"\n`;
-    csv += `"Total Belanja Kas Dapur","${totalBelanjaDapur}","${periodExpenses.length} transaksi pengeluaran"\n`;
-    csv += `"Laba Bersih Kas (Surplus)","${netProfit}","Net Margin: ${netProfitMargin}%"\n\n`;
-
-    // 2. Breakdown Belanja
-    csv += `"=== RINCIAN PENGELUARAN PER KATEGORI ==="\n`;
-    csv += `"Kategori","Nominal (Rp)","Persentase"\n`;
-    csv += `"Bahan Baku & Isian","${expenseByCategory.bahan_baku}","${totalBelanjaDapur > 0 ? ((expenseByCategory.bahan_baku / totalBelanjaDapur) * 100).toFixed(1) : 0}%"\n`;
-    csv += `"Operasional & Gas","${expenseByCategory.operasional}","${totalBelanjaDapur > 0 ? ((expenseByCategory.operasional / totalBelanjaDapur) * 100).toFixed(1) : 0}%"\n`;
-    csv += `"Kemasan & Dus Box","${expenseByCategory.kemasan}","${totalBelanjaDapur > 0 ? ((expenseByCategory.kemasan / totalBelanjaDapur) * 100).toFixed(1) : 0}%"\n`;
-    csv += `"Lain-lain / Transport","${expenseByCategory.lainnya}","${totalBelanjaDapur > 0 ? ((expenseByCategory.lainnya / totalBelanjaDapur) * 100).toFixed(1) : 0}%"\n\n`;
-
-    // 3. Detail Pengeluaran
-    csv += `"=== DAFTAR TRANSAKSI BELANJA KAS ==="\n`;
-    csv += `"No","Tanggal","Kategori","Nama Barang","Nominal (Rp)","Catatan"\n`;
-    periodExpenses.forEach((exp, idx) => {
-      const catText = categoryLabels[exp.kategori] || exp.kategori;
-      csv += `"${idx + 1}","${exp.tanggal}","${catText}","${exp.nama_item.replace(/"/g, '""')}","${exp.nominal}","${(exp.catatan || '').replace(/"/g, '""')}"\n`;
-    });
-    csv += `\n`;
-
-    // 4. Detail Penjualan
-    csv += `"=== DAFTAR TRANSAKSI PENJUALAN LUNAS ==="\n`;
-    csv += `"No. Order","Tanggal","Pelanggan","Metode Kirim","Metode Bayar","Rincian Menu","Total (Rp)"\n`;
-    periodPaidOrders.forEach((ord) => {
-      const itemDesc = (ord.items || []).map((i) => `${i.qty}x ${i.nama}`).join('; ');
-      csv += `"#${ord.id}","${new Date(ord.created_at).toLocaleDateString('id-ID')}","${ord.customer_name.replace(/"/g, '""')}","${ord.delivery_method}","${ord.payment_method}","${itemDesc.replace(/"/g, '""')}","${ord.total_price}"\n`;
-    });
+    const csv = '\uFEFF' + lines.join('\n') + '\n';
 
     const blob = new Blob([csv], { type: 'text/csv;charset=utf-8;' });
     const url = URL.createObjectURL(blob);
@@ -1196,6 +1274,10 @@ Catatan Kurir: Pastikan posisi dus ditaruh datar agar mayo tidak tumpah ya kak.`
   };
 
   const handleSendMonthlyReportWA = () => {
+    if (activeRole !== 'owner') {
+      onShowToast('Akses ditolak! Hanya Owner yang dapat mengirim rekap laba bulanan. 🔒');
+      return;
+    }
     const {
       periodLabel,
       totalOmsetKotor,
@@ -1238,12 +1320,16 @@ Catatan Kurir: Pastikan posisi dus ditaruh datar agar mayo tidak tumpah ya kak.`
       `_Laporan diekspor otomatis dari Sistem POS Dapur Dulang pada ${new Date().toLocaleDateString('id-ID', { day: 'numeric', month: 'long', year: 'numeric' })}._`,
     ].join('\n');
 
-    window.open(`https://wa.me/${targetWa}?text=${encodeURIComponent(msg)}`, '_blank');
+    window.open(`https://wa.me/${targetWa}?text=${encodeURIComponent(msg)}`, '_blank', 'noopener,noreferrer');
     onShowToast('📲 Membuka WhatsApp untuk kirim Rekap Keuangan Bulanan!');
   };
 
   const handleSaveSupabaseConfig = async (e: React.FormEvent) => {
     e.preventDefault();
+    if (activeRole !== 'owner') {
+      onShowToast('Akses ditolak! Hanya Owner yang berhak mengubah koneksi Cloud Supabase. 🔒');
+      return;
+    }
     if (!inputDbUrl.trim() || !inputDbKey.trim()) {
       alert('Project URL dan Anon Key Supabase wajib diisi.');
       return;
@@ -1253,23 +1339,33 @@ Catatan Kurir: Pastikan posisi dus ditaruh datar agar mayo tidak tumpah ya kak.`
       const updated = getSupabaseCredentials();
       setSupabaseCreds(updated);
       await reloadCustomers();
+      logSecurityEvent('SETTINGS_UPDATED', 'Kredensial koneksi Cloud Supabase diperbarui oleh Owner.', 'WARN');
       onShowToast('Database Cloud Supabase berhasil terhubung! Data antar-perangkat langsung sinkron 🎉');
     }
   };
 
   const handleDisconnectSupabase = () => {
+    if (activeRole !== 'owner') {
+      onShowToast('Akses ditolak! Hanya Owner yang berhak memutus koneksi Cloud Supabase. 🔒');
+      return;
+    }
     if (confirm('Putuskan koneksi ke Cloud Supabase? Data lokal tetap tersimpan di browser.')) {
       clearSupabaseCredentials();
       const updated = getSupabaseCredentials();
       setSupabaseCreds(updated);
       setInputDbUrl('');
       setInputDbKey('');
+      logSecurityEvent('SETTINGS_UPDATED', 'Koneksi Cloud Supabase diputus oleh Owner.', 'WARN');
       onShowToast('Koneksi Cloud diputus. Sistem kembali ke penyimpanan lokal.');
     }
   };
 
   // --- ORDERS / KASIR & PENJUALAN HANDLERS ---
   const handleUpdateOrderStatus = (orderId: string, status: OrderStatus, method?: PaymentMethod) => {
+    if (activeRole === 'kitchen') {
+      onShowToast('Akses ditolak! Mode Kru Dapur hanya untuk layar masak (KDS). 🔒');
+      return;
+    }
     const updated = storageService.updateOrderStatus(orderId, status, method);
     if (updated) {
       setOrders(storageService.getOrders());
@@ -1330,6 +1426,7 @@ Catatan Kurir: Pastikan posisi dus ditaruh datar agar mayo tidak tumpah ya kak.`
     if (!window.confirm(`Hapus catatan pesanan #${orderId}?`)) return;
     await storageService.deleteOrder(orderId);
     setOrders(storageService.getOrders());
+    logSecurityEvent('DATA_CLEARED', `Pesanan #${orderId} dihapus permanen oleh Owner.`, 'WARN');
     onShowToast(`Pesanan #${orderId} telah dihapus permanen dari sistem & cloud.`);
   };
 
@@ -1341,11 +1438,16 @@ Catatan Kurir: Pastikan posisi dus ditaruh datar agar mayo tidak tumpah ya kak.`
     if (!window.confirm('Hapus SEMUA riwayat pesanan (termasuk pesanan uji coba)? Tindakan ini permanen.')) return;
     await storageService.clearOrders();
     setOrders([]);
+    logSecurityEvent('DATA_CLEARED', 'Seluruh riwayat pesanan dihapus permanen oleh Owner.', 'ALERT');
     onShowToast('Semua riwayat pesanan berhasil dibersihkan.');
   };
 
   const handleSaveDP = (e: React.FormEvent) => {
     e.preventDefault();
+    if (activeRole === 'kitchen') {
+      onShowToast('Akses ditolak! Mode Kru Dapur tidak dapat mencatat transaksi DP. 🔒');
+      return;
+    }
     if (!dpModalOrder) return;
     const nominal = Number(dpInputNominal) || 0;
     if (nominal <= 0) {
@@ -1361,6 +1463,10 @@ Catatan Kurir: Pastikan posisi dus ditaruh datar agar mayo tidak tumpah ya kak.`
   };
 
   const handleSettleOrder = (orderId: string, method: PaymentMethod = 'tunai') => {
+    if (activeRole === 'kitchen') {
+      onShowToast('Akses ditolak! Mode Kru Dapur tidak dapat melunasi transaksi. 🔒');
+      return;
+    }
     const updated = storageService.updateOrderStatus(orderId, 'lunas', method);
     if (updated) {
       setOrders(storageService.getOrders());
@@ -1384,7 +1490,7 @@ Catatan Kurir: Pastikan posisi dus ditaruh datar agar mayo tidak tumpah ya kak.`
 
     const waNum = (ord.customer_wa || '').replace(/\D/g, '');
     const url = waNum ? `https://wa.me/${waNum}?text=${encodeURIComponent(msg)}` : `https://wa.me/?text=${encodeURIComponent(msg)}`;
-    window.open(url, '_blank');
+    window.open(url, '_blank', 'noopener,noreferrer');
   };
 
   const handleSendFriendlyGreeting = (c: Customer) => {
@@ -1398,7 +1504,7 @@ Catatan Kurir: Pastikan posisi dus ditaruh datar agar mayo tidak tumpah ya kak.`
 
     const waNum = c.wa ? c.wa.replace(/\D/g, '') : '';
     const url = waNum ? `https://wa.me/${waNum}?text=${encodeURIComponent(msg)}` : `https://wa.me/?text=${encodeURIComponent(msg)}`;
-    window.open(url, '_blank');
+    window.open(url, '_blank', 'noopener,noreferrer');
 
     storageService.markCustomerGreeted(c.id);
     setCustomers(storageService.getCustomers());
@@ -1480,6 +1586,10 @@ Catatan Kurir: Pastikan posisi dus ditaruh datar agar mayo tidak tumpah ya kak.`
 
   const handleSaveWalkInOrder = (e: React.FormEvent) => {
     e.preventDefault();
+    if (activeRole === 'kitchen') {
+      onShowToast('Akses ditolak! Mode Kru Dapur tidak dapat menginput transaksi kasir. 🔒');
+      return;
+    }
     if (walkInCart.length === 0) {
       alert('Pilih minimal 1 item menu yang dibeli!');
       return;
@@ -1524,9 +1634,9 @@ Catatan Kurir: Pastikan posisi dus ditaruh datar agar mayo tidak tumpah ya kak.`
       cash_change: cashChg,
       cashier_name: activeShift?.cashier_name || 'Stand Dapur Dulang',
     };
-    storageService.addOrder(newOrder);
-    storageService.updateCustomerIntelligence(newOrder);
-    const { lowStockItems } = storageService.deductIngredientsForOrder(newOrder);
+    const savedOrder = storageService.addOrder(newOrder);
+    storageService.updateCustomerIntelligence(savedOrder);
+    const { lowStockItems } = storageService.deductIngredientsForOrder(savedOrder);
     setOrders(storageService.getOrders());
     setCustomers(storageService.getCustomers());
     onUpdateMenus(storageService.getMenus());
@@ -1538,7 +1648,7 @@ Catatan Kurir: Pastikan posisi dus ditaruh datar agar mayo tidak tumpah ya kak.`
     setWalkInCashReceived('');
     setWalkInChannel('walk_in');
     setWalkInOjolOrderId('');
-    setSelectedOrderForReceipt(newOrder);
+    setSelectedOrderForReceipt(savedOrder);
     let toastMsg = isOjol
       ? `Pesanan ${channelPrefix} #${ojolId || ''} (Rp ${totalPrice.toLocaleString('id-ID')}) tercatat! Net cair: Rp ${(netPayout || 0).toLocaleString('id-ID')}. Tiket masuk KDS Dapur! 🛵🍳`
       : `Transaksi Dapur senilai Rp ${totalPrice.toLocaleString('id-ID')} (${effectivePayment.toUpperCase()}) Lunas! Bahan baku terpotong otomatis. 🧾✨`;
@@ -1550,6 +1660,10 @@ Catatan Kurir: Pastikan posisi dus ditaruh datar agar mayo tidak tumpah ya kak.`
 
   const handleQuickWaOrder = (e: React.FormEvent) => {
     e.preventDefault();
+    if (activeRole === 'kitchen') {
+      onShowToast('Akses ditolak! Mode Kru Dapur tidak dapat menginput transaksi kasir. 🔒');
+      return;
+    }
     const text = quickWaOrderText.trim();
     if (!text) return;
 
@@ -1597,6 +1711,10 @@ Catatan Kurir: Pastikan posisi dus ditaruh datar agar mayo tidak tumpah ya kak.`
 
   // --- TESTIMONIALS HANDLERS ---
   const handleToggleTestimonial = (id: string) => {
+    if (activeRole !== 'owner') {
+      onShowToast('Akses ditolak! Hanya Owner yang dapat mengatur testimoni. 🔒');
+      return;
+    }
     const updated = storageService.toggleTestimonial(id);
     if (updated) {
       setTestimonials(storageService.getTestimonials());
@@ -1605,6 +1723,10 @@ Catatan Kurir: Pastikan posisi dus ditaruh datar agar mayo tidak tumpah ya kak.`
   };
 
   const handleDeleteTestimonial = (id: string, name: string) => {
+    if (activeRole !== 'owner') {
+      onShowToast('Akses ditolak! Hanya Owner yang dapat menghapus testimoni. 🔒');
+      return;
+    }
     if (!window.confirm(`Hapus ulasan dari ${name}?`)) return;
     storageService.deleteTestimonial(id);
     setTestimonials(storageService.getTestimonials());
@@ -1613,6 +1735,10 @@ Catatan Kurir: Pastikan posisi dus ditaruh datar agar mayo tidak tumpah ya kak.`
 
   const handleSaveNewTestimonial = (e: React.FormEvent) => {
     e.preventDefault();
+    if (activeRole !== 'owner') {
+      onShowToast('Akses ditolak! Hanya Owner yang dapat menambah testimoni. 🔒');
+      return;
+    }
     if (!testiCustName.trim() || !testiComment.trim()) {
       alert('Nama dan ulasan wajib diisi!');
       return;
@@ -1637,6 +1763,10 @@ Catatan Kurir: Pastikan posisi dus ditaruh datar agar mayo tidak tumpah ya kak.`
 
   // --- CUSTOMER INTELLIGENCE / NOTES HANDLER ---
   const handleSaveCustomerNotes = () => {
+    if (activeRole !== 'owner') {
+      onShowToast('Akses ditolak! Hanya Owner yang dapat mengubah catatan pelanggan. 🔒');
+      return;
+    }
     if (!editingCustNotes) return;
     const allCust = storageService.getCustomers();
     const updated = allCust.map((c) =>
@@ -1683,19 +1813,26 @@ Catatan Kurir: Pastikan posisi dus ditaruh datar agar mayo tidak tumpah ya kak.`
     onShowToast(`Menu "${item.nama}" untuk pre-order besok diset ${nextVal ? 'Tersedia' : 'Penuh/Tutup'}`);
   };
 
-  const handleDeleteItem = (id: string) => {
+  const handleDeleteItem = async (id: string) => {
+    if (activeRole !== 'owner') {
+      onShowToast('Akses ditolak! Hanya Owner yang berhak menghapus menu. 🔒');
+      return;
+    }
     const item = menus.find((m) => m.id === id);
     if (!item) return;
     if (confirm(`Yakin mau hapus menu "${item.nama}"?`)) {
-      const updated = menus.filter((m) => m.id !== id);
-      onUpdateMenus(updated);
-      storageService.saveMenus(updated);
-      onShowToast(`Menu "${item.nama}" berhasil dihapus`);
+      await storageService.deleteMenuItem(id);
+      onUpdateMenus(storageService.getMenus());
+      onShowToast(`Menu "${item.nama}" berhasil dihapus permanen`);
     }
   };
 
   const handleAddNewMenu = (e: React.FormEvent) => {
     e.preventDefault();
+    if (activeRole !== 'owner') {
+      onShowToast('Akses ditolak! Hanya Owner yang berhak menambah menu baru. 🔒');
+      return;
+    }
     if (!newNama.trim()) return;
 
     const stockQty = newStokHarian !== '' ? Number(newStokHarian) : null;
@@ -1728,6 +1865,10 @@ Catatan Kurir: Pastikan posisi dus ditaruh datar agar mayo tidak tumpah ya kak.`
 
   const handleSaveEditedMenu = (e: React.FormEvent) => {
     e.preventDefault();
+    if (activeRole !== 'owner') {
+      onShowToast('Akses ditolak! Hanya Owner yang berhak mengubah harga & resep menu. 🔒');
+      return;
+    }
     if (!editingItem) return;
 
     handleUpdateItem(editingItem.id, editingItem);
@@ -1803,7 +1944,7 @@ Catatan Kurir: Pastikan posisi dus ditaruh datar agar mayo tidak tumpah ya kak.`
     const url = phone
       ? `https://wa.me/${phone}?text=${encodeURIComponent(text)}`
       : `https://wa.me/?text=${encodeURIComponent(text)}`;
-    window.open(url, '_blank');
+    window.open(url, '_blank', 'noopener,noreferrer');
   };
 
   const handleSendInvoiceWhatsApp = (ord: OrderRecord) => {
@@ -1848,7 +1989,7 @@ Catatan Kurir: Pastikan posisi dus ditaruh datar agar mayo tidak tumpah ya kak.`
 
     if (phone) {
       const url = `https://wa.me/${phone}?text=${encodeURIComponent(msg)}`;
-      window.open(url, '_blank');
+      window.open(url, '_blank', 'noopener,noreferrer');
       onShowToast(`Tagihan & QRIS disiapkan di WhatsApp Kak ${ord.customer_name}! 📲✨`);
     } else {
       navigator.clipboard.writeText(msg);
@@ -1864,7 +2005,7 @@ Catatan Kurir: Pastikan posisi dus ditaruh datar agar mayo tidak tumpah ya kak.`
         setOrders(storageService.getOrders());
         if ((selectedOrderForReceipt.print_count || 0) >= 1) {
           logSecurityEvent(
-            'LOGIN_SUCCESS',
+            'PRINT_REPRINT',
             `Cetak ulang nota #${selectedOrderForReceipt.id} (Salinan ke-${(selectedOrderForReceipt.print_count || 0) + 1}) oleh ${activeShift?.cashier_name || 'Kasir'}`,
             'WARN'
           );
@@ -1898,7 +2039,7 @@ Catatan Kurir: Pastikan posisi dus ditaruh datar agar mayo tidak tumpah ya kak.`
         setOrders(storageService.getOrders());
         if ((selectedOrderForReceipt.print_count || 0) >= 1) {
           logSecurityEvent(
-            'LOGIN_SUCCESS',
+            'PRINT_REPRINT',
             `Cetak ulang nota #${selectedOrderForReceipt.id} (Salinan ke-${(selectedOrderForReceipt.print_count || 0) + 1}) oleh ${activeShift?.cashier_name || 'Kasir'}`,
             'WARN'
           );
@@ -1927,6 +2068,10 @@ Catatan Kurir: Pastikan posisi dus ditaruh datar agar mayo tidak tumpah ya kak.`
   // --- CASHIER SHIFT, PETTY CASH, & VOID ORDER HANDLERS (Step 1) ---
   const handleStartShiftSubmit = (e: React.FormEvent) => {
     e.preventDefault();
+    if (activeRole === 'kitchen') {
+      onShowToast('Akses ditolak! Mode Kru Dapur tidak dapat membuka shift kasir. 🔒');
+      return;
+    }
     if (!shiftCashierName.trim()) {
       alert('Nama kasir tidak boleh kosong!');
       return;
@@ -1940,6 +2085,10 @@ Catatan Kurir: Pastikan posisi dus ditaruh datar agar mayo tidak tumpah ya kak.`
 
   const handleCloseShiftSubmit = (e: React.FormEvent) => {
     e.preventDefault();
+    if (activeRole === 'kitchen') {
+      onShowToast('Akses ditolak! Mode Kru Dapur tidak dapat menutup shift kasir. 🔒');
+      return;
+    }
     if (shiftActualCash === '') {
       alert('Masukkan jumlah uang fisik tunai yang ada di laci saat ini!');
       return;
@@ -1972,6 +2121,10 @@ Catatan Kurir: Pastikan posisi dus ditaruh datar agar mayo tidak tumpah ya kak.`
 
   const handlePettyCashSubmit = (e: React.FormEvent) => {
     e.preventDefault();
+    if (activeRole === 'kitchen') {
+      onShowToast('Akses ditolak! Mode Kru Dapur tidak dapat mencatat kas laci. 🔒');
+      return;
+    }
     const amount = typeof pettyCashAmount === 'number' ? pettyCashAmount : Number(pettyCashAmount) || 0;
     if (amount <= 0) {
       alert('Nominal pengeluaran kas laci harus lebih dari Rp 0!');
@@ -1986,13 +2139,17 @@ Catatan Kurir: Pastikan posisi dus ditaruh datar agar mayo tidak tumpah ya kak.`
 
   const handleConfirmVoidOrder = (e: React.FormEvent) => {
     e.preventDefault();
+    if (activeRole === 'kitchen') {
+      onShowToast('Akses ditolak! Mode Kru Dapur tidak dapat membatalkan nota transaksi. 🔒');
+      return;
+    }
     if (!orderToVoid) return;
     const finalReason = voidReason === 'Lainnya' ? (voidCustomReason.trim() || 'Dibatalkan oleh kasir') : voidReason;
     const voided = storageService.voidOrder(orderToVoid.id, finalReason, activeShift?.cashier_name);
     if (voided) {
       setOrders(storageService.getOrders());
       logSecurityEvent(
-        'LOGIN_SUCCESS',
+        'ORDER_VOIDED',
         `Nota #${orderToVoid.id} DIBATALKAN (VOID) oleh ${activeShift?.cashier_name || 'Kasir'}. Alasan: ${finalReason}`,
         'ALERT'
       );
@@ -2018,6 +2175,10 @@ Catatan Kurir: Pastikan posisi dus ditaruh datar agar mayo tidak tumpah ya kak.`
   };
 
   const handleRefillAllStock = () => {
+    if (activeRole !== 'owner') {
+      onShowToast('Akses ditolak! Hanya Owner yang dapat mengisi ulang kuota massal. 🔒');
+      return;
+    }
     if (!window.confirm('Isi penuh kembali semua stok menu sesuai kuota porsi harian masing-masing?')) return;
     storageService.refillAllMenuStock();
     const updated = storageService.getMenus();
@@ -2026,6 +2187,10 @@ Catatan Kurir: Pastikan posisi dus ditaruh datar agar mayo tidak tumpah ya kak.`
   };
 
   const handleBulkSetStock = () => {
+    if (activeRole !== 'owner') {
+      onShowToast('Akses ditolak! Hanya Owner yang dapat mengatur kuota porsi massal. 🔒');
+      return;
+    }
     const matangStr = window.prompt(
       'Masukkan kuota stok harian untuk SEMUA menu matang/goreng (contoh: 30):',
       '30'
@@ -2069,6 +2234,10 @@ Catatan Kurir: Pastikan posisi dus ditaruh datar agar mayo tidak tumpah ya kak.`
 
   // --- BACKUP & RESTORE DATABASE OFFLINE (.JSON) ---
   const handleExportBackup = () => {
+    if (activeRole !== 'owner') {
+      onShowToast('Akses ditolak! Hanya Owner yang dapat mengekspor cadangan database. 🔒');
+      return;
+    }
     const backupData = storageService.exportDatabaseBackup();
     const dataStr = 'data:text/json;charset=utf-8,' + encodeURIComponent(JSON.stringify(backupData, null, 2));
     const downloadAnchor = document.createElement('a');
@@ -2083,6 +2252,10 @@ Catatan Kurir: Pastikan posisi dus ditaruh datar agar mayo tidak tumpah ya kak.`
   };
 
   const handleImportBackup = (e: React.ChangeEvent<HTMLInputElement>) => {
+    if (activeRole !== 'owner') {
+      onShowToast('Akses ditolak! Hanya Owner yang dapat memulihkan cadangan database. 🔒');
+      return;
+    }
     const file = e.target.files?.[0];
     if (!file) return;
 
@@ -2132,12 +2305,21 @@ Catatan Kurir: Pastikan posisi dus ditaruh datar agar mayo tidak tumpah ya kak.`
   // --- SETTINGS HANDLERS ---
   const handleSaveStoreConfig = (e: React.FormEvent) => {
     e.preventDefault();
+    if (activeRole !== 'owner') {
+      onShowToast('Akses ditolak! Hanya Owner yang dapat mengubah pengaturan toko. 🔒');
+      return;
+    }
     onUpdateStoreConfig(localConfig);
     storageService.saveStoreConfig(localConfig);
+    logSecurityEvent('SETTINGS_UPDATED', 'Pengaturan jam buka & jadwal dapur diperbarui.', 'INFO');
     onShowToast('Pengaturan toko & jam buka berhasil disimpan! 🍳');
   };
 
   const handleToggleStoreClosed = (closed: boolean) => {
+    if (activeRole !== 'owner') {
+      onShowToast('Akses ditolak! Hanya Owner yang dapat membuka/menutup operasional toko. 🔒');
+      return;
+    }
     const updated = {
       ...localConfig,
       isStoreClosed: closed,
@@ -2148,6 +2330,7 @@ Catatan Kurir: Pastikan posisi dus ditaruh datar agar mayo tidak tumpah ya kak.`
     setLocalConfig(updated);
     onUpdateStoreConfig(updated);
     storageService.saveStoreConfig(updated);
+    logSecurityEvent('SETTINGS_UPDATED', `Status toko diset ${closed ? 'TUTUP (Libur Goreng)' : 'BUKA'}.`, 'INFO');
     if (closed) {
       onShowToast('Dapur diset TUTUP (Libur Goreng) 💤 Pop-up otomatis aktif!');
     } else {
@@ -2157,49 +2340,100 @@ Catatan Kurir: Pastikan posisi dus ditaruh datar agar mayo tidak tumpah ya kak.`
 
   const handleSaveClosedReason = (e: React.FormEvent) => {
     e.preventDefault();
+    if (activeRole !== 'owner') {
+      onShowToast('Akses ditolak! Hanya Owner yang dapat mengubah pesan libur. 🔒');
+      return;
+    }
     onUpdateStoreConfig(localConfig);
     storageService.saveStoreConfig(localConfig);
+    logSecurityEvent('SETTINGS_UPDATED', 'Kalimat pop-up libur toko diperbarui.', 'INFO');
     onShowToast('Pesan pengumuman libur berhasil disimpan! ✓');
   };
 
   const handleSaveKloterConfig = (e: React.FormEvent) => {
     e.preventDefault();
+    if (activeRole !== 'owner') {
+      onShowToast('Akses ditolak! Hanya Owner yang dapat mengubah status kloter & pre-order. 🔒');
+      return;
+    }
     onUpdateStoreConfig(localConfig);
     storageService.saveStoreConfig(localConfig);
+    logSecurityEvent('SETTINGS_UPDATED', 'Status kloter goreng & slot pre-order diperbarui.', 'INFO');
     onShowToast('Pengaturan status kloter & pre-order besok berhasil disimpan! 📅🔥');
   };
 
   const handleSaveDeliveryConfig = (e: React.FormEvent) => {
     e.preventDefault();
+    if (activeRole !== 'owner') {
+      onShowToast('Akses ditolak! Hanya Owner yang dapat mengubah tarif kurir & ongkir. 🔒');
+      return;
+    }
     onUpdateStoreConfig(localConfig);
     storageService.saveStoreConfig(localConfig);
+    logSecurityEvent('SETTINGS_UPDATED', 'Pengaturan kurir & ongkir wilayah diperbarui.', 'INFO');
     onShowToast('Pengaturan kurir dapur & ongkir Sidoarjo berhasil disimpan! 🛵✓');
   };
 
   const handleSaveBrandIdentity = (e: React.FormEvent) => {
     e.preventDefault();
+    if (activeRole !== 'owner') {
+      onShowToast('Akses ditolak! Hanya Owner yang dapat mengubah identitas brand usaha. 🔒');
+      return;
+    }
     onUpdateStoreConfig(localConfig);
     storageService.saveStoreConfig(localConfig);
+    logSecurityEvent('SETTINGS_UPDATED', 'Identitas brand & komisi platform diperbarui.', 'INFO');
     onShowToast('Identitas usaha & white-label berhasil disimpan! ✨');
   };
 
-  const handleSaveStaffPins = (e: React.FormEvent) => {
+  const handleSaveStaffPins = async (e: React.FormEvent) => {
     e.preventDefault();
-    if (localConfig.cashierPin && localConfig.cashierPin.length < 3) {
-      onShowToast('PIN Kasir minimal 3 karakter!');
+    if (activeRole !== 'owner') {
+      onShowToast('Akses ditolak! Hanya Owner yang berhak mengubah PIN Kasir & Dapur. 🔒');
       return;
     }
-    if (localConfig.kitchenPin && localConfig.kitchenPin.length < 3) {
-      onShowToast('PIN Dapur minimal 3 karakter!');
+    if (!staffPinOwnerVerify.trim()) {
+      onShowToast('Masukkan Password Owner aktif untuk verifikasi keamanan!');
       return;
     }
-    onUpdateStoreConfig(localConfig);
-    storageService.saveStoreConfig(localConfig);
-    onShowToast('PIN Kasir & Dapur berhasil diperbarui! 🔑✓');
+    if (!newCashierPin.trim() && !newKitchenPin.trim()) {
+      onShowToast('Isi minimal satu PIN baru (Kasir atau Dapur) yang ingin diperbarui.');
+      return;
+    }
+
+    setIsSavingStaffPins(true);
+    try {
+      const res = await storageService.saveStaffPins({
+        ownerPassword: staffPinOwnerVerify,
+        newCashierPin: newCashierPin.trim() || undefined,
+        newKitchenPin: newKitchenPin.trim() || undefined,
+      });
+      if (!res.success) {
+        onShowToast(res.message);
+        return;
+      }
+      logSecurityEvent(
+        'PIN_CHANGED',
+        'PIN akses Kasir Stand / Kru Dapur diperbarui dengan PBKDF2-HMAC-SHA256 & disinkronkan.',
+        'INFO'
+      );
+      setNewCashierPin('');
+      setNewKitchenPin('');
+      setStaffPinOwnerVerify('');
+      onShowToast(`${res.message} 🔐✓`);
+    } catch (err: any) {
+      onShowToast(err?.message || 'Gagal memperbarui PIN staff.');
+    } finally {
+      setIsSavingStaffPins(false);
+    }
   };
 
   const handleSaveCashierBonusSettings = (e: React.FormEvent) => {
     e.preventDefault();
+    if (activeRole !== 'owner') {
+      onShowToast('Akses ditolak! Hanya Owner yang dapat mengubah target & bonus kasir. 🔒');
+      return;
+    }
     const targetPortions = Number(localConfig.cashierDailyTargetPortions) || 100;
     const bonusPerPortion = Number(localConfig.cashierBonusPerPortion) || 100;
     const updated: StoreConfig = {
@@ -2210,11 +2444,19 @@ Catatan Kurir: Pastikan posisi dus ditaruh datar agar mayo tidak tumpah ya kak.`
     setLocalConfig(updated);
     onUpdateStoreConfig(updated);
     storageService.saveStoreConfig(updated);
+    logSecurityEvent('SETTINGS_UPDATED', `Target porsi kasir (${targetPortions}) & bonus (Rp ${bonusPerPortion}) diperbarui.`, 'INFO');
     onShowToast('Target porsi & bonus insentif kasir berhasil disimpan! 🎯💰');
   };
 
   const handleSwitchRoleSubmit = async (e?: React.FormEvent) => {
     if (e) e.preventDefault();
+    const lockCheck = checkLoginAttempts();
+    if (lockCheck.isLocked) {
+      const mins = Math.ceil(lockCheck.remainingSeconds / 60);
+      setSwitchRoleError(`Terlalu banyak percobaan gagal. Coba lagi dalam ${mins} menit.`);
+      return;
+    }
+
     const clean = switchRolePinInput.trim();
     if (!clean) {
       setSwitchRoleError('Masukkan PIN terlebih dahulu!');
@@ -2224,10 +2466,13 @@ Catatan Kurir: Pastikan posisi dus ditaruh datar agar mayo tidak tumpah ya kak.`
     setSwitchRoleError('');
 
     try {
+      await storageService.syncAuthMetaFromSupabase();
       const res = await storageService.verifyAnyPin(clean);
       if (res.success) {
-        storageService.setStaffRole(res.role);
+        resetLoginAttempts();
+        storageService.setOwnerAuthenticated(true, res.role);
         setActiveRole(res.role);
+        logSecurityEvent('ROLE_SWITCHED', `Peran cockpit dialihkan ke ${res.label} (${res.role}).`, 'INFO');
         setIsSwitchRoleModalOpen(false);
         setSwitchRolePinInput('');
         if (res.role === 'cashier') {
@@ -2237,9 +2482,25 @@ Catatan Kurir: Pastikan posisi dus ditaruh datar agar mayo tidak tumpah ya kak.`
         }
         onShowToast(`Beralih akses ke ${res.label}! 🎉`);
       } else {
-        setSwitchRoleError('PIN tidak cocok! Masukkan PIN Owner, Kasir, atau Dapur.');
+        const failStatus = recordFailedAttempt();
+        if (failStatus.isLocked) {
+          logSecurityEvent(
+            'LOCKOUT_TRIGGERED',
+            'Lockout 10 menit aktif saat percobaan ganti peran Cockpit (5x gagal).',
+            'ALERT'
+          );
+          setSwitchRoleError('Terlalu banyak percobaan salah (5x). Akses dikunci 10 menit.');
+        } else {
+          logSecurityEvent(
+            'LOGIN_FAILED',
+            `Percobaan ganti peran Cockpit dengan PIN salah (${failStatus.attempts}/5).`,
+            'WARN'
+          );
+          const rem = 5 - failStatus.attempts;
+          setSwitchRoleError(`PIN tidak cocok! Sisa ${rem} kali percobaan sebelum terkunci.`);
+        }
       }
-    } catch (err) {
+    } catch {
       setSwitchRoleError('Gagal memverifikasi PIN.');
     } finally {
       setIsSwitchingRoleLoading(false);
@@ -2248,31 +2509,41 @@ Catatan Kurir: Pastikan posisi dus ditaruh datar agar mayo tidak tumpah ya kak.`
 
   const handleSavePin = async (e: React.FormEvent) => {
     e.preventDefault();
+    if (activeRole !== 'owner') {
+      onShowToast('Akses ditolak! Hanya Owner yang berhak mengganti password pemilik. 🔒');
+      return;
+    }
     if (!oldPin.trim()) {
       onShowToast('Masukkan password/PIN lama terlebih dahulu!');
       return;
     }
     const isOldValid = await storageService.verifyOwnerPin(oldPin.trim());
     if (!isOldValid) {
+      logSecurityEvent('LOGIN_FAILED', 'Gagal verifikasi password lama saat hendak mengganti password Owner.', 'WARN');
       onShowToast('Password lama tidak cocok! ❌');
       return;
     }
-    if (newPin.trim().length < 4) {
-      onShowToast('Password baru minimal 4 karakter!');
+    const clean = newPin.trim();
+    if (clean.length < 6) {
+      onShowToast('Password pemilik baru minimal 6 karakter!');
       return;
     }
-    if (newPin.trim() !== confirmPin.trim()) {
+    if (clean !== confirmPin.trim()) {
       onShowToast('Konfirmasi password baru tidak cocok! ❌');
       return;
     }
-    const clean = newPin.trim();
-    await storageService.saveOwnerPin(clean);
-    logSecurityEvent('PIN_CHANGED', 'Password/PIN akses dapur berhasil diganti & di-hash.', 'INFO');
-    setActivePin(storageService.getOwnerPin());
-    setOldPin('');
-    setNewPin('');
-    setConfirmPin('');
-    onShowToast('Password pemilik berhasil di-hash (SHA-256) & disimpan aman! 🔐✓');
+    try {
+      await storageService.saveOwnerPin(clean);
+      logSecurityEvent('PIN_CHANGED', 'Password akses Owner berhasil diganti & di-hash (PBKDF2-HMAC-SHA256).', 'INFO');
+      const stillDefault = await storageService.isDefaultOwnerPinActive();
+      setIsDefaultOwnerPin(stillDefault);
+      setOldPin('');
+      setNewPin('');
+      setConfirmPin('');
+      onShowToast('Password pemilik berhasil di-hash (PBKDF2-HMAC-SHA256) & disinkronkan aman! 🔐✓');
+    } catch (err: any) {
+      onShowToast(err?.message || 'Gagal menyimpan password baru.');
+    }
   };
 
   // Dynamic Area clusters calculation for all regions (Sidoarjo, Surabaya, Gresik & Luar Kota)
@@ -2320,8 +2591,8 @@ Catatan Kurir: Pastikan posisi dus ditaruh datar agar mayo tidak tumpah ya kak.`
                 <span className="text-[9px] bg-[#111111]/15 px-1.5 py-0.2 rounded-full font-semibold">Ganti ⇄</span>
               </button>
 
-              {/* CASHIER SHIFT WIDGET */}
-              {activeShift ? (
+              {/* CASHIER SHIFT WIDGET (Owner & Cashier) */}
+              {activeRole !== 'kitchen' && (activeShift ? (
                 <div className="inline-flex items-center gap-1.5 bg-emerald-950/80 border border-emerald-400/50 text-emerald-200 px-2.5 py-0.5 rounded-full font-sans text-[10px] sm:text-[11px] font-bold shadow-xs">
                   <span className="w-2 h-2 rounded-full bg-emerald-400 animate-pulse" />
                   <span>Kasir: {activeShift.cashier_name}</span>
@@ -2365,18 +2636,20 @@ Catatan Kurir: Pastikan posisi dus ditaruh datar agar mayo tidak tumpah ya kak.`
                   <span>🌅</span>
                   <span>Buka Shift Kasir</span>
                 </button>
-              )}
+              ))}
 
               {/* Tombol Riwayat Shift */}
-              <button
-                type="button"
-                onClick={() => setIsShiftHistoryModalOpen(true)}
-                className="cursor-pointer inline-flex items-center gap-1 bg-white/10 hover:bg-white/20 text-white/80 hover:text-white px-2 py-0.5 rounded-full font-sans text-[10px] font-medium transition"
-                title="Lihat riwayat shift & evaluasi kasir"
-              >
-                <span>📋</span>
-                <span className="hidden sm:inline">Riwayat Shift</span>
-              </button>
+              {activeRole !== 'kitchen' && (
+                <button
+                  type="button"
+                  onClick={() => setIsShiftHistoryModalOpen(true)}
+                  className="cursor-pointer inline-flex items-center gap-1 bg-white/10 hover:bg-white/20 text-white/80 hover:text-white px-2 py-0.5 rounded-full font-sans text-[10px] font-medium transition"
+                  title="Lihat riwayat shift & evaluasi kasir"
+                >
+                  <span>📋</span>
+                  <span className="hidden sm:inline">Riwayat Shift</span>
+                </button>
+              )}
             </div>
             <h1 className="font-hand font-bold text-[24px] sm:text-[34px] lg:text-[44px] leading-tight text-white">
               {storeConfig.brandName || 'Dapur Dulang'}
@@ -2424,27 +2697,29 @@ Catatan Kurir: Pastikan posisi dus ditaruh datar agar mayo tidak tumpah ya kak.`
             </div>
           </div>
 
-          {/* Quick Buttons for Subuh & Closing */}
-          <div className="flex items-center gap-1.5">
-            <button
-              type="button"
-              onClick={() => setIsSubuhModalOpen(true)}
-              className="cursor-pointer bg-[#FFD700] hover:bg-[#FFE033] text-[#111111] px-2.5 sm:px-3.5 py-1.5 rounded-full font-sans font-bold text-xs shadow-xs border border-[#111111] transition flex items-center gap-1"
-              title="Kalkulator Kebutuhan Bahan Subuh"
-            >
-              <span>🌅</span>
-              <span className="hidden xs:inline">Subuh</span>
-            </button>
-            <button
-              type="button"
-              onClick={() => setIsClosingModalOpen(true)}
-              className="cursor-pointer bg-white/15 hover:bg-white/25 text-white px-2.5 sm:px-3.5 py-1.5 rounded-full font-sans font-bold text-xs border border-white/25 transition flex items-center gap-1"
-              title="Rekap Tutup Dapur Malam"
-            >
-              <span>🌙</span>
-              <span className="hidden xs:inline">Tutup</span>
-            </button>
-          </div>
+          {/* Quick Buttons for Subuh & Closing (Owner Only) */}
+          {activeRole === 'owner' && (
+            <div className="flex items-center gap-1.5">
+              <button
+                type="button"
+                onClick={() => setIsSubuhModalOpen(true)}
+                className="cursor-pointer bg-[#FFD700] hover:bg-[#FFE033] text-[#111111] px-2.5 sm:px-3.5 py-1.5 rounded-full font-sans font-bold text-xs shadow-xs border border-[#111111] transition flex items-center gap-1"
+                title="Kalkulator Kebutuhan Bahan Subuh"
+              >
+                <span>🌅</span>
+                <span className="hidden xs:inline">Subuh</span>
+              </button>
+              <button
+                type="button"
+                onClick={() => setIsClosingModalOpen(true)}
+                className="cursor-pointer bg-white/15 hover:bg-white/25 text-white px-2.5 sm:px-3.5 py-1.5 rounded-full font-sans font-bold text-xs border border-white/25 transition flex items-center gap-1"
+                title="Rekap Tutup Dapur Malam"
+              >
+                <span>🌙</span>
+                <span className="hidden xs:inline">Tutup</span>
+              </button>
+            </div>
+          )}
 
           {/* Sound Notification Control */}
           <div className="flex items-center bg-white/10 p-0.5 sm:p-1 rounded-full border border-white/20">
@@ -2482,8 +2757,8 @@ Catatan Kurir: Pastikan posisi dus ditaruh datar agar mayo tidak tumpah ya kak.`
         </div>
       </div>
 
-      {/* Floating Alert Card for Real-Time Customer Arrivals */}
-      {recentAlert && (
+      {/* Floating Alert Card for Real-Time Customer Arrivals (Owner Only) */}
+      {activeRole === 'owner' && recentAlert && (
         <div className="fixed bottom-6 right-6 z-50 max-w-sm sm:max-w-md bg-[#111111] text-[#FFF8E7] border-2 border-[#FFD700] rounded-[24px] p-5 shadow-[8px_8px_0_#111111] animate-in slide-in-from-bottom duration-300">
           <div className="flex items-start gap-3.5">
             <div className="w-10 h-10 rounded-full bg-[#FFD700] text-[#111111] flex items-center justify-center text-xl shrink-0 font-bold animate-bounce">
@@ -2554,35 +2829,37 @@ Catatan Kurir: Pastikan posisi dus ditaruh datar agar mayo tidak tumpah ya kak.`
             )}
           </div>
 
-          <div className="flex items-center gap-1.5 shrink-0">
-            {localConfig.isStoreClosed ? (
-              <button
-                type="button"
-                onClick={() => handleToggleStoreClosed(false)}
-                className="cursor-pointer bg-emerald-500 hover:bg-emerald-600 text-white px-3 py-1 rounded-full font-sans font-bold text-xs border border-[#111111] shadow-2xs active:scale-95"
-              >
-                Buka
-              </button>
-            ) : (
-              <button
-                type="button"
-                onClick={() => handleToggleStoreClosed(true)}
-                className="cursor-pointer bg-red-500 hover:bg-red-600 text-white px-3 py-1 rounded-full font-sans font-bold text-xs border border-[#111111] shadow-2xs active:scale-95"
-              >
-                Tutup
-              </button>
-            )}
+          {activeRole === 'owner' && (
+            <div className="flex items-center gap-1.5 shrink-0">
+              {localConfig.isStoreClosed ? (
+                <button
+                  type="button"
+                  onClick={() => handleToggleStoreClosed(false)}
+                  className="cursor-pointer bg-emerald-500 hover:bg-emerald-600 text-white px-3 py-1 rounded-full font-sans font-bold text-xs border border-[#111111] shadow-2xs active:scale-95"
+                >
+                  Buka
+                </button>
+              ) : (
+                <button
+                  type="button"
+                  onClick={() => handleToggleStoreClosed(true)}
+                  className="cursor-pointer bg-red-500 hover:bg-red-600 text-white px-3 py-1 rounded-full font-sans font-bold text-xs border border-[#111111] shadow-2xs active:scale-95"
+                >
+                  Tutup
+                </button>
+              )}
 
-            <button
-              type="button"
-              onClick={() => setIsMobileMerchantBarExpanded((prev) => !prev)}
-              className="cursor-pointer bg-[#FFF8E7] hover:bg-[#FFEEC2] text-[#111111] px-2.5 py-1 rounded-full font-sans font-bold text-xs border border-[#111111] flex items-center gap-1 shadow-2xs active:scale-95"
-              title="Buka pengaturan jam & pesan libur"
-            >
-              <span>⚙️</span>
-              <span>{isMobileMerchantBarExpanded ? 'Tutup' : 'Jam'}</span>
-            </button>
-          </div>
+              <button
+                type="button"
+                onClick={() => setIsMobileMerchantBarExpanded((prev) => !prev)}
+                className="cursor-pointer bg-[#FFF8E7] hover:bg-[#FFEEC2] text-[#111111] px-2.5 py-1 rounded-full font-sans font-bold text-xs border border-[#111111] flex items-center gap-1 shadow-2xs active:scale-95"
+                title="Buka pengaturan jam & pesan libur"
+              >
+                <span>⚙️</span>
+                <span>{isMobileMerchantBarExpanded ? 'Tutup' : 'Jam'}</span>
+              </button>
+            </div>
+          )}
         </div>
 
         {/* FULL CONTROLS: EXPANDABLE ON MOBILE, ALWAYS VISIBLE ON DESKTOP */}
@@ -2621,43 +2898,47 @@ Catatan Kurir: Pastikan posisi dus ditaruh datar agar mayo tidak tumpah ya kak.`
               </p>
             </div>
 
-            {/* TOMBOL TOGGLE STATUS 1-KLIK (ALA MERCHANT APP) */}
+            {/* TOMBOL TOGGLE STATUS 1-KLIK (OWNER ONLY) & PASANG DI HP */}
             <div className="flex flex-wrap items-center gap-2 shrink-0">
-              {localConfig.isStoreClosed ? (
-                <button
-                  type="button"
-                  onClick={() => handleToggleStoreClosed(false)}
-                  className="cursor-pointer bg-emerald-500 hover:bg-emerald-600 text-white px-4 sm:px-5 py-2 sm:py-2.5 rounded-full font-sans font-bold text-xs sm:text-sm border-2 border-[#111111] shadow-[2px_2px_0_#111111] hover:shadow-none hover:translate-x-0.5 hover:translate-y-0.5 transition flex items-center gap-1.5"
-                >
-                  <span>🍳</span>
-                  <span>Buka Dapur Sekarang</span>
-                </button>
-              ) : (
-                <button
-                  type="button"
-                  onClick={() => handleToggleStoreClosed(true)}
-                  className="cursor-pointer bg-red-500 hover:bg-red-600 text-white px-4 sm:px-5 py-2 sm:py-2.5 rounded-full font-sans font-bold text-xs sm:text-sm border-2 border-[#111111] shadow-[2px_2px_0_#111111] hover:shadow-none hover:translate-x-0.5 hover:translate-y-0.5 transition flex items-center gap-1.5"
-                >
-                  <span>💤</span>
-                  <span>Tutup / Libur Goreng</span>
-                </button>
-              )}
+              {activeRole === 'owner' && (
+                <>
+                  {localConfig.isStoreClosed ? (
+                    <button
+                      type="button"
+                      onClick={() => handleToggleStoreClosed(false)}
+                      className="cursor-pointer bg-emerald-500 hover:bg-emerald-600 text-white px-4 sm:px-5 py-2 sm:py-2.5 rounded-full font-sans font-bold text-xs sm:text-sm border-2 border-[#111111] shadow-[2px_2px_0_#111111] hover:shadow-none hover:translate-x-0.5 hover:translate-y-0.5 transition flex items-center gap-1.5"
+                    >
+                      <span>🍳</span>
+                      <span>Buka Dapur Sekarang</span>
+                    </button>
+                  ) : (
+                    <button
+                      type="button"
+                      onClick={() => handleToggleStoreClosed(true)}
+                      className="cursor-pointer bg-red-500 hover:bg-red-600 text-white px-4 sm:px-5 py-2 sm:py-2.5 rounded-full font-sans font-bold text-xs sm:text-sm border-2 border-[#111111] shadow-[2px_2px_0_#111111] hover:shadow-none hover:translate-x-0.5 hover:translate-y-0.5 transition flex items-center gap-1.5"
+                    >
+                      <span>💤</span>
+                      <span>Tutup / Libur Goreng</span>
+                    </button>
+                  )}
 
-              <button
-                type="button"
-                onClick={() => {
-                  setQuickReasonInput(
-                    localConfig.closedReason ||
-                      'Maaf lagi nggak goreng dulu, hari ini masak di dapur sendiri ya. -Tim Dulang Indonesia'
-                  );
-                  setIsQuickEditReasonOpen((prev) => !prev);
-                }}
-                className="cursor-pointer bg-[#FFF8E7] hover:bg-[#FFEEC2] text-[#111111] px-3 sm:px-4 py-2 sm:py-2.5 rounded-full font-sans font-bold text-xs border border-[#111111] shadow-xs transition flex items-center gap-1"
-                title="Edit kalimat pop-up pengumuman saat toko libur"
-              >
-                <span>✍️</span>
-                <span className="hidden xs:inline">Pesan Libur</span>
-              </button>
+                  <button
+                    type="button"
+                    onClick={() => {
+                      setQuickReasonInput(
+                        localConfig.closedReason ||
+                          'Maaf lagi nggak goreng dulu, hari ini masak di dapur sendiri ya. -Tim Dulang Indonesia'
+                      );
+                      setIsQuickEditReasonOpen((prev) => !prev);
+                    }}
+                    className="cursor-pointer bg-[#FFF8E7] hover:bg-[#FFEEC2] text-[#111111] px-3 sm:px-4 py-2 sm:py-2.5 rounded-full font-sans font-bold text-xs border border-[#111111] shadow-xs transition flex items-center gap-1"
+                    title="Edit kalimat pop-up pengumuman saat toko libur"
+                  >
+                    <span>✍️</span>
+                    <span className="hidden xs:inline">Pesan Libur</span>
+                  </button>
+                </>
+              )}
 
               {!isAppInstalled && (
                 <button
@@ -2673,152 +2954,163 @@ Catatan Kurir: Pastikan posisi dus ditaruh datar agar mayo tidak tumpah ya kak.`
             </div>
           </div>
 
-          {/* SISI BAWAH: ATUR JAM OPERASIONAL & BUKA OTOMATIS */}
-          <div className="pt-3 border-t border-[#111111]/10 flex flex-col md:flex-row md:items-center justify-between gap-3">
-            <div className="flex flex-wrap items-center gap-2 sm:gap-3 text-xs font-sans">
-              <span className="font-bold text-[#111111] flex items-center gap-1">
-                <span>⏰</span> Jam Operasional:
-              </span>
-              <div className="inline-flex items-center gap-1.5 bg-[#FFF8E7] px-2.5 py-1 rounded-full border border-[#111111]/20">
-                <span className="text-[11px] text-[#5C3D2E]/70 font-semibold">Buka:</span>
-                <input
-                  type="time"
-                  value={localConfig.openHour || '10:00'}
-                  onChange={(e) => handleQuickHoursChange(e.target.value, localConfig.closeHour || '20:00')}
-                  className="bg-white border border-[#111111]/30 rounded-md px-1.5 py-0.5 text-xs font-bold text-[#111111] focus:outline-none focus:border-[#111111]"
-                />
-                <span className="text-[11px] text-[#5C3D2E]/70 font-semibold">s/d</span>
-                <input
-                  type="time"
-                  value={localConfig.closeHour || '20:00'}
-                  onChange={(e) => handleQuickHoursChange(localConfig.openHour || '10:00', e.target.value)}
-                  className="bg-white border border-[#111111]/30 rounded-md px-1.5 py-0.5 text-xs font-bold text-[#111111] focus:outline-none focus:border-[#111111]"
-                />
-                <span className="text-[11px] font-bold text-[#5C3D2E]/70">WIB</span>
-              </div>
+          {/* SISI BAWAH: ATUR JAM OPERASIONAL & BUKA OTOMATIS (OWNER ONLY) */}
+          {activeRole === 'owner' ? (
+            <>
+              <div className="pt-3 border-t border-[#111111]/10 flex flex-col md:flex-row md:items-center justify-between gap-3">
+                <div className="flex flex-wrap items-center gap-2 sm:gap-3 text-xs font-sans">
+                  <span className="font-bold text-[#111111] flex items-center gap-1">
+                    <span>⏰</span> Jam Operasional:
+                  </span>
+                  <div className="inline-flex items-center gap-1.5 bg-[#FFF8E7] px-2.5 py-1 rounded-full border border-[#111111]/20">
+                    <span className="text-[11px] text-[#5C3D2E]/70 font-semibold">Buka:</span>
+                    <input
+                      type="time"
+                      value={localConfig.openHour || '10:00'}
+                      onChange={(e) => handleQuickHoursChange(e.target.value, localConfig.closeHour || '20:00')}
+                      className="bg-white border border-[#111111]/30 rounded-md px-1.5 py-0.5 text-xs font-bold text-[#111111] focus:outline-none focus:border-[#111111]"
+                    />
+                    <span className="text-[11px] text-[#5C3D2E]/70 font-semibold">s/d</span>
+                    <input
+                      type="time"
+                      value={localConfig.closeHour || '20:00'}
+                      onChange={(e) => handleQuickHoursChange(localConfig.openHour || '10:00', e.target.value)}
+                      className="bg-white border border-[#111111]/30 rounded-md px-1.5 py-0.5 text-xs font-bold text-[#111111] focus:outline-none focus:border-[#111111]"
+                    />
+                    <span className="text-[11px] font-bold text-[#5C3D2E]/70">WIB</span>
+                  </div>
 
-              {/* Quick Presets */}
-              <div className="hidden sm:flex items-center gap-1">
-                <button
-                  type="button"
-                  onClick={() => handleQuickHoursChange('10:00', '20:00')}
-                  className="cursor-pointer text-[10px] font-bold bg-white hover:bg-[#FFF8E7] border border-[#111111]/20 px-2 py-1 rounded-full transition"
-                >
-                  10:00-20:00 (Normal)
-                </button>
-                <button
-                  type="button"
-                  onClick={() => handleQuickHoursChange('07:00', '17:00')}
-                  className="cursor-pointer text-[10px] font-bold bg-white hover:bg-[#FFF8E7] border border-[#111111]/20 px-2 py-1 rounded-full transition"
-                >
-                  07:00-17:00 (Pagi)
-                </button>
-                <button
-                  type="button"
-                  onClick={() => handleQuickHoursChange('13:00', '21:00')}
-                  className="cursor-pointer text-[10px] font-bold bg-white hover:bg-[#FFF8E7] border border-[#111111]/20 px-2 py-1 rounded-full transition"
-                >
-                  13:00-21:00 (Sore-Malam)
-                </button>
-              </div>
-            </div>
+                  {/* Quick Presets */}
+                  <div className="hidden sm:flex items-center gap-1">
+                    <button
+                      type="button"
+                      onClick={() => handleQuickHoursChange('10:00', '20:00')}
+                      className="cursor-pointer text-[10px] font-bold bg-white hover:bg-[#FFF8E7] border border-[#111111]/20 px-2 py-1 rounded-full transition"
+                    >
+                      10:00-20:00 (Normal)
+                    </button>
+                    <button
+                      type="button"
+                      onClick={() => handleQuickHoursChange('07:00', '17:00')}
+                      className="cursor-pointer text-[10px] font-bold bg-white hover:bg-[#FFF8E7] border border-[#111111]/20 px-2 py-1 rounded-full transition"
+                    >
+                      07:00-17:00 (Pagi)
+                    </button>
+                    <button
+                      type="button"
+                      onClick={() => handleQuickHoursChange('13:00', '21:00')}
+                      className="cursor-pointer text-[10px] font-bold bg-white hover:bg-[#FFF8E7] border border-[#111111]/20 px-2 py-1 rounded-full transition"
+                    >
+                      13:00-21:00 (Sore-Malam)
+                    </button>
+                  </div>
+                </div>
 
-            {/* Toggle Auto Hours Checkbox */}
-            <label className="flex items-center gap-2 cursor-pointer font-sans text-xs font-bold text-[#111111] select-none">
-              <input
-                type="checkbox"
-                checked={localConfig.autoOperatingHours ?? true}
-                onChange={(e) => handleQuickAutoHoursToggle(e.target.checked)}
-                className="w-4 h-4 accent-[#111111] rounded cursor-pointer"
-              />
-              <span>Buka/Tutup Otomatis sesuai Jam</span>
-            </label>
-          </div>
-
-          {/* EXPANDABLE QUICK HOLIDAY POPUP MESSAGE EDITOR */}
-          {isQuickEditReasonOpen && (
-            <form
-              onSubmit={handleSaveQuickReason}
-              className="pt-3 border-t-2 border-dashed border-[#111111]/20 space-y-2.5 animate-in slide-in-from-top duration-200"
-            >
-              <div className="flex items-center justify-between">
-                <label className="block font-sans text-[11px] font-bold uppercase text-[#5C3D2E]/80">
-                  💬 Kalimat Pop-up Pengumuman Libur (Tampil di HP Pembeli):
+                {/* Toggle Auto Hours Checkbox */}
+                <label className="flex items-center gap-2 cursor-pointer font-sans text-xs font-bold text-[#111111] select-none">
+                  <input
+                    type="checkbox"
+                    checked={localConfig.autoOperatingHours ?? true}
+                    onChange={(e) => handleQuickAutoHoursToggle(e.target.checked)}
+                    className="w-4 h-4 accent-[#111111] rounded cursor-pointer"
+                  />
+                  <span>Buka/Tutup Otomatis sesuai Jam</span>
                 </label>
-                <button
-                  type="button"
-                  onClick={() => setIsQuickEditReasonOpen(false)}
-                  className="text-xs text-[#5C3D2E]/70 hover:text-black font-bold cursor-pointer"
-                >
-                  Tutup ✕
-                </button>
               </div>
-              <textarea
-                rows={2}
-                value={quickReasonInput}
-                onChange={(e) => setQuickReasonInput(e.target.value)}
-                placeholder="Contoh: Maaf ya rek, hari ini dapur Dulang lagi libur goreng dulu ada acara keluarga. Besok subuh kita mulai goreng anget lagi!"
-                className="w-full rounded-[14px] border-2 border-[#111111] p-2.5 font-sans text-xs focus:outline-none focus:border-[#FFD700] bg-[#FFF8E7]"
-              />
-              <div className="flex flex-wrap items-center justify-between gap-2">
-                <div className="flex flex-wrap items-center gap-1.5">
-                  <span className="text-[10px] text-[#5C3D2E]/70 font-bold">Contoh Cepat:</span>
-                  <button
-                    type="button"
-                    onClick={() =>
-                      setQuickReasonInput('Maaf ya rek, hari ini dapur Dulang lagi libur goreng dulu. Besok subuh kita mulai goreng anget lagi!')
-                    }
-                    className="cursor-pointer text-[10px] bg-white hover:bg-amber-100 border border-[#111111]/20 px-2 py-0.5 rounded-full"
-                  >
-                    Libur Keluarga
-                  </button>
-                  <button
-                    type="button"
-                    onClick={() =>
-                      setQuickReasonInput('Hari ini dapur libur dulu ya rek, tim lagi belanja bahan baku segar ke pasar. Buka kembali besok!')
-                    }
-                    className="cursor-pointer text-[10px] bg-white hover:bg-amber-100 border border-[#111111]/20 px-2 py-0.5 rounded-full"
-                  >
-                    Belanja Pasar
-                  </button>
-                  <button
-                    type="button"
-                    onClick={() =>
-                      setQuickReasonInput('Kuah mayo & kulit risoles ludes terjual lebih awal! Wajan istirahat dulu, ketemu besok jam 10 ya rek!')
-                    }
-                    className="cursor-pointer text-[10px] bg-white hover:bg-amber-100 border border-[#111111]/20 px-2 py-0.5 rounded-full"
-                  >
-                    Sold Out Lebih Awal
-                  </button>
-                </div>
-                <div className="flex items-center gap-2">
-                  <button
-                    type="button"
-                    onClick={() => setShowClosedPreview(true)}
-                    className="cursor-pointer bg-white text-[#111111] hover:bg-[#FFF8E7] border border-[#111111] px-3 py-1.5 rounded-full font-sans font-bold text-xs"
-                  >
-                    👀 Pratinjau
-                  </button>
-                  <button
-                    type="submit"
-                    className="cursor-pointer bg-[#111111] hover:bg-black text-[#FFD700] px-4 py-1.5 rounded-full font-sans font-bold text-xs shadow-xs border border-[#111111]"
-                  >
-                    Simpan Pesan Pengumuman ✓
-                  </button>
-                </div>
-              </div>
-            </form>
-          )}
 
-          {isMobileMerchantBarExpanded && (
-            <div className="sm:hidden flex justify-end pt-2 border-t border-[#111111]/10">
-              <button
-                type="button"
-                onClick={() => setIsMobileMerchantBarExpanded(false)}
-                className="text-xs text-[#5C3D2E]/80 hover:text-black font-bold flex items-center gap-1 cursor-pointer"
-              >
-                <span>▲ Sembunyikan Detail Jam</span>
-              </button>
+              {/* EXPANDABLE QUICK HOLIDAY POPUP MESSAGE EDITOR */}
+              {isQuickEditReasonOpen && (
+                <form
+                  onSubmit={handleSaveQuickReason}
+                  className="pt-3 border-t-2 border-dashed border-[#111111]/20 space-y-2.5 animate-in slide-in-from-top duration-200"
+                >
+                  <div className="flex items-center justify-between">
+                    <label className="block font-sans text-[11px] font-bold uppercase text-[#5C3D2E]/80">
+                      💬 Kalimat Pop-up Pengumuman Libur (Tampil di HP Pembeli):
+                    </label>
+                    <button
+                      type="button"
+                      onClick={() => setIsQuickEditReasonOpen(false)}
+                      className="text-xs text-[#5C3D2E]/70 hover:text-black font-bold cursor-pointer"
+                    >
+                      Tutup ✕
+                    </button>
+                  </div>
+                  <textarea
+                    rows={2}
+                    value={quickReasonInput}
+                    onChange={(e) => setQuickReasonInput(e.target.value)}
+                    placeholder="Contoh: Maaf ya rek, hari ini dapur Dulang lagi libur goreng dulu ada acara keluarga. Besok subuh kita mulai goreng anget lagi!"
+                    className="w-full rounded-[14px] border-2 border-[#111111] p-2.5 font-sans text-xs focus:outline-none focus:border-[#FFD700] bg-[#FFF8E7]"
+                  />
+                  <div className="flex flex-wrap items-center justify-between gap-2">
+                    <div className="flex flex-wrap items-center gap-1.5">
+                      <span className="text-[10px] text-[#5C3D2E]/70 font-bold">Contoh Cepat:</span>
+                      <button
+                        type="button"
+                        onClick={() =>
+                          setQuickReasonInput('Maaf ya rek, hari ini dapur Dulang lagi libur goreng dulu. Besok subuh kita mulai goreng anget lagi!')
+                        }
+                        className="cursor-pointer text-[10px] bg-white hover:bg-amber-100 border border-[#111111]/20 px-2 py-0.5 rounded-full"
+                      >
+                        Libur Keluarga
+                      </button>
+                      <button
+                        type="button"
+                        onClick={() =>
+                          setQuickReasonInput('Hari ini dapur libur dulu ya rek, tim lagi belanja bahan baku segar ke pasar. Buka kembali besok!')
+                        }
+                        className="cursor-pointer text-[10px] bg-white hover:bg-amber-100 border border-[#111111]/20 px-2 py-0.5 rounded-full"
+                      >
+                        Belanja Pasar
+                      </button>
+                      <button
+                        type="button"
+                        onClick={() =>
+                          setQuickReasonInput('Kuah mayo & kulit risoles ludes terjual lebih awal! Wajan istirahat dulu, ketemu besok jam 10 ya rek!')
+                        }
+                        className="cursor-pointer text-[10px] bg-white hover:bg-amber-100 border border-[#111111]/20 px-2 py-0.5 rounded-full"
+                      >
+                        Sold Out Lebih Awal
+                      </button>
+                    </div>
+                    <div className="flex items-center gap-2">
+                      <button
+                        type="button"
+                        onClick={() => setShowClosedPreview(true)}
+                        className="cursor-pointer bg-white text-[#111111] hover:bg-[#FFF8E7] border border-[#111111] px-3 py-1.5 rounded-full font-sans font-bold text-xs"
+                      >
+                        👀 Pratinjau
+                      </button>
+                      <button
+                        type="submit"
+                        className="cursor-pointer bg-[#111111] hover:bg-black text-[#FFD700] px-4 py-1.5 rounded-full font-sans font-bold text-xs shadow-xs border border-[#111111]"
+                      >
+                        Simpan Pesan Pengumuman ✓
+                      </button>
+                    </div>
+                  </div>
+                </form>
+              )}
+
+              {isMobileMerchantBarExpanded && (
+                <div className="sm:hidden flex justify-end pt-2 border-t border-[#111111]/10">
+                  <button
+                    type="button"
+                    onClick={() => setIsMobileMerchantBarExpanded(false)}
+                    className="text-xs text-[#5C3D2E]/80 hover:text-black font-bold flex items-center gap-1 cursor-pointer"
+                  >
+                    <span>▲ Sembunyikan Detail Jam</span>
+                  </button>
+                </div>
+              )}
+            </>
+          ) : (
+            <div className="pt-2.5 border-t border-[#111111]/10 flex items-center justify-between text-xs font-sans text-[#5C3D2E]/80">
+              <span>
+                ⏰ Jam Operasional Dapur: <strong>{localConfig.openHour || '10:00'} - {localConfig.closeHour || '20:00'} WIB</strong>
+              </span>
+              <span className="text-[11px] font-semibold">🔒 Perubahan jadwal hanya via Owner</span>
             </div>
           )}
         </div>
@@ -3285,12 +3577,12 @@ Catatan Kurir: Pastikan posisi dus ditaruh datar agar mayo tidak tumpah ya kak.`
                 </button>
                 <button
                   type="button"
-                  onClick={() => {
+                  onClick={async () => {
                     const conf = window.confirm(
                       'Muat ulang seluruh menu standar Dapur Dulang (termasuk varian Gorengan Matang & Frozen Pack)?'
                     );
                     if (conf) {
-                      const fresh = storageService.resetDefaultMenus();
+                      const fresh = await storageService.resetDefaultMenus();
                       onUpdateMenus(fresh);
                       onShowToast('Seluruh menu standar Dulang berhasil dimuat ulang! ✓');
                     }
@@ -3318,8 +3610,8 @@ Catatan Kurir: Pastikan posisi dus ditaruh datar agar mayo tidak tumpah ya kak.`
             )}
           </div>
 
-          {/* Modal / Bottom Sheet: Tambah Menu Baru */}
-          {isAddingMenu && (
+          {/* Modal / Bottom Sheet: Tambah Menu Baru (Owner Only) */}
+          {activeRole === 'owner' && isAddingMenu && (
             <div
               onClick={() => setIsAddingMenu(false)}
               className="fixed inset-0 z-50 flex items-end sm:items-center justify-center bg-black/60 backdrop-blur-xs p-0 sm:p-4"
@@ -3504,8 +3796,8 @@ Catatan Kurir: Pastikan posisi dus ditaruh datar agar mayo tidak tumpah ya kak.`
             </div>
           )}
 
-          {/* Modal / Bottom Sheet: Edit Menu */}
-          {editingItem && (
+          {/* Modal / Bottom Sheet: Edit Menu (Owner Only) */}
+          {activeRole === 'owner' && editingItem && (
             <div
               onClick={() => setEditingItem(null)}
               className="fixed inset-0 z-50 flex items-end sm:items-center justify-center bg-black/60 backdrop-blur-xs p-0 sm:p-4"
@@ -4035,7 +4327,15 @@ Catatan Kurir: Pastikan posisi dus ditaruh datar agar mayo tidak tumpah ya kak.`
                 {/* Footer Kartu Mobile: Petunjuk Ketuk & Pre-order Besok */}
                 <div className="mt-2 pt-1.5 border-t border-[#111111]/10 flex items-center justify-between text-[10px] text-[#5C3D2E]/70 font-semibold">
                   <span className="flex items-center gap-1 text-[#111111]">
-                    <span>✏️</span> Atur
+                    {activeRole === 'owner' ? (
+                      <>
+                        <span>✏️</span> Atur
+                      </>
+                    ) : (
+                      <>
+                        <span>🔄</span> Status
+                      </>
+                    )}
                   </span>
                   <span
                     className={`text-[9px] px-1.5 py-0.5 rounded border ${
@@ -4171,7 +4471,7 @@ Catatan Kurir: Pastikan posisi dus ditaruh datar agar mayo tidak tumpah ya kak.`
                             Set 0
                           </button>
                         </div>
-                      ) : (
+                      ) : activeRole === 'owner' ? (
                         <button
                           type="button"
                           onClick={() => {
@@ -4189,6 +4489,8 @@ Catatan Kurir: Pastikan posisi dus ditaruh datar agar mayo tidak tumpah ya kak.`
                         >
                           + Pasang Kuota Porsi
                         </button>
+                      ) : (
+                        <span className="text-[11px] text-[#5C3D2E]/60 italic">Tanpa kuota porsi</span>
                       )}
                     </div>
                   </div>
@@ -4234,13 +4536,15 @@ Catatan Kurir: Pastikan posisi dus ditaruh datar agar mayo tidak tumpah ya kak.`
                     📅 Besok: {m.tersediaBesok !== false ? 'Buka' : 'Tutup'}
                   </button>
 
-                  <button
-                    type="button"
-                    onClick={() => handleDeleteItem(m.id)}
-                    className="cursor-pointer px-3 py-1.5 rounded-full font-sans font-bold text-xs bg-red-50 text-red-700 border-2 border-red-200 hover:bg-red-100"
-                  >
-                    Hapus
-                  </button>
+                  {activeRole === 'owner' && (
+                    <button
+                      type="button"
+                      onClick={() => handleDeleteItem(m.id)}
+                      className="cursor-pointer px-3 py-1.5 rounded-full font-sans font-bold text-xs bg-red-50 text-red-700 border-2 border-red-200 hover:bg-red-100"
+                    >
+                      Hapus
+                    </button>
+                  )}
                 </div>
               </div>
             ))}
@@ -5460,7 +5764,7 @@ Catatan Kurir: Pastikan posisi dus ditaruh datar agar mayo tidak tumpah ya kak.`
                                   const waNum = cleanWa.startsWith('0') ? '62' + cleanWa.slice(1) : cleanWa;
                                   url = `https://wa.me/${waNum}?text=${encodeURIComponent(waMsg)}`;
                                 }
-                                window.open(url, '_blank');
+                                window.open(url, '_blank', 'noopener,noreferrer');
                                 onShowToast(`Membuka WhatsApp untuk kirim link lacak pesanan #${ord.id}... 📱`);
                               }}
                               className="cursor-pointer px-3 py-1.5 rounded-full font-sans font-bold text-xs bg-amber-500 text-black border border-amber-600 hover:bg-amber-400 flex items-center gap-1 transition shadow-xs"
@@ -7562,22 +7866,22 @@ Catatan Kurir: Pastikan posisi dus ditaruh datar agar mayo tidak tumpah ya kak.`
               <h2 className="font-hand font-bold text-[30px] text-[#111111] leading-none">
                 Ganti Password / PIN Pemilik
               </h2>
-              {activePin !== 'dulang2020' ? (
+              {!isDefaultOwnerPin ? (
                 <div className="mt-2 bg-emerald-50 border border-emerald-300 rounded-[14px] p-3.5 text-emerald-900 text-xs font-sans space-y-1">
                   <div className="font-bold flex items-center gap-1.5 text-[13px] text-emerald-800">
-                    <span>✅</span> Password Pribadi Sedang Aktif
+                    <span>✅</span> Password Pribadi Terenkripsi Aktif
                   </div>
                   <p className="text-emerald-700">
-                    Kode bawaan lama <code className="bg-emerald-100 px-1.5 py-0.5 rounded font-mono font-bold">dulang2020</code> sudah <strong>HANGUS</strong> dan tidak bisa dipakai siapa pun lagi.
+                    Kredensial bawaan pabrik sudah <strong>HANGUS</strong> dan tergantikan oleh hash kriptografi <code className="bg-emerald-100 px-1.5 py-0.5 rounded font-mono font-bold">PBKDF2-HMAC-SHA256</code> tersinkron cloud.
                   </p>
                 </div>
               ) : (
                 <div className="mt-2 bg-amber-50 border border-amber-300 rounded-[14px] p-3.5 text-amber-950 text-xs font-sans space-y-1">
                   <div className="font-bold flex items-center gap-1.5 text-[13px] text-amber-900">
-                    <span>⚠️</span> Masih Menggunakan Kode Bawaan Sementara
+                    <span>⚠️</span> Masih Menggunakan Kredensial Bawaan Awal
                   </div>
                   <p className="text-amber-800">
-                    Segera masukkan kata sandi rahasia pribadimu di bawah ini agar akses dapur terkunci aman hanya untukmu.
+                    Segera buat kata sandi rahasia pribadimu (minimal 6 karakter) di bawah ini agar akses dapur terkunci aman dengan PBKDF2-HMAC-SHA256.
                   </p>
                 </div>
               )}
@@ -7591,24 +7895,26 @@ Catatan Kurir: Pastikan posisi dus ditaruh datar agar mayo tidak tumpah ya kak.`
                 <input
                   type="password"
                   required
+                  autoComplete="current-password"
                   value={oldPin}
                   onChange={(e) => setOldPin(e.target.value)}
-                  placeholder="Ketik password lama (bawaan: dulang2020)..."
+                  placeholder="Ketik password / PIN aktif saat ini..."
                   className="w-full rounded-full border-2 border-[#111111] px-5 py-2.5 font-sans font-bold text-sm focus:outline-none focus:border-[#FFD700] bg-white shadow-sm"
                 />
               </div>
 
               <div>
                 <label className="block font-sans text-xs font-bold text-[#111111] mb-1">
-                  2. Buat Password/PIN Baru *
+                  2. Buat Password/PIN Baru (Min. 6 Karakter) *
                 </label>
                 <input
                   type="password"
                   required
-                  minLength={4}
+                  minLength={6}
+                  autoComplete="new-password"
                   value={newPin}
                   onChange={(e) => setNewPin(e.target.value)}
-                  placeholder="Password rahasia baru (minimal 4 karakter)..."
+                  placeholder="Password rahasia baru (minimal 6 karakter)..."
                   className="w-full rounded-full border-2 border-[#111111] px-5 py-2.5 font-sans font-bold text-sm focus:outline-none focus:border-[#FFD700] bg-white shadow-sm"
                 />
               </div>
@@ -7620,7 +7926,8 @@ Catatan Kurir: Pastikan posisi dus ditaruh datar agar mayo tidak tumpah ya kak.`
                 <input
                   type="password"
                   required
-                  minLength={4}
+                  minLength={6}
+                  autoComplete="new-password"
                   value={confirmPin}
                   onChange={(e) => setConfirmPin(e.target.value)}
                   placeholder="Ulangi password rahasia baru..."
@@ -7652,7 +7959,7 @@ Catatan Kurir: Pastikan posisi dus ditaruh datar agar mayo tidak tumpah ya kak.`
                 PIN Kasir Stand & Kru Dapur (KDS)
               </h2>
               <p className="font-sans text-xs text-[#5C3D2E]/70 mt-1">
-                Atur PIN khusus untuk karyawan tanpa memberikan akses ke laba bersih harian, HPP resep rahasia, atau tombol hapus pesanan.
+                Atur PIN khusus untuk karyawan tanpa memberikan akses ke laba bersih harian, HPP resep rahasia, atau tombol hapus pesanan. PIN disimpan hanya sebagai hash acak PBKDF2-HMAC-SHA256.
               </p>
             </div>
 
@@ -7672,18 +7979,20 @@ Catatan Kurir: Pastikan posisi dus ditaruh datar agar mayo tidak tumpah ya kak.`
                 </p>
                 <div>
                   <label className="block font-sans text-[11px] font-bold uppercase text-[#5C3D2E]/80 mb-1">
-                    PIN Kasir Baru (Min. 3 Digit):
+                    PIN Kasir Baru (Min. 4 Karakter):
                   </label>
                   <input
-                    type="text"
-                    value={localConfig.cashierPin || ''}
-                    onChange={(e) => setLocalConfig({ ...localConfig, cashierPin: e.target.value })}
-                    placeholder="1234"
-                    className="w-full rounded-[12px] border-2 border-[#111111] px-4 py-2 font-mono font-bold text-base bg-white focus:outline-none focus:border-[#FFD700]"
+                    type="password"
+                    minLength={4}
+                    autoComplete="new-password"
+                    value={newCashierPin}
+                    onChange={(e) => setNewCashierPin(e.target.value)}
+                    placeholder="Ketik PIN Kasir baru (kosongkan jika tetap)..."
+                    className="w-full rounded-[12px] border-2 border-[#111111] px-4 py-2 font-mono font-bold text-sm bg-white focus:outline-none focus:border-[#FFD700]"
                   />
                 </div>
-                <div className="text-[11px] font-sans text-[#5C3D2E]/70">
-                  Default sistem: <strong className="font-mono">1234</strong>
+                <div className="text-[11px] font-sans text-emerald-700 font-semibold">
+                  🔐 Disimpan terenkripsi (kosongkan jika tidak mengubah PIN Kasir)
                 </div>
               </div>
 
@@ -7702,28 +8011,46 @@ Catatan Kurir: Pastikan posisi dus ditaruh datar agar mayo tidak tumpah ya kak.`
                 </p>
                 <div>
                   <label className="block font-sans text-[11px] font-bold uppercase text-[#5C3D2E]/80 mb-1">
-                    PIN Dapur Baru (Min. 3 Digit):
+                    PIN Dapur Baru (Min. 4 Karakter):
                   </label>
                   <input
-                    type="text"
-                    value={localConfig.kitchenPin || ''}
-                    onChange={(e) => setLocalConfig({ ...localConfig, kitchenPin: e.target.value })}
-                    placeholder="0000"
-                    className="w-full rounded-[12px] border-2 border-[#111111] px-4 py-2 font-mono font-bold text-base bg-white focus:outline-none focus:border-[#FFD700]"
+                    type="password"
+                    minLength={4}
+                    autoComplete="new-password"
+                    value={newKitchenPin}
+                    onChange={(e) => setNewKitchenPin(e.target.value)}
+                    placeholder="Ketik PIN Dapur baru (kosongkan jika tetap)..."
+                    className="w-full rounded-[12px] border-2 border-[#111111] px-4 py-2 font-mono font-bold text-sm bg-white focus:outline-none focus:border-[#FFD700]"
                   />
                 </div>
-                <div className="text-[11px] font-sans text-[#5C3D2E]/70">
-                  Default sistem: <strong className="font-mono">0000</strong>
+                <div className="text-[11px] font-sans text-emerald-700 font-semibold">
+                  🔐 Disimpan terenkripsi (kosongkan jika tidak mengubah PIN Dapur)
                 </div>
               </div>
+            </div>
+
+            <div className="max-w-md pt-1">
+              <label className="block font-sans text-xs font-bold text-[#111111] mb-1">
+                Verifikasi Password / PIN Owner Aktif *
+              </label>
+              <input
+                type="password"
+                required
+                autoComplete="current-password"
+                value={staffPinOwnerVerify}
+                onChange={(e) => setStaffPinOwnerVerify(e.target.value)}
+                placeholder="Masukkan Password Owner untuk otorisasi perubahan..."
+                className="w-full rounded-[12px] border-2 border-[#111111] px-4 py-2 font-sans font-bold text-sm bg-white focus:outline-none focus:border-[#FFD700]"
+              />
             </div>
 
             <div className="flex justify-end pt-2">
               <button
                 type="submit"
-                className="cursor-pointer bg-[#111111] text-[#FFD700] rounded-full px-6 py-2.5 font-sans font-bold text-xs border-2 border-[#111111] shadow-[2px_2px_0_#FFD700] hover:brightness-110 active:translate-x-0.5 active:translate-y-0.5 transition"
+                disabled={isSavingStaffPins}
+                className="cursor-pointer bg-[#111111] text-[#FFD700] rounded-full px-6 py-2.5 font-sans font-bold text-xs border-2 border-[#111111] shadow-[2px_2px_0_#FFD700] hover:brightness-110 active:translate-x-0.5 active:translate-y-0.5 transition disabled:opacity-50"
               >
-                Simpan PIN Kasir & Dapur ✓
+                {isSavingStaffPins ? 'Menyimpan Enkripsi...' : 'Simpan PIN Kasir & Dapur ✓'}
               </button>
             </div>
           </form>
@@ -7882,6 +8209,11 @@ Catatan Kurir: Pastikan posisi dus ditaruh datar agar mayo tidak tumpah ya kak.`
                             {log.action === 'LOGIN_FAILED' && '🔴 Login Gagal'}
                             {log.action === 'LOCKOUT_TRIGGERED' && '⛔ Lockout 10 Menit'}
                             {log.action === 'PIN_CHANGED' && '🔐 PIN Diganti'}
+                            {log.action === 'ROLE_SWITCHED' && '🔄 Peran Diganti'}
+                            {log.action === 'PRINT_REPRINT' && '🖨️ Cetak / Cetak Ulang'}
+                            {log.action === 'ORDER_VOIDED' && '🚫 Nota Di-VOID'}
+                            {log.action === 'DATA_CLEARED' && '🧹 Pembersihan Data'}
+                            {log.action === 'SETTINGS_UPDATED' && '⚙️ Pengaturan Diubah'}
                             {log.action === 'BACKUP_EXPORTED' && '💾 Ekspor Cadangan'}
                             {log.action === 'BACKUP_RESTORED' && '⚠️ Pemulihan Data'}
                           </td>
@@ -8135,16 +8467,17 @@ Catatan Kurir: Pastikan posisi dus ditaruh datar agar mayo tidak tumpah ya kak.`
             <div className="flex flex-wrap items-center gap-3 pt-2">
               <button
                 type="button"
-                onClick={() => {
+                onClick={async () => {
                   const confirmClean = window.confirm(
                     '⚠️ KONFIRMASI PEMBERSIHAN DATA:\n\nApakah Anda yakin ingin membersihkan seluruh data riwayat transaksi, pelanggan percobaan, dan catatan pengeluaran?\n\n• Seluruh MENU, HARGA, & FOTO tetap AMAN 100%.\n\nKlik OK untuk membersihkan.'
                   );
                   if (confirmClean) {
-                    storageService.clearAllDemoData();
+                    await storageService.clearAllDemoData();
                     setCustomers([]);
                     setOrders([]);
                     setExpenses([]);
                     setTestimonials([]);
+                    logSecurityEvent('DATA_CLEARED', 'Seluruh riwayat transaksi & percobaan dibersihkan permanen oleh Owner.', 'ALERT');
                     onShowToast('🧹 Riwayat transaksi & percobaan berhasil dibersihkan! Dapur siap melayani transaksi riil.');
                   }
                 }}
@@ -10059,7 +10392,7 @@ Catatan Kurir: Pastikan posisi dus ditaruh datar agar mayo tidak tumpah ya kak.`
           <StickerGeneratorView
             onShowToast={onShowToast}
             onNavigateToScan={(qrId) => {
-              window.open(`/?scan=${qrId}`, '_blank');
+              window.open(`/?scan=${qrId}`, '_blank', 'noopener,noreferrer');
             }}
           />
         </div>
@@ -11253,7 +11586,7 @@ Catatan Kurir: Pastikan posisi dus ditaruh datar agar mayo tidak tumpah ya kak.`
                 </div>
 
                 <div
-                  onClick={() => setSwitchRolePinInput(localConfig.cashierPin || '1234')}
+                  onClick={() => setSwitchRolePinInput('')}
                   className={`p-3 rounded-[14px] border-2 transition cursor-pointer flex items-start gap-2.5 ${
                     activeRole === 'cashier'
                       ? 'border-[#FFD700] bg-[#FFFDF4]'
@@ -11264,8 +11597,8 @@ Catatan Kurir: Pastikan posisi dus ditaruh datar agar mayo tidak tumpah ya kak.`
                   <div className="flex-1">
                     <div className="font-bold text-[#111111] flex items-center justify-between">
                       <span>Kasir Stand POS</span>
-                      <span className="text-[10px] text-blue-600 font-mono font-bold">
-                        PIN: {localConfig.cashierPin || '1234'}
+                      <span className="text-[10px] text-gray-500 font-mono font-bold">
+                        PIN Khusus Kasir
                       </span>
                     </div>
                     <p className="text-[11px] text-[#5C3D2E]/75 mt-0.5">
@@ -11275,7 +11608,7 @@ Catatan Kurir: Pastikan posisi dus ditaruh datar agar mayo tidak tumpah ya kak.`
                 </div>
 
                 <div
-                  onClick={() => setSwitchRolePinInput(localConfig.kitchenPin || '0000')}
+                  onClick={() => setSwitchRolePinInput('')}
                   className={`p-3 rounded-[14px] border-2 transition cursor-pointer flex items-start gap-2.5 ${
                     activeRole === 'kitchen'
                       ? 'border-[#FFD700] bg-[#FFFDF4]'
@@ -11286,8 +11619,8 @@ Catatan Kurir: Pastikan posisi dus ditaruh datar agar mayo tidak tumpah ya kak.`
                   <div className="flex-1">
                     <div className="font-bold text-[#111111] flex items-center justify-between">
                       <span>Kru Dapur (Layar KDS)</span>
-                      <span className="text-[10px] text-blue-600 font-mono font-bold">
-                        PIN: {localConfig.kitchenPin || '0000'}
+                      <span className="text-[10px] text-gray-500 font-mono font-bold">
+                        PIN Khusus Dapur
                       </span>
                     </div>
                     <p className="text-[11px] text-[#5C3D2E]/75 mt-0.5">
@@ -11312,7 +11645,7 @@ Catatan Kurir: Pastikan posisi dus ditaruh datar agar mayo tidak tumpah ya kak.`
                       setSwitchRolePinInput(e.target.value);
                       if (switchRoleError) setSwitchRoleError('');
                     }}
-                    placeholder="Ketik PIN..."
+                    placeholder="Ketik PIN peran..."
                     className="w-full rounded-[14px] border-2 border-[#111111] px-4 py-2.5 font-mono font-bold text-center text-lg bg-white focus:outline-none focus:border-[#FFD700] shadow-sm tracking-widest"
                   />
                   {switchRoleError && (
@@ -11320,25 +11653,6 @@ Catatan Kurir: Pastikan posisi dus ditaruh datar agar mayo tidak tumpah ya kak.`
                       {switchRoleError}
                     </p>
                   )}
-                </div>
-
-                {/* Quick Fill Buttons for ease of test / operator use */}
-                <div className="flex items-center justify-center gap-1.5 text-[10px] font-sans">
-                  <span className="text-gray-500">Isi cepat:</span>
-                  <button
-                    type="button"
-                    onClick={() => setSwitchRolePinInput(localConfig.cashierPin || '1234')}
-                    className="cursor-pointer bg-amber-50 hover:bg-amber-100 text-[#5C3D2E] px-2 py-0.5 rounded-full border border-amber-200 font-mono"
-                  >
-                    Kasir ({localConfig.cashierPin || '1234'})
-                  </button>
-                  <button
-                    type="button"
-                    onClick={() => setSwitchRolePinInput(localConfig.kitchenPin || '0000')}
-                    className="cursor-pointer bg-amber-50 hover:bg-amber-100 text-[#5C3D2E] px-2 py-0.5 rounded-full border border-amber-200 font-mono"
-                  >
-                    Dapur ({localConfig.kitchenPin || '0000'})
-                  </button>
                 </div>
 
                 <div className="pt-2 flex items-center justify-end gap-2">
@@ -12125,7 +12439,7 @@ Catatan Kurir: Pastikan posisi dus ditaruh datar agar mayo tidak tumpah ya kak.`
                       const waNum = cleanWa.startsWith('0') ? '62' + cleanWa.slice(1) : cleanWa;
                       url = `https://wa.me/${waNum}?text=${encodeURIComponent(waMsg)}`;
                     }
-                    window.open(url, '_blank');
+                    window.open(url, '_blank', 'noopener,noreferrer');
                     onShowToast(`Membuka WhatsApp link live tracking pesanan #${ord.id}... 📱`);
                   }}
                   className="cursor-pointer p-3 rounded-2xl bg-amber-50 border-2 border-amber-600 shadow-[2px_2px_0_#d97706] flex items-center gap-2 hover:bg-amber-100 transition active:scale-95 text-left"

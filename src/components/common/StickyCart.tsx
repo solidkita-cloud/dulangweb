@@ -1,4 +1,4 @@
-import React, { useState, useEffect } from 'react';
+import React, { useState, useEffect, useRef } from 'react';
 import { CartItem, Voucher, Customer, GoldenTicketRecord, StoreConfig } from '../../types';
 import { BRAND, LOCKED_COPY, DEFAULT_SIDOARJO_DELIVERY_RATES, checkStoreOpenStatus } from '../../lib/constants';
 import { storageService } from '../../services/storageService';
@@ -108,6 +108,7 @@ export const StickyCart: React.FC<StickyCartProps> = ({
   const openStatus = checkStoreOpenStatus(storeConfig);
 
   // 3a: Jadwal Kirim (Hari Ini vs Pre-Order Besok)
+  const hasManualScheduleRef = useRef(false);
   const [deliveryDay, setDeliveryDay] = useState<'today' | 'tomorrow'>(() => {
     return checkStoreOpenStatus(storeConfig).isOpen ? 'today' : 'tomorrow';
   });
@@ -117,6 +118,14 @@ export const StickyCart: React.FC<StickyCartProps> = ({
       : 'Subuh/Pagi (07.00 - 08.30) 🌅';
   });
   const [customTimeInput, setCustomTimeInput] = useState<string>('');
+
+  useEffect(() => {
+    if (!isDetailOpen && !hasManualScheduleRef.current) {
+      const nextIsOpen = checkStoreOpenStatus(storeConfig).isOpen;
+      setDeliveryDay(nextIsOpen ? 'today' : 'tomorrow');
+      setDeliverySlot(nextIsOpen ? 'Sekarang / Fresh Panas 🍳' : 'Subuh/Pagi (07.00 - 08.30) 🌅');
+    }
+  }, [storeConfig, openStatus.isOpen, isDetailOpen]);
 
   // Step 6 & 7: Sistem Voucher Diskon Unik ("Voucher Beranak")
   const [voucherCodeInput, setVoucherCodeInput] = useState('');
@@ -632,6 +641,7 @@ export const StickyCart: React.FC<StickyCartProps> = ({
                   <button
                     type="button"
                     onClick={() => {
+                      hasManualScheduleRef.current = true;
                       setDeliveryDay('today');
                       if (deliverySlot.includes('Subuh')) {
                         setDeliverySlot('Sekarang / Fresh Panas 🍳');
@@ -649,6 +659,7 @@ export const StickyCart: React.FC<StickyCartProps> = ({
                   <button
                     type="button"
                     onClick={() => {
+                      hasManualScheduleRef.current = true;
                       setDeliveryDay('tomorrow');
                       if (deliverySlot === 'Sekarang / Fresh Panas 🍳') {
                         setDeliverySlot('Subuh/Pagi (07.00 - 08.30) 🌅');

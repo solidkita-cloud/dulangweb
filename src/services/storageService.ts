@@ -41,8 +41,12 @@ import {
   isOwnerSessionValid,
   createOwnerSession,
   clearOwnerSession,
+  getOwnerSessionRole,
   hashPassword,
   verifyPassword,
+  DEFAULT_AUTH_HASHES,
+  LEGACY_DEFAULT_OWNER_SHA256,
+  isHashFormat,
 } from '../lib/security';
 
 const STORAGE_KEYS = {
@@ -65,6 +69,129 @@ const STORAGE_KEYS = {
   SHIFT_HISTORY: 'dulang_shift_history_v1',
 };
 
+const AUTH_HASHES_KEY = 'dulang_auth_hashes_v1';
+const DELETED_MENU_IDS_KEY = 'dulang_deleted_menu_ids';
+const SYS_STORE_CONFIG_ID = 'sys_store_config';
+const SYS_AUTH_META_ID = 'sys_auth_meta';
+const SYS_PUBLIC_TESTIMONIALS_ID = 'sys_public_testimonials';
+
+export interface AuthHashesRecord {
+  ownerHash: string;
+  cashierHash: string;
+  kitchenHash: string;
+  isDefaultOwnerPin: boolean;
+  updatedAt: string;
+}
+
+export function sanitizeStoreConfig<T extends Record<string, any>>(cfg: T): Omit<T, 'ownerPin' | 'cashierPin' | 'kitchenPin'> {
+  const clean: Record<string, any> = { ...(cfg || {}) };
+  delete clean.ownerPin;
+  delete clean.cashierPin;
+  delete clean.kitchenPin;
+  return clean as Omit<T, 'ownerPin' | 'cashierPin' | 'kitchenPin'>;
+}
+
+function isSystemOrLegacyMenuId(id?: string): boolean {
+  if (!id) return true;
+  return id.startsWith('sys_') || id.startsWith('cof-') || id.startsWith('dnt-');
+}
+
+const DULANG_MENU_META_PREFIX = '<!--DULANG_MENU_META:';
+const DULANG_MENU_META_SUFFIX = '-->';
+
+export interface MenuPackedMeta {
+  stokHarian?: number | null;
+  sisaStok?: number | null;
+  servingType?: 'matang_only' | 'frozen_only' | 'both';
+  variantType?: 'matang' | 'frozen';
+  tersediaBesok?: boolean;
+  kloterBadge?: string;
+  opsi?: string[];
+  sortOrder?: number;
+  deleted?: boolean;
+}
+
+export function packMenuDescription(cleanDesc: string | null | undefined, meta: MenuPackedMeta): string {
+  const base = (cleanDesc || '').trim();
+  const stripped = base.replace(/<!--DULANG_MENU_META:[\s\S]*?-->/g, '').trim();
+
+  const cleanMeta: Record<string, any> = {};
+  if (meta.stokHarian !== undefined) cleanMeta.sh = meta.stokHarian;
+  if (meta.sisaStok !== undefined) cleanMeta.ss = meta.sisaStok;
+  if (meta.servingType) cleanMeta.st = meta.servingType;
+  if (meta.variantType) cleanMeta.vt = meta.variantType;
+  if (meta.tersediaBesok !== undefined) cleanMeta.tb = meta.tersediaBesok;
+  if (meta.kloterBadge) cleanMeta.kb = meta.kloterBadge;
+  if (Array.isArray(meta.opsi) && meta.opsi.length > 0) cleanMeta.op = meta.opsi;
+  if (meta.sortOrder !== undefined && Number.isFinite(meta.sortOrder)) cleanMeta.so = meta.sortOrder;
+  if (meta.deleted) cleanMeta.del = true;
+
+  if (Object.keys(cleanMeta).length === 0) return stripped;
+  const jsonStr = JSON.stringify(cleanMeta);
+  return stripped
+    ? `${stripped}\n${DULANG_MENU_META_PREFIX}${jsonStr}${DULANG_MENU_META_SUFFIX}`
+    : `${DULANG_MENU_META_PREFIX}${jsonStr}${DULANG_MENU_META_SUFFIX}`;
+}
+
+export function unpackMenuDescription(rawDesc: string | null | undefined): {
+  cleanDesc: string;
+  meta: MenuPackedMeta;
+} {
+  if (!rawDesc) return { cleanDesc: '', meta: {} };
+  const match = rawDesc.match(/<!--DULANG_MENU_META:([\s\S]*?)-->/);
+  const cleanDesc = rawDesc.replace(/<!--DULANG_MENU_META:[\s\S]*?-->/g, '').trim();
+  if (!match) return { cleanDesc, meta: {} };
+  try {
+    const parsed = JSON.parse(match[1]);
+    const meta: MenuPackedMeta = {};
+    if ('sh' in parsed) meta.stokHarian = parsed.sh === null ? null : Number(parsed.sh);
+    if ('ss' in parsed) meta.sisaStok = parsed.ss === null ? null : Number(parsed.ss);
+    if (parsed.st) meta.servingType = parsed.st;
+    if (parsed.vt) meta.variantType = parsed.vt;
+    if ('tb' in parsed) meta.tersediaBesok = Boolean(parsed.tb);
+    if (parsed.kb) meta.kloterBadge = parsed.kb;
+    if (Array.isArray(parsed.op)) meta.opsi = parsed.op;
+    if (parsed.so !== undefined && Number.isFinite(Number(parsed.so))) meta.sortOrder = Number(parsed.so);
+    if (parsed.del) meta.deleted = true;
+    return { cleanDesc, meta };
+  } catch {
+    return { cleanDesc, meta: {} };
+  }
+}
+
+export function buildOrderPackedNotes(order: {
+  notes?: string;
+  kitchen_status?: KitchenCookingStatus;
+  cooking_started_at?: string;
+  cooking_completed_at?: string;
+  delivery_schedule?: string;
+  delivery_slot?: string;
+  dp_amount?: number;
+  remaining_amount?: number;
+  cashier_name?: string;
+  print_count?: number;
+  last_printed_at?: string;
+  cancellation_reason?: string;
+  cancelled_by?: string;
+  cancelled_at?: string;
+}): string {
+  return packOrderNotes(order.notes, {
+    kitchen_status: order.kitchen_status,
+    cooking_started_at: order.cooking_started_at,
+    cooking_completed_at: order.cooking_completed_at,
+    delivery_schedule: order.delivery_schedule,
+    delivery_slot: order.delivery_slot,
+    dp_amount: order.dp_amount,
+    remaining_amount: order.remaining_amount,
+    cashier_name: order.cashier_name,
+    print_count: order.print_count,
+    last_printed_at: order.last_printed_at,
+    cancellation_reason: order.cancellation_reason,
+    cancelled_by: order.cancelled_by,
+    cancelled_at: order.cancelled_at,
+  });
+}
+
 export const DEFAULT_EXPENSES: ExpenseRecord[] = [];
 
 const DULANG_META_PREFIX = '<!--DULANG_META:';
@@ -78,6 +205,12 @@ export interface OrderPackedMeta {
   delivery_slot?: string;
   dp_amount?: number;
   remaining_amount?: number;
+  cashier_name?: string;
+  print_count?: number;
+  last_printed_at?: string;
+  cancellation_reason?: string;
+  cancelled_by?: string;
+  cancelled_at?: string;
 }
 
 export function packOrderNotes(cleanNotes: string | null | undefined, meta: OrderPackedMeta): string {
@@ -92,6 +225,12 @@ export function packOrderNotes(cleanNotes: string | null | undefined, meta: Orde
   if (meta.delivery_slot) cleanMeta.slot = meta.delivery_slot;
   if (meta.dp_amount !== undefined && meta.dp_amount > 0) cleanMeta.dp = meta.dp_amount;
   if (meta.remaining_amount !== undefined) cleanMeta.rem = meta.remaining_amount;
+  if (meta.cashier_name) cleanMeta.cn = meta.cashier_name;
+  if (meta.print_count !== undefined && meta.print_count > 0) cleanMeta.pc = meta.print_count;
+  if (meta.last_printed_at) cleanMeta.lpa = meta.last_printed_at;
+  if (meta.cancellation_reason) cleanMeta.cr = meta.cancellation_reason;
+  if (meta.cancelled_by) cleanMeta.cb = meta.cancelled_by;
+  if (meta.cancelled_at) cleanMeta.ca = meta.cancelled_at;
 
   if (Object.keys(cleanMeta).length === 0) {
     return stripped;
@@ -120,6 +259,12 @@ export function unpackOrderNotes(rawNotes: string | null | undefined): { cleanNo
     if (parsed.slot) meta.delivery_slot = parsed.slot;
     if (parsed.dp !== undefined) meta.dp_amount = Number(parsed.dp);
     if (parsed.rem !== undefined) meta.remaining_amount = Number(parsed.rem);
+    if (parsed.cn) meta.cashier_name = parsed.cn;
+    if (parsed.pc !== undefined) meta.print_count = Number(parsed.pc);
+    if (parsed.lpa) meta.last_printed_at = parsed.lpa;
+    if (parsed.cr) meta.cancellation_reason = parsed.cr;
+    if (parsed.cb) meta.cancelled_by = parsed.cb;
+    if (parsed.ca) meta.cancelled_at = parsed.ca;
     return { cleanNotes, meta };
   } catch {
     return { cleanNotes, meta: {} };
@@ -128,58 +273,132 @@ export function unpackOrderNotes(rawNotes: string | null | undefined): { cleanNo
 
 export const storageService = {
   // --- MENU MANAGEMENT ---
+  getDeletedMenuIds(): Set<string> {
+    const ids = new Set<string>();
+    try {
+      const raw = localStorage.getItem(DELETED_MENU_IDS_KEY);
+      if (raw) {
+        const parsed = JSON.parse(raw);
+        if (Array.isArray(parsed)) parsed.forEach((id) => id && ids.add(String(id)));
+      }
+      const cfgRaw = localStorage.getItem('dulang_store_config');
+      if (cfgRaw) {
+        const cfg = JSON.parse(cfgRaw);
+        if (Array.isArray(cfg?.deletedMenuIds)) {
+          cfg.deletedMenuIds.forEach((id: any) => id && ids.add(String(id)));
+        }
+      }
+    } catch {
+      // ignore
+    }
+    return ids;
+  },
+
   getMenus(): MenuItem[] {
+    const deletedIds = this.getDeletedMenuIds();
+    const normalizeMenuItem = (raw: MenuItem): { item: MenuItem; changed: boolean } => {
+      let changed = false;
+      const unpacked = unpackMenuDescription(raw.deskripsi);
+      const descClean = unpacked.cleanDesc;
+      if (descClean !== (raw.deskripsi || '').trim()) {
+        changed = true;
+      }
+
+      const name = (raw.nama || '').toLowerCase();
+      let st = raw.servingType || unpacked.meta.servingType;
+      if (!st) {
+        if (raw.variantType === 'frozen' || name.includes('frozen') || name.includes('beku')) {
+          st = 'frozen_only';
+        } else if (name.includes('risol') && !name.includes('frozen')) {
+          st = 'both';
+        } else {
+          st = 'matang_only';
+        }
+        changed = true;
+      } else if (
+        st === 'matang_only' &&
+        (raw.id === 'menu-1' ||
+          raw.id === 'menu-2' ||
+          (name.includes('risol') && !name.includes('frozen') && !name.includes('pack') && !name.includes('isi')))
+      ) {
+        st = 'both';
+        changed = true;
+      }
+
+      const defMatch = DEFAULT_MENUS.find((dm) => dm.id === raw.id);
+      const defaultStokHarian = defMatch?.stokHarian ?? null;
+      let stokHarian =
+        raw.stokHarian !== undefined
+          ? raw.stokHarian
+          : unpacked.meta.stokHarian !== undefined
+          ? unpacked.meta.stokHarian
+          : undefined;
+      let sisaStok =
+        raw.sisaStok !== undefined
+          ? raw.sisaStok
+          : unpacked.meta.sisaStok !== undefined
+          ? unpacked.meta.sisaStok
+          : undefined;
+
+      if ((stokHarian === undefined || stokHarian === null) && defaultStokHarian !== null) {
+        stokHarian = defaultStokHarian;
+        if (sisaStok === undefined || sisaStok === null) {
+          sisaStok = defaultStokHarian;
+        }
+        changed = true;
+      }
+
+      return {
+        item: {
+          ...raw,
+          deskripsi: descClean,
+          servingType: st,
+          variantType: raw.variantType || unpacked.meta.variantType || (st === 'frozen_only' ? 'frozen' : 'matang'),
+          tersediaBesok: raw.tersediaBesok ?? unpacked.meta.tersediaBesok ?? defMatch?.tersediaBesok,
+          kloterBadge: raw.kloterBadge ?? unpacked.meta.kloterBadge ?? defMatch?.kloterBadge,
+          opsi: raw.opsi ?? unpacked.meta.opsi ?? defMatch?.opsi,
+          stokHarian: stokHarian ?? null,
+          sisaStok: sisaStok ?? null,
+        },
+        changed,
+      };
+    };
+
     try {
       const data = localStorage.getItem(STORAGE_KEYS.MENUS);
-      if (data) {
+      if (data !== null) {
         let parsed = JSON.parse(data);
-        if (Array.isArray(parsed) && parsed.length > 0) {
-          // Sinkronisasi otomatis: Jika ada menu default baru (misal paket frozen pack) yang belum ada di browser owner
-          const existingIds = new Set(parsed.map((m: any) => m.id));
-          const missingDefaults = DEFAULT_MENUS.filter((dm) => !existingIds.has(dm.id));
+        if (Array.isArray(parsed)) {
           let hasChanges = false;
+          // Hapus row sistem / legacy & tombstone
+          const filtered = parsed.filter(
+            (m: any) => m && !isSystemOrLegacyMenuId(m.id) && !deletedIds.has(m.id)
+          );
+          if (filtered.length !== parsed.length) {
+            parsed = filtered;
+            hasChanges = true;
+          }
 
-          if (missingDefaults.length > 0) {
+          const existingIds = new Set(parsed.map((m: any) => m.id));
+          const missingDefaults = DEFAULT_MENUS.filter(
+            (dm) => !existingIds.has(dm.id) && !deletedIds.has(dm.id)
+          );
+
+          if (missingDefaults.length > 0 && parsed.length > 0) {
             parsed = [...parsed, ...missingDefaults];
             hasChanges = true;
           }
 
+          if (parsed.length === 0 && deletedIds.size === 0) {
+            const freshDefaults = DEFAULT_MENUS;
+            localStorage.setItem(STORAGE_KEYS.MENUS, JSON.stringify(freshDefaults));
+            return freshDefaults;
+          }
+
           const processed = parsed.map((m: MenuItem) => {
-            const name = (m.nama || '').toLowerCase();
-            let st = m.servingType;
-            if (!st) {
-              if (m.variantType === 'frozen' || name.includes('frozen') || name.includes('beku')) {
-                st = 'frozen_only';
-              } else if (name.includes('risol') && !name.includes('frozen')) {
-                st = 'both';
-              } else {
-                st = 'matang_only';
-              }
-              hasChanges = true;
-            } else if (st === 'matang_only' && (m.id === 'menu-1' || m.id === 'menu-2' || (name.includes('risol') && !name.includes('frozen') && !name.includes('pack') && !name.includes('isi')))) {
-              // Risol Mayo & Risol Rogut satuan bisa matang & frozen
-              st = 'both';
-              hasChanges = true;
-            }
-
-            const defMatch = DEFAULT_MENUS.find((dm) => dm.id === m.id);
-            const defaultStokHarian = defMatch?.stokHarian ?? null;
-            let stokHarian = m.stokHarian;
-            let sisaStok = m.sisaStok;
-
-            if ((stokHarian === undefined || stokHarian === null) && defaultStokHarian !== null) {
-              stokHarian = defaultStokHarian;
-              sisaStok = defaultStokHarian;
-              hasChanges = true;
-            }
-
-            return {
-              ...m,
-              servingType: st,
-              variantType: (m.variantType || (st === 'frozen_only' ? 'frozen' : 'matang')),
-              stokHarian: stokHarian ?? null,
-              sisaStok: sisaStok ?? null,
-            };
+            const norm = normalizeMenuItem(m);
+            if (norm.changed) hasChanges = true;
+            return norm.item;
           });
 
           if (hasChanges) {
@@ -191,16 +410,19 @@ export const storageService = {
     } catch (e) {
       console.warn('Failed to read menus from localStorage:', e);
     }
-    localStorage.setItem(STORAGE_KEYS.MENUS, JSON.stringify(DEFAULT_MENUS));
-    return DEFAULT_MENUS;
+    const fallbackMenus = DEFAULT_MENUS.filter((dm) => !deletedIds.has(dm.id));
+    localStorage.setItem(STORAGE_KEYS.MENUS, JSON.stringify(fallbackMenus));
+    return fallbackMenus;
   },
 
-  resetDefaultMenus(): MenuItem[] {
+  async resetDefaultMenus(): Promise<MenuItem[]> {
     try {
-      localStorage.setItem(STORAGE_KEYS.MENUS, JSON.stringify(DEFAULT_MENUS));
-      if (typeof window !== 'undefined') {
-        window.dispatchEvent(new Event('dulang_menus_updated'));
+      localStorage.setItem(DELETED_MENU_IDS_KEY, JSON.stringify([]));
+      const cfg = this.getStoreConfig();
+      if (Array.isArray(cfg.deletedMenuIds) && cfg.deletedMenuIds.length > 0) {
+        await this.saveStoreConfig({ ...cfg, deletedMenuIds: [] });
       }
+      await this.saveMenus(DEFAULT_MENUS);
     } catch (e) {
       console.error('Failed to reset menus:', e);
     }
@@ -209,24 +431,79 @@ export const storageService = {
 
   async saveMenus(menus: MenuItem[]): Promise<void> {
     try {
-      localStorage.setItem(STORAGE_KEYS.MENUS, JSON.stringify(menus));
+      const cleanMenus = (menus || []).filter((m) => m && !isSystemOrLegacyMenuId(m.id));
+      localStorage.setItem(STORAGE_KEYS.MENUS, JSON.stringify(cleanMenus));
       if (typeof window !== 'undefined') {
         window.dispatchEvent(new Event('dulang_menus_updated'));
       }
       const client = getSupabaseClient();
-      if (client) {
-        const dbMenus = menus.map((m) => ({
+      if (client && cleanMenus.length > 0) {
+        const dbMenus = cleanMenus.map((m, idx) => ({
           id: m.id,
           nama: m.nama,
           harga: m.harga,
-          deskripsi: m.deskripsi || '',
+          deskripsi: packMenuDescription(m.deskripsi, {
+            stokHarian: m.stokHarian ?? null,
+            sisaStok: m.sisaStok ?? null,
+            servingType: m.servingType,
+            variantType: m.variantType,
+            tersediaBesok: m.tersediaBesok,
+            kloterBadge: m.kloterBadge,
+            opsi: m.opsi,
+            sortOrder: idx,
+          }),
           foto: m.foto || '',
           tersedia: m.tersedia !== false,
         }));
-        await client.from('menus').upsert(dbMenus);
+        const { error } = await client.from('menus').upsert(dbMenus);
+        if (error) {
+          console.warn('Supabase menus upsert note:', error.message);
+        }
       }
     } catch (e) {
       console.error('Failed to save menus:', e);
+    }
+  },
+
+  async deleteMenuItem(menuId: string): Promise<void> {
+    try {
+      const current = this.getMenus();
+      const target = current.find((m) => m.id === menuId);
+      const updated = current.filter((m) => m.id !== menuId);
+
+      // Simpan tombstone lokal + di StoreConfig cloud agar HP lain/Incognito ikut menyembunyikan menu terhapus
+      const deletedSet = this.getDeletedMenuIds();
+      deletedSet.add(menuId);
+      const deletedArr = Array.from(deletedSet);
+      localStorage.setItem(DELETED_MENU_IDS_KEY, JSON.stringify(deletedArr));
+
+      localStorage.setItem(STORAGE_KEYS.MENUS, JSON.stringify(updated));
+      if (typeof window !== 'undefined') {
+        window.dispatchEvent(new Event('dulang_menus_updated'));
+      }
+
+      const cfg = this.getStoreConfig();
+      const cfgDeleted = Array.from(new Set([...(cfg.deletedMenuIds || []), menuId]));
+      await this.saveStoreConfig({ ...cfg, deletedMenuIds: cfgDeleted });
+
+      const client = getSupabaseClient();
+      if (client) {
+        // Tandai deleted di deskripsi (jika RLS blok DELETE) sekaligus coba DELETE fisik
+        try {
+          await client
+            .from('menus')
+            .update({
+              tersedia: false,
+              deskripsi: packMenuDescription(target?.deskripsi || '', { deleted: true }),
+            })
+            .eq('id', menuId);
+        } catch {}
+        try {
+          await client.from('menus').delete().eq('id', menuId);
+        } catch {}
+      }
+    } catch (e) {
+      console.error('Failed to delete menu item:', e);
     }
   },
 
@@ -235,39 +512,125 @@ export const storageService = {
       const client = getSupabaseClient();
       if (!client) return this.getMenus();
 
-      const { data, error } = await client.from('menus').select('id, nama, harga, deskripsi, foto, tersedia');
+      const { data, error } = await client
+        .from('menus')
+        .select('id, nama, harga, deskripsi, foto, tersedia');
       if (error || !data || data.length === 0) return this.getMenus();
 
+      const deletedIds = this.getDeletedMenuIds();
       const currentMenus = this.getMenus();
-      const merged = currentMenus.map((local) => {
-        const remote = data.find((r: any) => r.id === local.id);
-        if (!remote) return local;
-        return {
-          ...local,
-          nama: remote.nama ?? local.nama,
-          harga: Number(remote.harga ?? local.harga),
-          deskripsi: remote.deskripsi ?? local.deskripsi,
-          foto: remote.foto || local.foto,
-          tersedia: remote.tersedia ?? local.tersedia,
+      const defaultOrderMap = new Map<string, number>(
+        DEFAULT_MENUS.map((dm, idx) => [dm.id, idx])
+      );
+
+      type MenuWithOrder = { item: MenuItem; sortKey: number };
+      const syncedList: MenuWithOrder[] = [];
+      const seenIds = new Set<string>();
+
+      for (const r of data as any[]) {
+        if (!r?.id || isSystemOrLegacyMenuId(r.id) || deletedIds.has(r.id)) continue;
+        const { cleanDesc, meta } = unpackMenuDescription(r.deskripsi);
+        if (meta.deleted) {
+          deletedIds.add(r.id);
+          continue;
+        }
+
+        const local = currentMenus.find((m) => m.id === r.id);
+        const defMatch = DEFAULT_MENUS.find((dm) => dm.id === r.id);
+        const nameLower = String(r.nama || local?.nama || '').toLowerCase();
+
+        const servingType =
+          meta.servingType ||
+          local?.servingType ||
+          defMatch?.servingType ||
+          (nameLower.includes('frozen') || nameLower.includes('beku')
+            ? 'frozen_only'
+            : nameLower.includes('risol') && !nameLower.includes('frozen')
+            ? 'both'
+            : 'matang_only');
+
+        const variantType =
+          meta.variantType ||
+          local?.variantType ||
+          defMatch?.variantType ||
+          (servingType === 'frozen_only' ? 'frozen' : 'matang');
+
+        const stokHarian =
+          meta.stokHarian !== undefined
+            ? meta.stokHarian
+            : local?.stokHarian !== undefined
+            ? local.stokHarian
+            : defMatch?.stokHarian ?? null;
+
+        const sisaStok =
+          meta.sisaStok !== undefined
+            ? meta.sisaStok
+            : local?.sisaStok !== undefined
+            ? local.sisaStok
+            : defMatch?.sisaStok ?? null;
+
+        const mergedItem: MenuItem = {
+          id: r.id,
+          nama: r.nama ?? local?.nama ?? 'Menu Dulang',
+          harga: Number(r.harga ?? local?.harga ?? 0),
+          deskripsi: cleanDesc || local?.deskripsi || defMatch?.deskripsi || '',
+          foto: r.foto || local?.foto || '',
+          tersedia: r.tersedia !== false,
+          tersediaBesok: meta.tersediaBesok ?? local?.tersediaBesok ?? defMatch?.tersediaBesok,
+          kloterBadge: meta.kloterBadge ?? local?.kloterBadge ?? defMatch?.kloterBadge,
+          opsi: meta.opsi ?? local?.opsi ?? defMatch?.opsi,
+          stokHarian,
+          sisaStok,
+          servingType,
+          variantType,
         };
+
+        const sortKey =
+          meta.sortOrder !== undefined
+            ? meta.sortOrder
+            : defaultOrderMap.has(r.id)
+            ? (defaultOrderMap.get(r.id) as number)
+            : 10000;
+
+        syncedList.push({ item: mergedItem, sortKey });
+        seenIds.add(r.id);
+      }
+
+      // Jika Supabase mengembalikan menu aktif, perlakukan cloud sebagai otoritatif
+      // Pertahankan item lokal yang belum ada di cloud hanya jika baru dibuat (< 15 detik) agar item yang dihapus tidak bangkit lagi
+      if (syncedList.length > 0) {
+        const nowMs = Date.now();
+        for (const local of currentMenus) {
+          if (!seenIds.has(local.id) && !deletedIds.has(local.id) && !isSystemOrLegacyMenuId(local.id)) {
+            const tsMatch = local.id.match(/^menu-(\d{12,15})$/);
+            const isBrandNewLocal = tsMatch ? nowMs - Number(tsMatch[1]) < 15_000 : false;
+            if (isBrandNewLocal) {
+              syncedList.push({
+                item: local,
+                sortKey: 20000,
+              });
+            }
+          }
+        }
+      } else {
+        for (const local of currentMenus) {
+          if (!seenIds.has(local.id) && !deletedIds.has(local.id) && !isSystemOrLegacyMenuId(local.id)) {
+            syncedList.push({
+              item: local,
+              sortKey: defaultOrderMap.has(local.id) ? (defaultOrderMap.get(local.id) as number) : 20000,
+            });
+          }
+        }
+      }
+
+      syncedList.sort((a, b) => {
+        if (a.sortKey !== b.sortKey) return a.sortKey - b.sortKey;
+        return a.item.id.localeCompare(b.item.id);
       });
 
-      // Tambahkan menu dapur baru dari Supabase jika belum ada di lokal (khusus prefix menu-)
-      const localIds = new Set(currentMenus.map((m) => m.id));
-      const extraRemoteItems = data
-        .filter((r: any) => r.id && r.id.startsWith('menu-') && !localIds.has(r.id))
-        .map((r: any) => ({
-          id: r.id,
-          nama: r.nama,
-          harga: Number(r.harga || 0),
-          deskripsi: r.deskripsi || '',
-          foto: r.foto || '',
-          tersedia: r.tersedia !== false,
-          servingType: (r.nama?.toLowerCase().includes('frozen') ? 'frozen_only' : 'matang_only') as any,
-        }));
+      const finalMerged = syncedList.map((entry) => entry.item);
 
-      const finalMerged = [...merged, ...extraRemoteItems];
-
+      localStorage.setItem(DELETED_MENU_IDS_KEY, JSON.stringify(Array.from(deletedIds)));
       localStorage.setItem(STORAGE_KEYS.MENUS, JSON.stringify(finalMerged));
       if (typeof window !== 'undefined') {
         window.dispatchEvent(new Event('dulang_menus_updated'));
@@ -690,15 +1053,34 @@ ${lines.join('\n')}
         .select('*')
         .order('last_scan_at', { ascending: false });
 
-      if (!error && data && Array.isArray(data) && data.length > 0) {
-        const local = this.getCustomers();
+      if (!error && Array.isArray(data)) {
+        let deletedCustIds = new Set<string>();
+        try {
+          const delRaw = localStorage.getItem('dulang_deleted_customer_ids') || '[]';
+          const parsedDel = JSON.parse(delRaw);
+          if (Array.isArray(parsedDel)) deletedCustIds = new Set(parsedDel.map(String));
+        } catch {}
+
         const map = new Map<string, Customer>();
-        data.forEach((c: Customer) => map.set(c.qr_code_id.toUpperCase(), c));
-        local.forEach((c) => {
-          if (!map.has(c.qr_code_id.toUpperCase())) {
+        data.forEach((c: Customer) => {
+          if (c?.id && !deletedCustIds.has(c.id) && c.qr_code_id) {
             map.set(c.qr_code_id.toUpperCase(), c);
           }
         });
+
+        // Pertahankan pelanggan lokal yang baru saja dibuat (< 15 detik) agar tidak hilang sebelum cloud selesai sinkron
+        const nowMs = Date.now();
+        const local = this.getCustomers();
+        local.forEach((c) => {
+          if (!c?.qr_code_id) return;
+          const qrKey = c.qr_code_id.toUpperCase();
+          if (map.has(qrKey) || deletedCustIds.has(c.id)) return;
+          const ts = new Date(c.first_scan_at || c.last_scan_at || 0).getTime();
+          if (Number.isFinite(ts) && nowMs - ts < 15_000 && !c.id.startsWith('DEMO-')) {
+            map.set(qrKey, c);
+          }
+        });
+
         const merged = Array.from(map.values());
         localStorage.setItem(STORAGE_KEYS.CUSTOMERS, JSON.stringify(merged));
         if (typeof window !== 'undefined') {
@@ -847,9 +1229,19 @@ ${lines.join('\n')}
     });
   },
 
-  deleteCustomer(id: string): void {
+  async deleteCustomer(id: string): Promise<void> {
     const customers = this.getCustomers().filter((c) => c.id !== id);
     localStorage.setItem(STORAGE_KEYS.CUSTOMERS, JSON.stringify(customers));
+
+    try {
+      const delRaw = localStorage.getItem('dulang_deleted_customer_ids') || '[]';
+      const delIds: string[] = JSON.parse(delRaw);
+      if (!delIds.includes(id)) {
+        delIds.push(id);
+        if (delIds.length > 300) delIds.shift();
+        localStorage.setItem('dulang_deleted_customer_ids', JSON.stringify(delIds));
+      }
+    } catch {}
 
     if (typeof window !== 'undefined') {
       window.dispatchEvent(new Event('dulang_customers_updated'));
@@ -857,7 +1249,11 @@ ${lines.join('\n')}
 
     const client = getSupabaseClient();
     if (client) {
-      client.from('customers').delete().eq('id', id).then();
+      try {
+        await client.from('customers').delete().eq('id', id);
+      } catch (e) {
+        console.warn('Failed to delete customer from Supabase:', e);
+      }
     }
   },
 
@@ -920,98 +1316,418 @@ ${lines.join('\n')}
     }
   },
 
-  // --- OWNER AUTHENTICATION STATE & PIN ---
+  // --- OWNER AUTHENTICATION STATE & CRYPTOGRAPHIC AUTH META ---
   isOwnerAuthenticated(): boolean {
-    return isOwnerSessionValid() || localStorage.getItem(STORAGE_KEYS.OWNER_TOKEN) === 'true';
+    try {
+      localStorage.removeItem(STORAGE_KEYS.OWNER_TOKEN);
+    } catch {}
+    return isOwnerSessionValid();
   },
 
-  setOwnerAuthenticated(val: boolean): void {
+  setOwnerAuthenticated(val: boolean, role: StaffRole = 'owner'): void {
+    try {
+      localStorage.removeItem(STORAGE_KEYS.OWNER_TOKEN);
+    } catch {}
     if (val) {
-      createOwnerSession();
-      localStorage.setItem(STORAGE_KEYS.OWNER_TOKEN, 'true');
+      createOwnerSession(role);
+      this.setStaffRole(role);
     } else {
       clearOwnerSession();
-      localStorage.removeItem(STORAGE_KEYS.OWNER_TOKEN);
+      this.setStaffRole('cashier');
     }
   },
 
-  getOwnerPin(): string {
-    const saved = localStorage.getItem('dulang_owner_pin');
-    return saved || 'dulang2020';
+  getLocalAuthHashes(): AuthHashesRecord {
+    const fallback: AuthHashesRecord = {
+      ownerHash: DEFAULT_AUTH_HASHES.ownerHash,
+      cashierHash: DEFAULT_AUTH_HASHES.cashierHash,
+      kitchenHash: DEFAULT_AUTH_HASHES.kitchenHash,
+      isDefaultOwnerPin: true,
+      updatedAt: '1970-01-01T00:00:00.000Z',
+    };
+    try {
+      const raw = localStorage.getItem(AUTH_HASHES_KEY);
+      if (raw) {
+        const parsed = JSON.parse(raw);
+        if (parsed && typeof parsed === 'object') {
+          return {
+            ownerHash: isHashFormat(parsed.ownerHash) ? parsed.ownerHash : fallback.ownerHash,
+            cashierHash: isHashFormat(parsed.cashierHash) ? parsed.cashierHash : fallback.cashierHash,
+            kitchenHash: isHashFormat(parsed.kitchenHash) ? parsed.kitchenHash : fallback.kitchenHash,
+            isDefaultOwnerPin:
+              typeof parsed.isDefaultOwnerPin === 'boolean'
+                ? parsed.isDefaultOwnerPin
+                : String(parsed.ownerHash || '').toLowerCase() === LEGACY_DEFAULT_OWNER_SHA256 ||
+                  parsed.ownerHash === DEFAULT_AUTH_HASHES.ownerHash,
+            updatedAt: typeof parsed.updatedAt === 'string' ? parsed.updatedAt : fallback.updatedAt,
+          };
+        }
+      }
+      const legacyOwner = localStorage.getItem('dulang_owner_pin');
+      if (legacyOwner && isHashFormat(legacyOwner)) {
+        return {
+          ...fallback,
+          ownerHash: legacyOwner,
+          isDefaultOwnerPin: legacyOwner.toLowerCase() === LEGACY_DEFAULT_OWNER_SHA256,
+        };
+      }
+    } catch (e) {
+      console.warn('Failed to read local auth hashes:', e);
+    }
+    return fallback;
+  },
+
+  saveLocalAuthHashes(record: AuthHashesRecord): void {
+    try {
+      localStorage.setItem(AUTH_HASHES_KEY, JSON.stringify(record));
+      if (isHashFormat(record.ownerHash)) {
+        localStorage.removeItem('dulang_owner_pin');
+      }
+      if (typeof window !== 'undefined') {
+        window.dispatchEvent(new Event('dulang_auth_meta_updated'));
+      }
+    } catch (e) {
+      console.error('Failed to save local auth hashes:', e);
+    }
+  },
+
+  async migrateLegacyLocalAuthIfAny(): Promise<AuthHashesRecord> {
+    const rec = this.getLocalAuthHashes();
+    let changed = false;
+
+    try {
+      const legacyOwner = localStorage.getItem('dulang_owner_pin');
+      if (legacyOwner && legacyOwner.trim()) {
+        if (isHashFormat(legacyOwner)) {
+          if (rec.ownerHash !== legacyOwner.trim()) {
+            rec.ownerHash = legacyOwner.trim();
+            rec.isDefaultOwnerPin = legacyOwner.trim().toLowerCase() === LEGACY_DEFAULT_OWNER_SHA256;
+            changed = true;
+          }
+        } else {
+          const matchesDefault = await verifyPassword(legacyOwner.trim(), LEGACY_DEFAULT_OWNER_SHA256);
+          rec.ownerHash = matchesDefault ? DEFAULT_AUTH_HASHES.ownerHash : await hashPassword(legacyOwner.trim());
+          rec.isDefaultOwnerPin = matchesDefault;
+          changed = true;
+        }
+        rec.updatedAt = new Date().toISOString();
+        localStorage.removeItem('dulang_owner_pin');
+      }
+
+      const rawCfg = localStorage.getItem('dulang_store_config');
+      if (rawCfg) {
+        const parsedCfg = JSON.parse(rawCfg);
+        if (parsedCfg && typeof parsedCfg === 'object' && ('ownerPin' in parsedCfg || 'cashierPin' in parsedCfg || 'kitchenPin' in parsedCfg)) {
+          if (typeof parsedCfg.ownerPin === 'string' && parsedCfg.ownerPin.trim()) {
+            const p = parsedCfg.ownerPin.trim();
+            if (isHashFormat(p)) {
+              rec.ownerHash = p;
+              rec.isDefaultOwnerPin = p.toLowerCase() === LEGACY_DEFAULT_OWNER_SHA256;
+            } else {
+              const matchesDefault = await verifyPassword(p, LEGACY_DEFAULT_OWNER_SHA256);
+              rec.ownerHash = matchesDefault ? DEFAULT_AUTH_HASHES.ownerHash : await hashPassword(p);
+              rec.isDefaultOwnerPin = matchesDefault;
+            }
+            changed = true;
+          }
+          if (typeof parsedCfg.cashierPin === 'string' && parsedCfg.cashierPin.trim()) {
+            const cp = parsedCfg.cashierPin.trim();
+            rec.cashierHash = isHashFormat(cp) ? cp : await hashPassword(cp);
+            changed = true;
+          }
+          if (typeof parsedCfg.kitchenPin === 'string' && parsedCfg.kitchenPin.trim()) {
+            const kp = parsedCfg.kitchenPin.trim();
+            rec.kitchenHash = isHashFormat(kp) ? kp : await hashPassword(kp);
+            changed = true;
+          }
+          if (changed) {
+            rec.updatedAt = new Date().toISOString();
+          }
+          const cleanCfg = sanitizeStoreConfig(parsedCfg);
+          localStorage.setItem('dulang_store_config', JSON.stringify(cleanCfg));
+        }
+      }
+
+      if (changed) {
+        this.saveLocalAuthHashes(rec);
+      }
+    } catch (e) {
+      console.warn('Legacy local auth migration note:', e);
+    }
+
+    return rec;
+  },
+
+  async pushAuthMetaToSupabase(record: AuthHashesRecord): Promise<void> {
+    try {
+      const client = getSupabaseClient();
+      if (!client) return;
+      await client.from('menus').upsert({
+        id: SYS_AUTH_META_ID,
+        nama: 'SYSTEM_AUTH_META',
+        harga: 0,
+        deskripsi: JSON.stringify(record),
+        tersedia: false,
+      });
+    } catch (e) {
+      console.warn('Failed to push auth meta to Supabase:', e);
+    }
+  },
+
+  async syncAuthMetaFromSupabase(): Promise<AuthHashesRecord> {
+    const local = await this.migrateLegacyLocalAuthIfAny();
+    try {
+      const client = getSupabaseClient();
+      if (!client) return local;
+
+      const { data, error } = await client
+        .from('menus')
+        .select('deskripsi')
+        .eq('id', SYS_AUTH_META_ID)
+        .single();
+
+      if (!error && data?.deskripsi) {
+        const parsed = JSON.parse(data.deskripsi);
+        if (parsed && typeof parsed === 'object') {
+          const remote: AuthHashesRecord = {
+            ownerHash: isHashFormat(parsed.ownerHash) ? parsed.ownerHash : local.ownerHash,
+            cashierHash: isHashFormat(parsed.cashierHash) ? parsed.cashierHash : local.cashierHash,
+            kitchenHash: isHashFormat(parsed.kitchenHash) ? parsed.kitchenHash : local.kitchenHash,
+            isDefaultOwnerPin:
+              typeof parsed.isDefaultOwnerPin === 'boolean'
+                ? parsed.isDefaultOwnerPin
+                : String(parsed.ownerHash || '').toLowerCase() === LEGACY_DEFAULT_OWNER_SHA256 ||
+                  parsed.ownerHash === DEFAULT_AUTH_HASHES.ownerHash,
+            updatedAt: typeof parsed.updatedAt === 'string' ? parsed.updatedAt : new Date().toISOString(),
+          };
+
+          const localTime = new Date(local.updatedAt || 0).getTime();
+          const remoteTime = new Date(remote.updatedAt || 0).getTime();
+          if (remoteTime >= localTime || local.updatedAt === '1970-01-01T00:00:00.000Z') {
+            this.saveLocalAuthHashes(remote);
+            return remote;
+          } else {
+            await this.pushAuthMetaToSupabase(local);
+            return local;
+          }
+        }
+      } else if (error?.code === 'PGRST116') {
+        await this.pushAuthMetaToSupabase(local);
+      }
+    } catch (err) {
+      console.warn('Failed to sync auth meta from Supabase:', err);
+    }
+    return local;
+  },
+
+  async isDefaultOwnerPinActive(): Promise<boolean> {
+    const rec = await this.migrateLegacyLocalAuthIfAny();
+    return Boolean(
+      rec.isDefaultOwnerPin ||
+        rec.ownerHash === DEFAULT_AUTH_HASHES.ownerHash ||
+        rec.ownerHash.toLowerCase() === LEGACY_DEFAULT_OWNER_SHA256
+    );
   },
 
   async saveOwnerPin(newPin: string): Promise<void> {
     const clean = newPin.trim();
+    if (clean.length < 6) {
+      throw new Error('Password pemilik minimal 6 karakter.');
+    }
+    const current = await this.migrateLegacyLocalAuthIfAny();
+    const sameAsCashier = await verifyPassword(clean, current.cashierHash);
+    const sameAsKitchen = await verifyPassword(clean, current.kitchenHash);
+    if (sameAsCashier || sameAsKitchen) {
+      throw new Error('Password Pemilik tidak boleh sama dengan PIN Kasir atau PIN Dapur.');
+    }
+
     const hashed = await hashPassword(clean);
-    localStorage.setItem('dulang_owner_pin', hashed);
+    const updated: AuthHashesRecord = {
+      ...current,
+      ownerHash: hashed,
+      isDefaultOwnerPin: false,
+      updatedAt: new Date().toISOString(),
+    };
+    this.saveLocalAuthHashes(updated);
+    await this.pushAuthMetaToSupabase(updated);
+  },
+
+  async saveStaffPins(params: {
+    ownerPassword: string;
+    newCashierPin?: string;
+    newKitchenPin?: string;
+  }): Promise<{ success: boolean; message: string }> {
+    const ownerOk = await this.verifyOwnerPin(params.ownerPassword || '');
+    if (!ownerOk) {
+      return { success: false, message: 'Password Pemilik tidak cocok!' };
+    }
+
+    const newCashier = params.newCashierPin?.trim();
+    const newKitchen = params.newKitchenPin?.trim();
+    if (!newCashier && !newKitchen) {
+      return { success: false, message: 'Masukkan minimal satu PIN baru (Kasir atau Dapur).' };
+    }
+    if ((newCashier && newCashier.length < 4) || (newKitchen && newKitchen.length < 4)) {
+      return { success: false, message: 'PIN Kasir dan PIN Dapur minimal 4 karakter.' };
+    }
+    if (newCashier && newKitchen && newCashier === newKitchen) {
+      return { success: false, message: 'PIN Kasir dan PIN Dapur harus berbeda.' };
+    }
+
+    const current = this.getLocalAuthHashes();
+    if (newCashier) {
+      if (await verifyPassword(newCashier, current.ownerHash)) {
+        return { success: false, message: 'PIN Kasir tidak boleh sama dengan Password Pemilik.' };
+      }
+      if (!newKitchen && (await verifyPassword(newCashier, current.kitchenHash))) {
+        return { success: false, message: 'PIN Kasir tidak boleh sama dengan PIN Dapur yang sedang aktif.' };
+      }
+    }
+    if (newKitchen) {
+      if (await verifyPassword(newKitchen, current.ownerHash)) {
+        return { success: false, message: 'PIN Dapur tidak boleh sama dengan Password Pemilik.' };
+      }
+      if (!newCashier && (await verifyPassword(newKitchen, current.cashierHash))) {
+        return { success: false, message: 'PIN Dapur tidak boleh sama dengan PIN Kasir yang sedang aktif.' };
+      }
+    }
+
+    const updated: AuthHashesRecord = {
+      ...current,
+      cashierHash: newCashier ? await hashPassword(newCashier) : current.cashierHash,
+      kitchenHash: newKitchen ? await hashPassword(newKitchen) : current.kitchenHash,
+      updatedAt: new Date().toISOString(),
+    };
+    this.saveLocalAuthHashes(updated);
+    await this.pushAuthMetaToSupabase(updated);
+
+    return {
+      success: true,
+      message: 'PIN akses Kasir Stand & Kru Dapur (KDS) berhasil diperbarui & diamankan!',
+    };
   },
 
   async verifyOwnerPin(inputPin: string): Promise<boolean> {
-    const stored = this.getOwnerPin();
-    return verifyPassword(inputPin, stored);
+    const clean = inputPin.trim();
+    if (!clean) return false;
+    let rec = await this.migrateLegacyLocalAuthIfAny();
+    let matched = await verifyPassword(clean, rec.ownerHash);
+
+    if (!matched) {
+      rec = await this.syncAuthMetaFromSupabase();
+      matched = await verifyPassword(clean, rec.ownerHash);
+    }
+
+    if (matched && !rec.ownerHash.startsWith('pbkdf2_v1$')) {
+      const wasDefaultLegacy = rec.ownerHash.toLowerCase() === LEGACY_DEFAULT_OWNER_SHA256;
+      const upgraded: AuthHashesRecord = {
+        ...rec,
+        ownerHash: await hashPassword(clean),
+        isDefaultOwnerPin: wasDefaultLegacy,
+        updatedAt: new Date().toISOString(),
+      };
+      this.saveLocalAuthHashes(upgraded);
+      await this.pushAuthMetaToSupabase(upgraded);
+    }
+
+    return matched;
   },
 
   // --- STAFF ROLE & MULTI-PIN ACCESS CONTROL ---
   getStaffRole(): StaffRole {
     try {
+      if (!this.isOwnerAuthenticated()) {
+        return 'cashier';
+      }
+      const sessionRole = getOwnerSessionRole();
+      if (sessionRole === 'owner' || sessionRole === 'cashier' || sessionRole === 'kitchen') {
+        return sessionRole;
+      }
       const saved = localStorage.getItem('dulang_staff_role');
-      if (saved === 'owner' || saved === 'cashier' || saved === 'kitchen') {
+      if (saved === 'cashier' || saved === 'kitchen') {
         return saved;
       }
     } catch (e) {
       console.warn('Failed to read staff role:', e);
     }
-    return 'owner';
+    return 'cashier';
   },
 
   setStaffRole(role: StaffRole): void {
     try {
-      localStorage.setItem('dulang_staff_role', role);
+      const sessionRole = getOwnerSessionRole();
+      const safeRole: StaffRole =
+        role === 'owner' && (!this.isOwnerAuthenticated() || sessionRole !== 'owner')
+          ? sessionRole || 'cashier'
+          : role;
+      localStorage.setItem('dulang_staff_role', safeRole);
       if (typeof window !== 'undefined') {
-        window.dispatchEvent(new CustomEvent('dulang_staff_role_updated', { detail: { role } }));
+        window.dispatchEvent(new CustomEvent('dulang_staff_role_updated', { detail: { role: safeRole } }));
       }
     } catch (e) {
       console.error('Failed to set staff role:', e);
     }
   },
 
-  getCashierPin(): string {
-    const cfg = this.getStoreConfig();
-    return cfg.cashierPin || '1234';
-  },
-
-  getKitchenPin(): string {
-    const cfg = this.getStoreConfig();
-    return cfg.kitchenPin || '0000';
-  },
-
-  verifyCashierPin(inputPin: string): boolean {
+  async verifyCashierPin(inputPin: string): Promise<boolean> {
     const clean = inputPin.trim();
-    return clean === this.getCashierPin();
+    if (!clean) return false;
+    let rec = await this.migrateLegacyLocalAuthIfAny();
+    let matched = await verifyPassword(clean, rec.cashierHash);
+    if (!matched) {
+      rec = await this.syncAuthMetaFromSupabase();
+      matched = await verifyPassword(clean, rec.cashierHash);
+    }
+    return matched;
   },
 
-  verifyKitchenPin(inputPin: string): boolean {
+  async verifyKitchenPin(inputPin: string): Promise<boolean> {
     const clean = inputPin.trim();
-    return clean === this.getKitchenPin();
+    if (!clean) return false;
+    let rec = await this.migrateLegacyLocalAuthIfAny();
+    let matched = await verifyPassword(clean, rec.kitchenHash);
+    if (!matched) {
+      rec = await this.syncAuthMetaFromSupabase();
+      matched = await verifyPassword(clean, rec.kitchenHash);
+    }
+    return matched;
   },
 
   async verifyAnyPin(inputPin: string): Promise<{ success: boolean; role: StaffRole; label: string }> {
     const clean = inputPin.trim();
-    // 1. Check Owner PIN
-    const isOwner = await this.verifyOwnerPin(clean);
-    if (isOwner) {
-      return { success: true, role: 'owner', label: '👑 Pemilik Usaha (Owner)' };
-    }
+    if (!clean) return { success: false, role: 'cashier', label: '' };
 
-    // 2. Check Cashier PIN
-    if (this.verifyCashierPin(clean)) {
-      return { success: true, role: 'cashier', label: '🛒 Kasir Stand' };
-    }
+    const checkWithRecord = async (rec: AuthHashesRecord): Promise<{ success: boolean; role: StaffRole; label: string } | null> => {
+      if (await verifyPassword(clean, rec.ownerHash)) {
+        if (!rec.ownerHash.startsWith('pbkdf2_v1$')) {
+          const wasDefaultLegacy = rec.ownerHash.toLowerCase() === LEGACY_DEFAULT_OWNER_SHA256;
+          const upgraded: AuthHashesRecord = {
+            ...rec,
+            ownerHash: await hashPassword(clean),
+            isDefaultOwnerPin: wasDefaultLegacy,
+            updatedAt: new Date().toISOString(),
+          };
+          this.saveLocalAuthHashes(upgraded);
+          await this.pushAuthMetaToSupabase(upgraded);
+        }
+        return { success: true, role: 'owner', label: '👑 Pemilik Usaha (Owner)' };
+      }
+      if (await verifyPassword(clean, rec.cashierHash)) {
+        return { success: true, role: 'cashier', label: '🛒 Kasir Stand' };
+      }
+      if (await verifyPassword(clean, rec.kitchenHash)) {
+        return { success: true, role: 'kitchen', label: '🍳 Kru Dapur (KDS)' };
+      }
+      return null;
+    };
 
-    // 3. Check Kitchen PIN
-    if (this.verifyKitchenPin(clean)) {
-      return { success: true, role: 'kitchen', label: '🍳 Kru Dapur (KDS)' };
-    }
+    const localRec = await this.migrateLegacyLocalAuthIfAny();
+    const localHit = await checkWithRecord(localRec);
+    if (localHit) return localHit;
+
+    const syncedRec = await this.syncAuthMetaFromSupabase();
+    const syncedHit = await checkWithRecord(syncedRec);
+    if (syncedHit) return syncedHit;
 
     return { success: false, role: 'cashier', label: '' };
   },
@@ -1026,12 +1742,12 @@ ${lines.join('\n')}
         if (parsed.pickupAddressNote && (parsed.pickupAddressNote.includes('Diponegoro') || parsed.pickupAddressNote.includes('Pagerwojo'))) {
           parsed.pickupAddressNote = DEFAULT_STORE_CONFIG.pickupAddressNote;
         }
-        return { ...DEFAULT_STORE_CONFIG, ...parsed };
+        return sanitizeStoreConfig({ ...DEFAULT_STORE_CONFIG, ...parsed }) as StoreConfig;
       }
     } catch (e) {
       console.warn('Failed to read store config from localStorage:', e);
     }
-    return DEFAULT_STORE_CONFIG;
+    return sanitizeStoreConfig(DEFAULT_STORE_CONFIG) as StoreConfig;
   },
 
   async syncStoreConfigFromSupabase(): Promise<StoreConfig> {
@@ -1042,14 +1758,28 @@ ${lines.join('\n')}
       const { data, error } = await client
         .from('menus')
         .select('deskripsi')
-        .eq('id', 'sys_store_config')
+        .eq('id', SYS_STORE_CONFIG_ID)
         .single();
 
       if (!error && data?.deskripsi) {
         try {
-          const remoteConfig = JSON.parse(data.deskripsi);
+          const remoteRaw = JSON.parse(data.deskripsi);
+          const remoteConfig = sanitizeStoreConfig(remoteRaw);
           const current = this.getStoreConfig();
-          const merged: StoreConfig = { ...current, ...remoteConfig };
+
+          const localDeleted = this.getDeletedMenuIds();
+          if (Array.isArray(remoteConfig.deletedMenuIds)) {
+            remoteConfig.deletedMenuIds.forEach((id: any) => id && localDeleted.add(String(id)));
+          }
+          const unionDeleted = Array.from(localDeleted);
+          localStorage.setItem(DELETED_MENU_IDS_KEY, JSON.stringify(unionDeleted));
+
+          const merged: StoreConfig = sanitizeStoreConfig({
+            ...current,
+            ...remoteConfig,
+            deletedMenuIds: unionDeleted,
+          }) as StoreConfig;
+
           localStorage.setItem('dulang_store_config', JSON.stringify(merged));
           if (typeof window !== 'undefined') {
             window.dispatchEvent(new Event('dulang_store_config_updated'));
@@ -1065,9 +1795,20 @@ ${lines.join('\n')}
     return this.getStoreConfig();
   },
 
-  saveStoreConfig(config: StoreConfig): void {
+  async saveStoreConfig(config: StoreConfig): Promise<void> {
     try {
-      localStorage.setItem('dulang_store_config', JSON.stringify(config));
+      const localDeleted = this.getDeletedMenuIds();
+      const deletedList = Array.from(
+        new Set([...Array.from(localDeleted), ...(Array.isArray(config.deletedMenuIds) ? config.deletedMenuIds : [])])
+      );
+      localStorage.setItem(DELETED_MENU_IDS_KEY, JSON.stringify(deletedList));
+
+      const cleanConfig = sanitizeStoreConfig({
+        ...config,
+        deletedMenuIds: deletedList,
+      }) as StoreConfig;
+
+      localStorage.setItem('dulang_store_config', JSON.stringify(cleanConfig));
       if (typeof window !== 'undefined') {
         window.dispatchEvent(new Event('dulang_store_config_updated'));
       }
@@ -1075,16 +1816,18 @@ ${lines.join('\n')}
       // Sync ke Supabase Cloud agar langsung terupdate di seluruh HP pembeli & kasir
       const client = getSupabaseClient();
       if (client) {
-        client
+        const { error } = await client
           .from('menus')
           .upsert({
-            id: 'sys_store_config',
+            id: SYS_STORE_CONFIG_ID,
             nama: 'SYSTEM_STORE_CONFIG',
             harga: 0,
-            deskripsi: JSON.stringify(config),
+            deskripsi: JSON.stringify(cleanConfig),
             tersedia: true,
-          })
-          .then();
+          });
+        if (error) {
+          console.warn('Supabase store config upsert note:', error.message);
+        }
       }
     } catch (e) {
       console.error('Failed to save store config:', e);
@@ -1128,11 +1871,11 @@ ${lines.join('\n')}
   },
 
   // --- METODE PEMBERSIHAN DATA KHUSUS SISI PEMILIK (OWNER ONLY) ---
-  clearAllDemoData(): void {
+  async clearAllDemoData(): Promise<void> {
     this.clearCustomers();
-    this.clearOrders();
+    await this.clearOrders();
     this.clearExpenses();
-    this.clearTestimonials();
+    await this.saveTestimonials([]);
     this.clearVouchers();
   },
 
@@ -1146,8 +1889,9 @@ ${lines.join('\n')}
       );
       this.saveOrders(orders);
 
+      // JANGAN hapus pelanggan riil (mis. cust-1790405359692); hanya hapus data contoh DEMO-* atau ID contoh 1-3 digit
       const customers = this.getCustomers().filter(
-        (c) => !c.id.startsWith('cust-') && !c.id.startsWith('DEMO-')
+        (c) => !c.id.startsWith('DEMO-') && !/^cust-[1-9]\d{0,3}$/.test(c.id)
       );
       this.saveCustomers(customers);
 
@@ -1156,15 +1900,19 @@ ${lines.join('\n')}
       );
       this.saveExpenses(expenses);
 
-      const testimonials = this.getTestimonials().filter(
-        (t) => !t.id.startsWith('testi-')
+      const rawTestimonials = this.getTestimonials();
+      const filteredTestimonials = rawTestimonials.filter(
+        (t) => !t.id.startsWith('testi-demo-') && !['testi-1', 'testi-2', 'testi-3', 'testi-4'].includes(t.id)
       );
-      this.saveTestimonials(testimonials);
+      if (filteredTestimonials.length !== rawTestimonials.length) {
+        localStorage.setItem(STORAGE_KEYS.TESTIMONIALS, JSON.stringify(filteredTestimonials));
+      }
 
+      const demoVoucherCodes = new Set(['DULANG10', 'SEGERA', 'SERBU50', 'DULANGDEMO']);
       const vouchers = this.getVouchers().filter(
-        (v) => !v.code.startsWith('DULANG') && !v.code.startsWith('SEGERA') && !v.code.startsWith('SERBU')
+        (v) => !demoVoucherCodes.has(v.code.toUpperCase())
       );
-      this.saveVouchers(vouchers);
+      localStorage.setItem(STORAGE_KEYS.VOUCHERS, JSON.stringify(vouchers));
 
       if (typeof window !== 'undefined') {
         localStorage.setItem(flagKey, 'true');
@@ -1410,11 +2158,29 @@ ${lines.join('\n')}
 
   // --- ORDER & SALES TRANSACTIONS (PENCATATAN KASIR DAPUR) ---
   getOrders(): OrderRecord[] {
+    let deletedUpper = new Set<string>();
+    try {
+      const delRaw = localStorage.getItem('dulang_deleted_order_ids');
+      if (delRaw) {
+        const arr = JSON.parse(delRaw);
+        if (Array.isArray(arr)) {
+          deletedUpper = new Set(arr.map((x) => String(x).toUpperCase()));
+        }
+      }
+    } catch {}
+
     try {
       const data = localStorage.getItem(STORAGE_KEYS.ORDERS);
       if (data !== null) {
         const parsed = JSON.parse(data);
-        if (Array.isArray(parsed)) return parsed;
+        if (Array.isArray(parsed)) {
+          return parsed.filter(
+            (o) =>
+              o &&
+              String(o.status || '').toLowerCase() !== 'dihapus' &&
+              !deletedUpper.has(String(o.id || '').toUpperCase())
+          );
+        }
       }
     } catch (e) {
       console.warn('Failed to read orders from localStorage:', e);
@@ -1430,6 +2196,7 @@ ${lines.join('\n')}
       const { data, error } = await client
         .from('orders')
         .select('*')
+        .neq('status', 'dihapus')
         .order('created_at', { ascending: false });
 
       if (error || !data) return this.getOrders();
@@ -1442,74 +2209,102 @@ ${lines.join('\n')}
         deletedIds = new Set();
       }
 
-      const localOrders = this.getOrders().filter((o) => !deletedIds.has(o.id));
-      const map = new Map<string, OrderRecord>();
-
-      // Keep local orders that haven't been deleted
-      localOrders.forEach((o) => map.set(o.id, o));
+      const localOrders = this.getOrders();
+      const localById = new Map<string, OrderRecord>();
+      localOrders.forEach((o) => {
+        if (!deletedIds.has(o.id) && o.status !== ('dihapus' as any)) {
+          localById.set(o.id, o);
+        }
+      });
 
       const KITCHEN_STAGE_WEIGHT: Record<string, number> = {
         antre: 1,
         sedang_goreng: 2,
-        tiriskan: 3,
+        packing: 3,
         siap: 4,
         selesai: 5,
       };
 
-      // Merge remote orders from Supabase (skip any that were deleted)
-      data.forEach((r: any) => {
-        if (!deletedIds.has(r.id)) {
-          const { cleanNotes, meta } = unpackOrderNotes(r.notes);
-          const existingLocal = map.get(r.id);
+      const map = new Map<string, OrderRecord>();
 
-          const remoteKitchen = (r.kitchen_status as KitchenCookingStatus) || meta.kitchen_status;
-          let finalKitchen = remoteKitchen;
-          let finalCookingStarted = r.cooking_started_at || meta.cooking_started_at;
-          let finalCookingCompleted = r.cooking_completed_at || meta.cooking_completed_at;
+      // Perlakukan daftar Supabase sebagai otoritatif untuk pesanan yang belum dihapus
+      (data as any[]).forEach((r: any) => {
+        if (!r?.id) return;
+        if (r.status === 'dihapus') {
+          deletedIds.add(r.id);
+          return;
+        }
+        if (deletedIds.has(r.id)) return;
 
-          // Jangan pernah menurunkan progress wajan yang sudah digoreng secara lokal
-          if (existingLocal?.kitchen_status) {
-            const localWeight = KITCHEN_STAGE_WEIGHT[existingLocal.kitchen_status] || 0;
-            const remoteWeight = KITCHEN_STAGE_WEIGHT[remoteKitchen || ''] || 0;
-            if (localWeight > remoteWeight) {
-              finalKitchen = existingLocal.kitchen_status;
-              finalCookingStarted = existingLocal.cooking_started_at || finalCookingStarted;
-              finalCookingCompleted = existingLocal.cooking_completed_at || finalCookingCompleted;
-            }
+        const { cleanNotes, meta } = unpackOrderNotes(r.notes);
+        const existingLocal = localById.get(r.id);
+
+        const remoteKitchen = (r.kitchen_status as KitchenCookingStatus) || meta.kitchen_status;
+        let finalKitchen = remoteKitchen;
+        let finalCookingStarted = r.cooking_started_at || meta.cooking_started_at;
+        let finalCookingCompleted = r.cooking_completed_at || meta.cooking_completed_at;
+
+        if (existingLocal?.kitchen_status) {
+          const localWeight = KITCHEN_STAGE_WEIGHT[existingLocal.kitchen_status] || 0;
+          const remoteWeight = KITCHEN_STAGE_WEIGHT[remoteKitchen || ''] || 0;
+          if (localWeight > remoteWeight) {
+            finalKitchen = existingLocal.kitchen_status;
+            finalCookingStarted = existingLocal.cooking_started_at || finalCookingStarted;
+            finalCookingCompleted = existingLocal.cooking_completed_at || finalCookingCompleted;
           }
+        }
 
-          const remoteStatus = (r.status as OrderStatus) || 'menunggu';
-          let finalStatus = remoteStatus;
-          let finalCompletedAt = r.completed_at || undefined;
-          if (existingLocal?.status === 'lunas' && remoteStatus !== 'lunas') {
-            finalStatus = 'lunas';
-            finalCompletedAt = existingLocal.completed_at || new Date().toISOString();
-          }
+        const remoteStatus = (r.status as OrderStatus) || 'menunggu';
+        let finalStatus = remoteStatus;
+        let finalCompletedAt = r.completed_at || undefined;
+        if (existingLocal?.status === 'lunas' && remoteStatus !== 'lunas' && remoteStatus !== 'batal') {
+          finalStatus = 'lunas';
+          finalCompletedAt = existingLocal.completed_at || new Date().toISOString();
+        }
 
-          map.set(r.id, {
-            id: r.id,
-            customer_name: r.customer_name || 'Pelanggan Web',
-            customer_wa: r.customer_wa || undefined,
-            customer_qr_id: r.customer_qr_id || undefined,
-            items: Array.isArray(r.items) ? r.items : [],
-            total_price: Number(r.total_price || 0),
-            payment_method: (r.payment_method as PaymentMethod) || 'tunai',
-            status: finalStatus,
-            delivery_method: r.delivery_method === 'delivery' ? 'delivery' : 'pickup',
-            shipping_cost: Number(r.shipping_cost || 0),
-            shipping_district: r.shipping_district || undefined,
-            delivery_schedule: r.delivery_schedule || meta.delivery_schedule || undefined,
-            delivery_slot: r.delivery_slot || meta.delivery_slot || undefined,
-            dp_amount: r.dp_amount ? Number(r.dp_amount) : meta.dp_amount,
-            remaining_amount: r.remaining_amount ? Number(r.remaining_amount) : meta.remaining_amount,
-            channel: r.channel || 'web_wa',
-            notes: cleanNotes || undefined,
-            kitchen_status: finalKitchen,
-            cooking_started_at: finalCookingStarted,
-            cooking_completed_at: finalCookingCompleted,
-            created_at: r.created_at || new Date().toISOString(),
-            completed_at: finalCompletedAt,
-          });
+        map.set(r.id, {
+          id: r.id,
+          customer_name: r.customer_name || 'Pelanggan Web',
+          customer_wa: r.customer_wa || undefined,
+          customer_qr_id: r.customer_qr_id || undefined,
+          items: Array.isArray(r.items) ? r.items : [],
+          total_price: Number(r.total_price || 0),
+          payment_method: (r.payment_method as PaymentMethod) || 'tunai',
+          status: finalStatus,
+          delivery_method: r.delivery_method === 'delivery' ? 'delivery' : 'pickup',
+          shipping_cost: Number(r.shipping_cost || 0),
+          shipping_district: r.shipping_district || undefined,
+          delivery_schedule: r.delivery_schedule || meta.delivery_schedule || undefined,
+          delivery_slot: r.delivery_slot || meta.delivery_slot || undefined,
+          dp_amount: r.dp_amount ? Number(r.dp_amount) : meta.dp_amount,
+          remaining_amount:
+            r.remaining_amount !== undefined && r.remaining_amount !== null
+              ? Number(r.remaining_amount)
+              : meta.remaining_amount,
+          channel: r.channel || 'web_wa',
+          notes: cleanNotes || undefined,
+          kitchen_status: finalKitchen,
+          cooking_started_at: finalCookingStarted,
+          cooking_completed_at: finalCookingCompleted,
+          cashier_name: r.cashier_name || meta.cashier_name,
+          print_count:
+            r.print_count !== undefined && r.print_count !== null ? Number(r.print_count) : meta.print_count,
+          last_printed_at: r.last_printed_at || meta.last_printed_at,
+          cancellation_reason: r.cancellation_reason || meta.cancellation_reason,
+          cancelled_by: r.cancelled_by || meta.cancelled_by,
+          cancelled_at: r.cancelled_at || meta.cancelled_at,
+          created_at: r.created_at || new Date().toISOString(),
+          completed_at: finalCompletedAt,
+        });
+      });
+
+      // Hanya pertahankan order lokal yang sangat baru (< 15 detik) yang mungkin masih antre kirim ke cloud
+      const nowMs = Date.now();
+      localOrders.forEach((o) => {
+        if (!o?.id || map.has(o.id) || deletedIds.has(o.id) || o.status === ('dihapus' as any)) return;
+        const createdMs = new Date(o.created_at || 0).getTime();
+        if (Number.isFinite(createdMs) && nowMs - createdMs < 15_000) {
+          map.set(o.id, o);
         }
       });
 
@@ -1517,9 +2312,11 @@ ${lines.join('\n')}
         (a, b) => new Date(b.created_at).getTime() - new Date(a.created_at).getTime()
       );
 
+      localStorage.setItem('dulang_deleted_order_ids', JSON.stringify(Array.from(deletedIds).slice(-300)));
       localStorage.setItem(STORAGE_KEYS.ORDERS, JSON.stringify(merged));
       if (typeof window !== 'undefined') {
         window.dispatchEvent(new Event('dulang_orders_updated'));
+        window.dispatchEvent(new Event('dulang_kitchen_updated'));
       }
       return merged;
     } catch (err) {
@@ -1533,6 +2330,19 @@ ${lines.join('\n')}
       const cleanId = orderId.trim();
       if (!cleanId) return null;
 
+      let deletedIds = new Set<string>();
+      try {
+        const deletedRaw = localStorage.getItem('dulang_deleted_order_ids') || '[]';
+        const arr = JSON.parse(deletedRaw);
+        if (Array.isArray(arr)) deletedIds = new Set(arr.map((x) => String(x).toUpperCase()));
+      } catch {}
+
+      if (deletedIds.has(cleanId.toUpperCase())) {
+        const cleanedLocal = this.getOrders().filter((o) => o.id.toUpperCase() !== cleanId.toUpperCase());
+        this.saveOrders(cleanedLocal);
+        return null;
+      }
+
       const localList = this.getOrders();
       const local = localList.find((o) => o.id.toUpperCase() === cleanId.toUpperCase());
 
@@ -1543,9 +2353,34 @@ ${lines.join('\n')}
         .from('orders')
         .select('*')
         .ilike('id', cleanId)
-        .single();
+        .maybeSingle();
 
-      if (error || !data) return local || null;
+      if (error) return local || null;
+
+      if (!data) {
+        if (local) {
+          const ageMs = Date.now() - new Date(local.created_at || 0).getTime();
+          if (ageMs >= 15_000) {
+            this.saveOrders(localList.filter((o) => o.id.toUpperCase() !== cleanId.toUpperCase()));
+            return null;
+          }
+          return local;
+        }
+        return null;
+      }
+
+      if (data.status === 'dihapus') {
+        try {
+          const deletedRaw = localStorage.getItem('dulang_deleted_order_ids') || '[]';
+          const delArr: string[] = JSON.parse(deletedRaw);
+          if (!delArr.includes(data.id)) {
+            delArr.push(data.id);
+            localStorage.setItem('dulang_deleted_order_ids', JSON.stringify(delArr.slice(-300)));
+          }
+        } catch {}
+        this.saveOrders(localList.filter((o) => o.id.toUpperCase() !== data.id.toUpperCase()));
+        return null;
+      }
 
       const { cleanNotes, meta } = unpackOrderNotes(data.notes);
       const remoteKitchen = (data.kitchen_status as KitchenCookingStatus) || meta.kitchen_status;
@@ -1553,7 +2388,7 @@ ${lines.join('\n')}
       const KITCHEN_STAGE_WEIGHT: Record<string, number> = {
         antre: 1,
         sedang_goreng: 2,
-        tiriskan: 3,
+        packing: 3,
         siap: 4,
         selesai: 5,
       };
@@ -1580,12 +2415,24 @@ ${lines.join('\n')}
         delivery_schedule: data.delivery_schedule || meta.delivery_schedule || undefined,
         delivery_slot: data.delivery_slot || meta.delivery_slot || undefined,
         dp_amount: data.dp_amount ? Number(data.dp_amount) : meta.dp_amount,
-        remaining_amount: data.remaining_amount ? Number(data.remaining_amount) : meta.remaining_amount,
+        remaining_amount:
+          data.remaining_amount !== undefined && data.remaining_amount !== null
+            ? Number(data.remaining_amount)
+            : meta.remaining_amount,
         channel: data.channel || 'web_wa',
         notes: cleanNotes || undefined,
         kitchen_status: finalKitchen,
         cooking_started_at: data.cooking_started_at || meta.cooking_started_at || local?.cooking_started_at,
         cooking_completed_at: data.cooking_completed_at || meta.cooking_completed_at || local?.cooking_completed_at,
+        cashier_name: data.cashier_name || meta.cashier_name || local?.cashier_name,
+        print_count:
+          data.print_count !== undefined && data.print_count !== null
+            ? Number(data.print_count)
+            : meta.print_count ?? local?.print_count,
+        last_printed_at: data.last_printed_at || meta.last_printed_at || local?.last_printed_at,
+        cancellation_reason: data.cancellation_reason || meta.cancellation_reason || local?.cancellation_reason,
+        cancelled_by: data.cancelled_by || meta.cancelled_by || local?.cancelled_by,
+        cancelled_at: data.cancelled_at || meta.cancelled_at || local?.cancelled_at,
         created_at: data.created_at || new Date().toISOString(),
         completed_at: data.completed_at || local?.completed_at,
       };
@@ -1609,7 +2456,24 @@ ${lines.join('\n')}
 
   saveOrders(orders: OrderRecord[]): void {
     try {
-      localStorage.setItem(STORAGE_KEYS.ORDERS, JSON.stringify(orders));
+      let deletedUpper = new Set<string>();
+      try {
+        const delRaw = localStorage.getItem('dulang_deleted_order_ids');
+        if (delRaw) {
+          const arr = JSON.parse(delRaw);
+          if (Array.isArray(arr)) {
+            deletedUpper = new Set(arr.map((x) => String(x).toUpperCase()));
+          }
+        }
+      } catch {}
+
+      const cleanOrders = (orders || []).filter(
+        (o) =>
+          o &&
+          String(o.status || '').toLowerCase() !== 'dihapus' &&
+          !deletedUpper.has(String(o.id || '').toUpperCase())
+      );
+      localStorage.setItem(STORAGE_KEYS.ORDERS, JSON.stringify(cleanOrders));
       if (typeof window !== 'undefined') {
         window.dispatchEvent(new Event('dulang_orders_updated'));
       }
@@ -1641,9 +2505,14 @@ ${lines.join('\n')}
         console.warn('Failed to store deleted order ID:', err);
       }
 
-      // Hapus permanen dari tabel Supabase Cloud
+      // Tandai status='dihapus' (jika RLS memblok DELETE fisik) sekaligus coba hapus permanen dari Supabase Cloud
       const client = getSupabaseClient();
       if (client) {
+        try {
+          await client.from('orders').update({ status: 'dihapus' }).eq('id', orderId);
+        } catch (err) {
+          console.warn('Failed to soft-delete order in Supabase:', err);
+        }
         try {
           await client.from('orders').delete().eq('id', orderId);
         } catch (err) {
@@ -1663,15 +2532,21 @@ ${lines.join('\n')}
     }
   },
 
-  addOrder(orderData: Omit<OrderRecord, 'id' | 'created_at'>): OrderRecord {
+  addOrder(
+    orderData: Omit<OrderRecord, 'id' | 'created_at'> & { id?: string; created_at?: string }
+  ): OrderRecord {
     const list = this.getOrders();
+    let candidateId = orderData.id || `ORD-${Date.now().toString().slice(-4)}`;
+    if (!orderData.id && list.some((o) => o.id === candidateId)) {
+      candidateId = `ORD-${Date.now().toString().slice(-4)}${Math.floor(Math.random() * 9)}`;
+    }
     const newOrder: OrderRecord = {
       ...orderData,
-      id: `ORD-${Date.now().toString().slice(-4)}`,
-      created_at: new Date().toISOString(),
+      id: candidateId,
+      created_at: orderData.created_at || new Date().toISOString(),
       kitchen_status: orderData.kitchen_status || 'antre',
     };
-    const updated = [newOrder, ...list];
+    const updated = [newOrder, ...list.filter((o) => o.id !== newOrder.id)];
     this.saveOrders(updated);
 
     // Kurangi kuota stok porsi otomatis jika item menu memiliki kuota
@@ -1679,39 +2554,39 @@ ${lines.join('\n')}
       this.deductStockForOrder(newOrder.items);
     }
 
-    // Auto-sync order baru ke Supabase Cloud (jika tabel orders aktif di Supabase)
+    // Auto-sync order baru ke Supabase Cloud
     try {
       const client = getSupabaseClient();
       if (client) {
-        const packedNotes = packOrderNotes(newOrder.notes, {
-          kitchen_status: newOrder.kitchen_status,
-          delivery_schedule: newOrder.delivery_schedule,
-          delivery_slot: newOrder.delivery_slot,
-          dp_amount: newOrder.dp_amount,
-          remaining_amount: newOrder.remaining_amount,
-        });
+        const packedNotes = buildOrderPackedNotes(newOrder);
 
-        client.from('orders').insert({
-          id: newOrder.id,
-          customer_name: newOrder.customer_name,
-          customer_wa: newOrder.customer_wa || null,
-          customer_qr_id: newOrder.customer_qr_id || null,
-          items: newOrder.items,
-          total_price: newOrder.total_price,
-          payment_method: newOrder.payment_method || 'tunai',
-          status: newOrder.status || 'menunggu',
-          delivery_method: newOrder.delivery_method || 'pickup',
-          shipping_cost: newOrder.shipping_cost || 0,
-          shipping_district: newOrder.shipping_district || null,
-          channel: newOrder.channel || 'web_wa',
-          notes: packedNotes || null,
-          created_at: newOrder.created_at,
-          completed_at: newOrder.completed_at || null,
-        }).then(({ error }: any) => {
-          if (error) {
-            console.warn('Supabase order upload note:', error.message);
-          }
-        });
+        client
+          .from('orders')
+          .upsert(
+            {
+              id: newOrder.id,
+              customer_name: newOrder.customer_name,
+              customer_wa: newOrder.customer_wa || null,
+              customer_qr_id: newOrder.customer_qr_id || null,
+              items: newOrder.items,
+              total_price: newOrder.total_price,
+              payment_method: newOrder.payment_method || 'tunai',
+              status: newOrder.status || 'menunggu',
+              delivery_method: newOrder.delivery_method || 'pickup',
+              shipping_cost: newOrder.shipping_cost || 0,
+              shipping_district: newOrder.shipping_district || null,
+              channel: newOrder.channel || 'web_wa',
+              notes: packedNotes || null,
+              created_at: newOrder.created_at,
+              completed_at: newOrder.completed_at || null,
+            },
+            { onConflict: 'id' }
+          )
+          .then(({ error }: any) => {
+            if (error) {
+              console.warn('Supabase order upload note:', error.message);
+            }
+          });
       }
     } catch (err) {
       console.warn('Supabase order sync error:', err);
@@ -1824,6 +2699,7 @@ ${lines.join('\n')}
       delivery_method: waData.deliveryType === 'DELIVERY' ? 'delivery' : 'pickup',
       shipping_district: waData.area || (waData.deliveryType === 'DELIVERY' ? 'Sidoarjo' : 'Dapur Dulang'),
       shipping_cost: waData.ongkir || 0,
+      kitchen_status: 'antre',
       notes: `Pesanan via WhatsApp: ${waData.rawText || (waData.deliveryType === 'DELIVERY' ? `Kirim ke ${waData.area}` : 'Ambil Sendiri di Dapur')}`,
       created_at: new Date().toISOString(),
     };
@@ -1833,6 +2709,35 @@ ${lines.join('\n')}
 
     if (newOrder.items && newOrder.items.length > 0) {
       this.deductStockForOrder(newOrder.items);
+    }
+
+    try {
+      const client = getSupabaseClient();
+      if (client) {
+        client
+          .from('orders')
+          .upsert(
+            {
+              id: newOrder.id,
+              customer_name: newOrder.customer_name,
+              customer_wa: newOrder.customer_wa || null,
+              items: newOrder.items,
+              total_price: newOrder.total_price,
+              payment_method: newOrder.payment_method,
+              status: newOrder.status,
+              delivery_method: newOrder.delivery_method,
+              shipping_cost: newOrder.shipping_cost || 0,
+              shipping_district: newOrder.shipping_district || null,
+              channel: newOrder.channel,
+              notes: buildOrderPackedNotes(newOrder) || null,
+              created_at: newOrder.created_at,
+            },
+            { onConflict: 'id' }
+          )
+          .then(() => {}, () => {});
+      }
+    } catch (err) {
+      console.warn('Supabase WA order sync error:', err);
     }
 
     return newOrder;
@@ -2054,7 +2959,7 @@ ${lines.join('\n')}
           .update({
             status: 'dp',
             payment_method: updatedOrder.payment_method,
-            notes: `${existing.notes || ''} [DP: Rp ${cleanDp.toLocaleString('id-ID')} | Sisa: Rp ${remaining.toLocaleString('id-ID')}]`.trim(),
+            notes: buildOrderPackedNotes(updatedOrder),
           })
           .eq('id', orderId)
           .then();
@@ -2096,15 +3001,7 @@ ${lines.join('\n')}
     updatedList[idx] = updatedOrder;
     this.saveOrders(updatedList);
 
-    const packedNotes = packOrderNotes(existing.notes, {
-      kitchen_status: updatedOrder.kitchen_status,
-      cooking_started_at: updatedOrder.cooking_started_at,
-      cooking_completed_at: updatedOrder.cooking_completed_at,
-      delivery_schedule: updatedOrder.delivery_schedule,
-      delivery_slot: updatedOrder.delivery_slot,
-      dp_amount: updatedOrder.dp_amount,
-      remaining_amount: updatedOrder.remaining_amount,
-    });
+    const packedNotes = buildOrderPackedNotes(updatedOrder);
 
     // Sync status perubahan ke Supabase Cloud
     try {
@@ -2157,15 +3054,7 @@ ${lines.join('\n')}
     updatedList[idx] = updatedOrder;
     this.saveOrders(updatedList);
 
-    const packedNotes = packOrderNotes(existing.notes, {
-      kitchen_status: kitchenStatus,
-      cooking_started_at: updatedOrder.cooking_started_at,
-      cooking_completed_at: updatedOrder.cooking_completed_at,
-      delivery_schedule: updatedOrder.delivery_schedule,
-      delivery_slot: updatedOrder.delivery_slot,
-      dp_amount: updatedOrder.dp_amount,
-      remaining_amount: updatedOrder.remaining_amount,
-    });
+    const packedNotes = buildOrderPackedNotes(updatedOrder);
 
     // Sync status perubahan ke Supabase Cloud jika aktif
     try {
@@ -2230,6 +3119,22 @@ ${lines.join('\n')}
     const updatedList = [...list];
     updatedList[idx] = updated;
     this.saveOrders(updatedList);
+
+    try {
+      const client = getSupabaseClient();
+      if (client) {
+        client
+          .from('orders')
+          .update({
+            notes: buildOrderPackedNotes(updated),
+          })
+          .eq('id', orderId)
+          .then(() => {}, () => {});
+      }
+    } catch (e) {
+      console.warn('Sync print count to Supabase error:', e);
+    }
+
     return updated;
   },
 
@@ -2262,12 +3167,31 @@ ${lines.join('\n')}
           const mIdx = menus.findIndex((m) => m.id === item.menu_id || m.nama === item.nama);
           if (mIdx >= 0 && menus[mIdx].sisaStok !== null && menus[mIdx].sisaStok !== undefined) {
             menus[mIdx].sisaStok = (menus[mIdx].sisaStok || 0) + item.qty;
+            if ((menus[mIdx].sisaStok || 0) > 0) {
+              menus[mIdx].tersedia = true;
+            }
           }
         });
         this.saveMenus(menus);
       } catch (e) {
         console.warn('Failed to restore menu stock on void:', e);
       }
+    }
+
+    try {
+      const client = getSupabaseClient();
+      if (client) {
+        client
+          .from('orders')
+          .update({
+            status: 'batal',
+            notes: buildOrderPackedNotes(updated),
+          })
+          .eq('id', orderId)
+          .then(() => {}, () => {});
+      }
+    } catch (e) {
+      console.warn('Sync void order to Supabase error:', e);
     }
 
     if (typeof window !== 'undefined') {
@@ -2386,7 +3310,7 @@ _Dapur Dulang Indonesia - Risoles & Katering Sidoarjo_`;
       url = `https://wa.me/${waNumber}?text=${encodeURIComponent(text)}`;
     }
     if (typeof window !== 'undefined') {
-      window.open(url, '_blank');
+      window.open(url, '_blank', 'noopener,noreferrer');
     }
   },
 
@@ -2482,12 +3406,20 @@ _Dapur Dulang Indonesia - Risoles & Katering Sidoarjo_`;
       }
 
       const client = getSupabaseClient();
-      if (client && current.length > 0) {
+      if (client) {
+        if (current.length > 0) {
+          try {
+            const ids = current.map((o) => o.id);
+            await client.from('orders').update({ status: 'dihapus' }).in('id', ids);
+            await client.from('orders').delete().in('id', ids);
+          } catch (err) {
+            console.warn('Failed to clear orders from Supabase:', err);
+          }
+        }
         try {
-          const ids = current.map((o) => o.id);
-          await client.from('orders').delete().in('id', ids);
+          await client.from('orders').update({ status: 'dihapus' }).neq('status', 'dihapus');
         } catch (err) {
-          console.warn('Failed to clear orders from Supabase:', err);
+          console.warn('Failed to soft-clear remaining orders from Supabase:', err);
         }
       }
 
@@ -2525,11 +3457,56 @@ _Dapur Dulang Indonesia - Risoles & Katering Sidoarjo_`;
     return DEFAULT_TESTIMONIALS;
   },
 
-  saveTestimonials(testimonials: CustomerTestimonial[]): void {
+  async syncTestimonialsFromSupabase(): Promise<CustomerTestimonial[]> {
+    try {
+      const client = getSupabaseClient();
+      if (!client) return this.getTestimonials();
+
+      const { data, error } = await client
+        .from('menus')
+        .select('deskripsi')
+        .eq('id', SYS_PUBLIC_TESTIMONIALS_ID)
+        .single();
+
+      if (!error && data?.deskripsi) {
+        const parsed = JSON.parse(data.deskripsi);
+        const remoteItems = Array.isArray(parsed)
+          ? parsed
+          : Array.isArray(parsed?.items)
+          ? parsed.items
+          : null;
+        if (remoteItems) {
+          localStorage.setItem(STORAGE_KEYS.TESTIMONIALS, JSON.stringify(remoteItems));
+          if (typeof window !== 'undefined') {
+            window.dispatchEvent(new Event('dulang_testimonials_updated'));
+          }
+          return remoteItems;
+        }
+      }
+    } catch (e) {
+      console.warn('Failed to sync testimonials from Supabase:', e);
+    }
+    return this.getTestimonials();
+  },
+
+  async saveTestimonials(testimonials: CustomerTestimonial[]): Promise<void> {
     try {
       localStorage.setItem(STORAGE_KEYS.TESTIMONIALS, JSON.stringify(testimonials));
       if (typeof window !== 'undefined') {
         window.dispatchEvent(new Event('dulang_testimonials_updated'));
+      }
+      const client = getSupabaseClient();
+      if (client) {
+        await client.from('menus').upsert({
+          id: SYS_PUBLIC_TESTIMONIALS_ID,
+          nama: 'SYSTEM_PUBLIC_TESTIMONIALS',
+          harga: 0,
+          deskripsi: JSON.stringify({
+            items: testimonials,
+            updatedAt: new Date().toISOString(),
+          }),
+          tersedia: true,
+        });
       }
     } catch (e) {
       console.error('Failed to save testimonials:', e);
@@ -2565,14 +3542,7 @@ _Dapur Dulang Indonesia - Risoles & Katering Sidoarjo_`;
   },
 
   clearTestimonials(): void {
-    try {
-      localStorage.setItem(STORAGE_KEYS.TESTIMONIALS, JSON.stringify([]));
-      if (typeof window !== 'undefined') {
-        window.dispatchEvent(new Event('dulang_testimonials_updated'));
-      }
-    } catch (e) {
-      console.error('Failed to clear testimonials:', e);
-    }
+    this.saveTestimonials([]);
   },
 
   resetDemoTestimonials(): void {
@@ -3003,7 +3973,7 @@ _Dapur Dulang Indonesia - Risoles & Katering Sidoarjo_`;
       orders: this.getOrders(),
       testimonials: this.getTestimonials(),
       vouchers: this.getVouchers(),
-      storeConfig: this.getStoreConfig(),
+      storeConfig: sanitizeStoreConfig(this.getStoreConfig()) as StoreConfig,
       expenses: this.getExpenses(),
       pantryIngredients: this.getPantryIngredients(),
       menuRecipes: this.getMenuRecipes(),
@@ -3035,7 +4005,8 @@ _Dapur Dulang Indonesia - Risoles & Katering Sidoarjo_`;
         localStorage.setItem(STORAGE_KEYS.VOUCHERS, JSON.stringify(backup.vouchers));
       }
       if (backup.storeConfig && typeof backup.storeConfig === 'object') {
-        localStorage.setItem('dulang_store_config', JSON.stringify(backup.storeConfig));
+        const cleanCfg = sanitizeStoreConfig(backup.storeConfig);
+        localStorage.setItem('dulang_store_config', JSON.stringify(cleanCfg));
       }
       if (Array.isArray(backup.expenses)) {
         localStorage.setItem(STORAGE_KEYS.EXPENSES, JSON.stringify(backup.expenses));

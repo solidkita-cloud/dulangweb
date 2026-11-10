@@ -1,7 +1,9 @@
 // src/lib/security.ts
-// Security Utilities: WebCrypto SHA-256 Hashing, Rate Limiting, and Session Management
+// Security Utilities: WebCrypto PBKDF2-SHA256 Hashing, Legacy Migration, Rate Limiting, CSV Defense & Session Management
 
 const APP_SALT = 'dulang-indonesia-secure-kitchen-salt-2026';
+const PBKDF2_PREFIX = 'pbkdf2_v1';
+const PBKDF2_ITERATIONS = 100_000;
 const MAX_FAILED_ATTEMPTS = 5;
 const LOCKOUT_DURATION_MS = 10 * 60 * 1000; // 10 menit
 const SESSION_DURATION_MS = 24 * 60 * 60 * 1000; // 24 jam
@@ -9,32 +11,142 @@ const SESSION_DURATION_MS = 24 * 60 * 60 * 1000; // 24 jam
 const LOCKOUT_STORAGE_KEY = 'dulang_auth_lockout';
 const SESSION_STORAGE_KEY = 'dulang_owner_session';
 
-/**
- * Hash a PIN or password using browser standard WebCrypto API SHA-256
- */
-export async function hashPassword(plainText: string): Promise<string> {
-  const encoder = new TextEncoder();
-  const data = encoder.encode(`${plainText.trim()}:${APP_SALT}`);
-  const hashBuffer = await crypto.subtle.digest('SHA-256', data);
-  const hashArray = Array.from(new Uint8Array(hashBuffer));
-  return hashArray.map((b) => b.toString(16).padStart(2, '0')).join('');
+// Hash standar awal sistem (tersandi PBKDF2-HMAC-SHA256 100.000 iterasi, tanpa plaintext di kode)
+export const LEGACY_DEFAULT_OWNER_SHA256 =
+  '6ed219215542ae196c7797caf21265aa08138a5bde34204c9d0f5e467d9c2bf5';
+
+export const DEFAULT_AUTH_HASHES = {
+  ownerHash:
+    'pbkdf2_v1$d600a3c2317e10622a37525015903379$d91f0d2479d56afcf2501cd296bc9478b19c37db977fda3e4c1c1767b9bba6ca',
+  cashierHash:
+    'pbkdf2_v1$076eca1007f8cf5897e4bc0e2fa5ca32$9801b4e12cdef1b4656bbb0465578991bb5b7808612096b7b07da593a1479b45',
+  kitchenHash:
+    'pbkdf2_v1$f8fe87b6d51feedf69f053d3c17ea112$ea693caacdecb49149f65ed426a069d253133fbe8a35f711184f5c45aac0b518',
+} as const;
+
+function bytesToHex(bytes: Uint8Array): string {
+  return Array.from(bytes)
+    .map((b) => b.toString(16).padStart(2, '0'))
+    .join('');
+}
+
+function hexToBytes(hex: string): Uint8Array | null {
+  if (!hex || hex.length % 2 !== 0 || !/^[0-9a-f]+$/i.test(hex)) return null;
+  const out = new Uint8Array(hex.length / 2);
+  for (let i = 0; i < hex.length; i += 2) {
+    out[i / 2] = parseInt(hex.slice(i, i + 2), 16);
+  }
+  return out;
+}
+
+export function timingSafeEqualStr(a: string, b: string): boolean {
+  if (a.length !== b.length) return false;
+  let diff = 0;
+  for (let i = 0; i < a.length; i++) {
+    diff |= a.charCodeAt(i) ^ b.charCodeAt(i);
+  }
+  return diff === 0;
+}
+
+export function isHashFormat(val?: string | null): boolean {
+  if (!val || typeof val !== 'string') return false;
+  const trimmed = val.trim();
+  if (/^pbkdf2_v1\$[0-9a-f]{32}\$[0-9a-f]{64}$/i.test(trimmed)) return true;
+  if (/^[0-9a-f]{64}$/i.test(trimmed)) return true;
+  return false;
 }
 
 /**
- * Verify whether an input PIN matches the stored hash (or legacy plaintext)
+ * Legacy SHA-256 hash — khusus memverifikasi hash 64-char lama saat proses migrasi/upgrade ke PBKDF2
+ */
+export async function hashSha256Legacy(plainText: string): Promise<string> {
+  const encoder = new TextEncoder();
+  const data = encoder.encode(`${plainText.trim()}:${APP_SALT}`);
+  const hashBuffer = await crypto.subtle.digest('SHA-256', data);
+  return bytesToHex(new Uint8Array(hashBuffer));
+}
+
+async function derivePbkdf2Hex(plainText: string, saltBytes: Uint8Array): Promise<string> {
+  const encoder = new TextEncoder();
+  const keyMaterial = await crypto.subtle.importKey(
+    'raw',
+    encoder.encode(plainText.trim()),
+    'PBKDF2',
+    false,
+    ['deriveBits']
+  );
+  const derivedBits = await crypto.subtle.deriveBits(
+    {
+      name: 'PBKDF2',
+      salt: saltBytes as BufferSource,
+      iterations: PBKDF2_ITERATIONS,
+      hash: 'SHA-256',
+    },
+    keyMaterial,
+    256
+  );
+  return bytesToHex(new Uint8Array(derivedBits));
+}
+
+/**
+ * Hash a PIN or password using salted WebCrypto PBKDF2-HMAC-SHA256 (100.000 iterations)
+ */
+export async function hashPassword(plainText: string): Promise<string> {
+  const saltBytes = crypto.getRandomValues(new Uint8Array(16));
+  const saltHex = bytesToHex(saltBytes);
+  const hashHex = await derivePbkdf2Hex(plainText, saltBytes);
+  return `${PBKDF2_PREFIX}$${saltHex}$${hashHex}`;
+}
+
+/**
+ * Verify whether an input PIN matches a salted PBKDF2 hash (or legacy 64-char SHA-256 hex).
+ * Never compares plaintext values.
  */
 export async function verifyPassword(inputPin: string, storedValue: string): Promise<boolean> {
   if (!inputPin || !storedValue) return false;
   const cleanInput = inputPin.trim();
+  const cleanStored = storedValue.trim();
 
-  // If stored value is a 64-char SHA-256 hex string
-  if (storedValue.length === 64 && /^[0-9a-f]{64}$/i.test(storedValue)) {
-    const inputHash = await hashPassword(cleanInput);
-    return inputHash === storedValue;
+  if (cleanStored.startsWith(`${PBKDF2_PREFIX}$`)) {
+    const parts = cleanStored.split('$');
+    if (parts.length !== 3) return false;
+    const saltBytes = hexToBytes(parts[1]);
+    const expectedHex = parts[2].toLowerCase();
+    if (!saltBytes || !/^[0-9a-f]{64}$/i.test(expectedHex)) return false;
+    try {
+      const derivedHex = await derivePbkdf2Hex(cleanInput, saltBytes);
+      return timingSafeEqualStr(derivedHex, expectedHex);
+    } catch {
+      return false;
+    }
   }
 
-  // Legacy fallback comparison (for existing plaintext during transition)
-  return cleanInput.toLowerCase() === storedValue.toLowerCase();
+  // Dukungan verifikasi hash 64-char SHA-256 lama agar owner yang sudah ganti password tidak terkunci
+  if (/^[0-9a-f]{64}$/i.test(cleanStored)) {
+    try {
+      const inputHash = await hashSha256Legacy(cleanInput);
+      return timingSafeEqualStr(inputHash.toLowerCase(), cleanStored.toLowerCase());
+    } catch {
+      return false;
+    }
+  }
+
+  return false;
+}
+
+/**
+ * Sanitasi sel CSV untuk mencegah CSV/Formula Injection (=, +, -, @, tab, CR) di Excel / Google Sheets
+ */
+export function sanitizeCsvCell(value: unknown): string {
+  const raw = value === null || value === undefined ? '' : String(value);
+  const trimmedStart = raw.replace(/^[\u0000-\u001F\s]+/, '');
+  const dangerousStart = /^[=+\-@\t\r]/.test(raw) || /^[=+\-@]/.test(trimmedStart);
+  const safe = dangerousStart ? `'${raw}` : raw;
+  return `"${safe.replace(/"/g, '""')}"`;
+}
+
+export function csvRow(cells: unknown[]): string {
+  return cells.map((c) => sanitizeCsvCell(c)).join(',');
 }
 
 /**
@@ -109,20 +221,40 @@ export interface OwnerSession {
   token: string;
   createdAt: number;
   expiresAt: number;
+  role?: 'owner' | 'cashier' | 'kitchen';
 }
 
-export function createOwnerSession(): OwnerSession {
-  const token = `dulang_sec_${Date.now()}_${Math.random().toString(36).slice(2)}_${Math.random().toString(36).slice(2)}`;
+export function createOwnerSession(role: 'owner' | 'cashier' | 'kitchen' = 'owner'): OwnerSession {
+  const rnd = crypto.getRandomValues(new Uint8Array(16));
+  const token = `dulang_sec_${Date.now()}_${bytesToHex(rnd)}`;
   const now = Date.now();
   const session: OwnerSession = {
     token,
     createdAt: now,
     expiresAt: now + SESSION_DURATION_MS,
+    role,
   };
   try {
     localStorage.setItem(SESSION_STORAGE_KEY, JSON.stringify(session));
   } catch {}
   return session;
+}
+
+export function getOwnerSessionRole(): 'owner' | 'cashier' | 'kitchen' | null {
+  try {
+    const raw = localStorage.getItem(SESSION_STORAGE_KEY);
+    if (!raw) return null;
+    const session: OwnerSession = JSON.parse(raw);
+    if (!session || !session.token || !session.expiresAt || Date.now() > session.expiresAt) {
+      return null;
+    }
+    if (session.role === 'owner' || session.role === 'cashier' || session.role === 'kitchen') {
+      return session.role;
+    }
+    return 'owner';
+  } catch {
+    return null;
+  }
 }
 
 export function isOwnerSessionValid(): boolean {
@@ -160,7 +292,12 @@ export interface SecurityAuditEntry {
     | 'LOCKOUT_TRIGGERED'
     | 'PIN_CHANGED'
     | 'BACKUP_EXPORTED'
-    | 'BACKUP_RESTORED';
+    | 'BACKUP_RESTORED'
+    | 'ROLE_SWITCHED'
+    | 'PRINT_REPRINT'
+    | 'ORDER_VOIDED'
+    | 'DATA_CLEARED'
+    | 'SETTINGS_UPDATED';
   details: string;
   severity: 'INFO' | 'WARN' | 'ALERT';
 }

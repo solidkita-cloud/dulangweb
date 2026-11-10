@@ -73,9 +73,21 @@ export const LandingView: React.FC<LandingViewProps> = ({
     return () => clearInterval(timer);
   }, [heroPhotoList.length, isHeroHovered]);
 
-  const [testimonials] = useState<CustomerTestimonial[]>(() =>
+  const [testimonials, setTestimonials] = useState<CustomerTestimonial[]>(() =>
     storageService.getTestimonials().filter((t) => t.is_active)
   );
+
+  useEffect(() => {
+    const syncTestimonials = () => {
+      setTestimonials(storageService.getTestimonials().filter((t) => t.is_active));
+    };
+    window.addEventListener('dulang_testimonials_updated', syncTestimonials);
+    window.addEventListener('storage', syncTestimonials);
+    return () => {
+      window.removeEventListener('dulang_testimonials_updated', syncTestimonials);
+      window.removeEventListener('storage', syncTestimonials);
+    };
+  }, []);
 
   // --- RECOGNIZED CUSTOMER (SUPER SMART BARCODE GREETING) ---
   const [recognizedCustomer, setRecognizedCustomer] = useState<Customer | null>(() =>
@@ -556,7 +568,7 @@ export const LandingView: React.FC<LandingViewProps> = ({
                           type="button"
                           onClick={(e) => {
                             e.stopPropagation();
-                            setActiveHeroIdx((prev) => (prev - 1 + heroPhotoList.length) % heroPhotoList.length);
+                            setActiveHeroIdx((prev) => (prev + 1) % heroPhotoList.length);
                           }}
                           className="cursor-pointer absolute right-2 sm:right-3 top-1/2 -translate-y-1/2 z-25 w-7 h-7 sm:w-8 sm:h-8 rounded-full bg-black/60 hover:bg-black text-[#FFD700] hover:text-white flex items-center justify-center font-bold text-base sm:text-lg backdrop-blur-xs transition shadow-md border border-white/20 active:scale-90"
                           title="Foto selanjutnya"

@@ -213,7 +213,7 @@ export const RecipeInventoryTab: React.FC<RecipeInventoryTabProps> = ({
     const waUrl = cleanWa
       ? `https://wa.me/${cleanWa}?text=${encodeURIComponent(msg)}`
       : `https://wa.me/?text=${encodeURIComponent(msg)}`;
-    window.open(waUrl, '_blank');
+    window.open(waUrl, '_blank', 'noopener,noreferrer');
   };
 
   // Helper Category Labels

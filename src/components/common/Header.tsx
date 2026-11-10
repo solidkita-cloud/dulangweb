@@ -1,7 +1,9 @@
-import React from 'react';
+import React, { useEffect, useState } from 'react';
 import { BRAND, LOCKED_COPY } from '../../lib/constants';
 import { usePWAInstall } from '../../hooks/usePWAInstall';
 import { PwaInstallModal } from './PwaInstallModal';
+import { storageService } from '../../services/storageService';
+import { StaffRole } from '../../types';
 
 export type NavMode = 'pembeli' | 'pemilik' | 'cetak' | 'scan' | 'kds' | 'track';
 
@@ -20,6 +22,21 @@ export const Header: React.FC<HeaderProps> = ({
   onLogout,
 }) => {
   const { isInstalled, showIOSModal, setShowIOSModal, triggerInstall } = usePWAInstall();
+  const [staffRole, setStaffRole] = useState<StaffRole>(() => storageService.getStaffRole());
+
+  useEffect(() => {
+    setStaffRole(storageService.getStaffRole());
+    const handleRoleUpdate = () => {
+      setStaffRole(storageService.getStaffRole());
+    };
+    window.addEventListener('dulang_staff_role_updated', handleRoleUpdate);
+    return () => {
+      window.removeEventListener('dulang_staff_role_updated', handleRoleUpdate);
+    };
+  }, [isOwnerLoggedIn]);
+
+  const panelLabel =
+    staffRole === 'owner' ? 'Kasir & Owner' : staffRole === 'cashier' ? 'Panel Kasir' : 'Cockpit Dapur';
 
   return (
     <>
@@ -49,7 +66,7 @@ export const Header: React.FC<HeaderProps> = ({
                   : 'text-[#FFF8E7]/70 hover:text-[#FFF8E7]'
               }`}
             >
-              Kasir & Owner
+              {panelLabel}
             </button>
 
             <button
@@ -64,17 +81,19 @@ export const Header: React.FC<HeaderProps> = ({
               🍳 Layar Dapur (KDS)
             </button>
 
-            <button
-              type="button"
-              onClick={() => onSelectMode('cetak')}
-              className={`px-3 py-1.5 rounded-full transition-all cursor-pointer ${
-                currentMode === 'cetak'
-                  ? 'bg-[#FFD700] text-[#111111] shadow'
-                  : 'text-[#FFF8E7]/70 hover:text-[#FFF8E7]'
-              }`}
-            >
-              🖨️ Stiker
-            </button>
+            {staffRole !== 'kitchen' && (
+              <button
+                type="button"
+                onClick={() => onSelectMode('cetak')}
+                className={`px-3 py-1.5 rounded-full transition-all cursor-pointer ${
+                  currentMode === 'cetak'
+                    ? 'bg-[#FFD700] text-[#111111] shadow'
+                    : 'text-[#FFF8E7]/70 hover:text-[#FFF8E7]'
+                }`}
+              >
+                🖨️ Stiker
+              </button>
+            )}
 
             {onLogout && (
               <button

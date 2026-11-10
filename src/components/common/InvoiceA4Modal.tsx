@@ -67,7 +67,7 @@ export const InvoiceA4Modal: React.FC<InvoiceA4ModalProps> = ({
 
     const waNum = (order.customer_wa || '').replace(/\D/g, '');
     const url = waNum ? `https://wa.me/${waNum}?text=${encodeURIComponent(msg)}` : `https://wa.me/?text=${encodeURIComponent(msg)}`;
-    window.open(url, '_blank');
+    window.open(url, '_blank', 'noopener,noreferrer');
     onShowToast('Invoice dikirim ke WhatsApp! 📲');
   };
 

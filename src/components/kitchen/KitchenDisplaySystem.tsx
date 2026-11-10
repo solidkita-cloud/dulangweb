@@ -76,14 +76,21 @@ export const KitchenDisplaySystem: React.FC<KitchenDisplaySystemProps> = ({
       }
     };
 
+    let isMounted = true;
     window.addEventListener('dulang_kitchen_updated', handleKitchenUpdate);
+    window.addEventListener('dulang_orders_updated', refreshData);
     window.addEventListener('storage', refreshData);
 
     // Auto-poll every 5 seconds for live multi-device synchronization
-    const pollInterval = setInterval(refreshData, 5000);
+    const pollInterval = setInterval(async () => {
+      await storageService.syncOrdersFromSupabase().catch(() => {});
+      if (isMounted) refreshData();
+    }, 5000);
 
     return () => {
+      isMounted = false;
       window.removeEventListener('dulang_kitchen_updated', handleKitchenUpdate);
+      window.removeEventListener('dulang_orders_updated', refreshData);
       window.removeEventListener('storage', refreshData);
       clearInterval(pollInterval);
     };
@@ -113,7 +120,7 @@ export const KitchenDisplaySystem: React.FC<KitchenDisplaySystemProps> = ({
       const waNumber = cleanWa.startsWith('0') ? '62' + cleanWa.slice(1) : cleanWa;
       url = `https://wa.me/${waNumber}?text=${encodeURIComponent(text)}`;
     }
-    window.open(url, '_blank');
+    window.open(url, '_blank', 'noopener,noreferrer');
     onShowToast(`Membuka WhatsApp untuk update status masak #${order.id}... 📱`);
   };
 
@@ -133,7 +140,7 @@ export const KitchenDisplaySystem: React.FC<KitchenDisplaySystemProps> = ({
   // Filtered list
   const filteredOrders = orders.filter((o) => {
     const kStatus = o.kitchen_status || 'antre';
-    if (filterTab === 'semua') return o.status !== 'batal';
+    if (filterTab === 'semua') return o.status !== 'batal' && kStatus !== 'selesai';
     return kStatus === filterTab;
   });
 
@@ -539,7 +546,7 @@ export const KitchenDisplaySystem: React.FC<KitchenDisplaySystemProps> = ({
                       type="button"
                       onClick={() => {
                         const url = storageService.generateTrackingUrl(ord.id);
-                        window.open(url, '_blank');
+                        window.open(url, '_blank', 'noopener,noreferrer');
                       }}
                       className="cursor-pointer px-2.5 py-1.5 rounded-lg bg-white/10 hover:bg-white/20 text-white/80 text-xs font-mono transition flex items-center gap-1"
                       title="Buka tampilan lacak pesanan live"

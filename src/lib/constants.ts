@@ -59,9 +59,6 @@ export const DEFAULT_STORE_CONFIG: StoreConfig = {
       rot: '1deg',
     },
   ],
-  ownerPin: 'dulang2020',
-  cashierPin: '1234',
-  kitchenPin: '0000',
   brandName: 'Dulang Indonesia',
   brandTagline: 'Dibuat dengan wajan panas & tulisan tangan',
   brandLogo: '/dulang-logo.png',
@@ -467,8 +464,32 @@ export const DEFAULT_TESTIMONIALS: CustomerTestimonial[] = [];
 export const DEFAULT_ORDERS: OrderRecord[] = [];
 
 /**
+ * Helper waktu WIB (Asia/Jakarta, UTC+7) agar status buka/tutup seragam di semua HP & zona waktu
+ */
+export function getJakartaHourMinute(date: Date = new Date()): { hour: number; minute: number } {
+  try {
+    const parts = new Intl.DateTimeFormat('en-GB', {
+      timeZone: 'Asia/Jakarta',
+      hour: '2-digit',
+      minute: '2-digit',
+      hour12: false,
+    }).formatToParts(date);
+    const hourVal = Number(parts.find((p) => p.type === 'hour')?.value ?? NaN);
+    const minVal = Number(parts.find((p) => p.type === 'minute')?.value ?? NaN);
+    if (Number.isFinite(hourVal) && Number.isFinite(minVal)) {
+      return { hour: hourVal === 24 ? 0 : hourVal, minute: minVal };
+    }
+  } catch {
+    // Fallback aritmetika UTC+7
+  }
+  const utcMs = date.getTime() + date.getTimezoneOffset() * 60000;
+  const wib = new Date(utcMs + 7 * 3600 * 1000);
+  return { hour: wib.getUTCHours(), minute: wib.getUTCMinutes() };
+}
+
+/**
  * Helper terpusat untuk mengecek status operasional buka/tutup toko
- * Memadukan manual override dari owner dan jadwal jam operasional otomatis
+ * Memadukan manual override dari owner dan jadwal jam operasional otomatis (WIB / Asia/Jakarta)
  */
 export function checkStoreOpenStatus(config?: Partial<StoreConfig>): {
   isOpen: boolean;
@@ -494,17 +515,20 @@ export function checkStoreOpenStatus(config?: Partial<StoreConfig>): {
     };
   }
 
-  // 2. Auto operating hours check if enabled
+  // 2. Auto operating hours check if enabled (selalu pakai jam WIB Asia/Jakarta)
   if (autoHours) {
-    const now = new Date();
+    const { hour, minute } = getJakartaHourMinute();
     const [oH, oM] = openHour.split(':').map((n) => parseInt(n, 10) || 0);
     const [cH, cM] = closeHour.split(':').map((n) => parseInt(n, 10) || 0);
 
-    const nowMinutes = now.getHours() * 60 + now.getMinutes();
+    const nowMinutes = hour * 60 + minute;
     const openMinutes = oH * 60 + oM;
     const closeMinutes = cH * 60 + cM;
 
-    const isWithinHours = nowMinutes >= openMinutes && nowMinutes < closeMinutes;
+    const isWithinHours =
+      openMinutes < closeMinutes
+        ? nowMinutes >= openMinutes && nowMinutes < closeMinutes
+        : nowMinutes >= openMinutes || nowMinutes < closeMinutes;
     if (!isWithinHours) {
       return {
         isOpen: false,

@@ -14,7 +14,6 @@ export const OrderTrackingView: React.FC<OrderTrackingViewProps> = ({
 }) => {
   const [inputOrderId, setInputOrderId] = useState<string>(initialOrderId || '');
   const [currentOrder, setCurrentOrder] = useState<OrderRecord | null>(null);
-  const [allOrders, setAllOrders] = useState<OrderRecord[]>(() => storageService.getOrders());
   const [isRefreshing, setIsRefreshing] = useState<boolean>(false);
 
   // Review & Rating State
@@ -39,7 +38,7 @@ export const OrderTrackingView: React.FC<OrderTrackingViewProps> = ({
     '⚡ Pelayanan Super Ramah',
   ];
 
-  // Parse order from query param or initial props
+  // Parse order from query param, initial props, or last order created on this browser
   useEffect(() => {
     const params = new URLSearchParams(window.location.search);
     const idFromParam = params.get('track') || params.get('order') || initialOrderId || '';
@@ -48,11 +47,13 @@ export const OrderTrackingView: React.FC<OrderTrackingViewProps> = ({
       setInputOrderId(clean);
       findAndSetOrder(clean);
     } else {
-      // If no ID passed, try to take the latest order
-      const latest = storageService.getOrders()[0];
-      if (latest) {
-        setInputOrderId(latest.id);
-        setCurrentOrder(latest);
+      let lastOwnOrderId = '';
+      try {
+        lastOwnOrderId = (localStorage.getItem('dulang_last_order_id') || '').trim();
+      } catch {}
+      if (lastOwnOrderId) {
+        setInputOrderId(lastOwnOrderId);
+        findAndSetOrder(lastOwnOrderId);
       }
     }
   }, [initialOrderId]);
@@ -60,11 +61,10 @@ export const OrderTrackingView: React.FC<OrderTrackingViewProps> = ({
   // Listen for live updates
   useEffect(() => {
     const handleUpdate = () => {
-      const orders = storageService.getOrders();
-      setAllOrders(orders);
       if (inputOrderId) {
+        const orders = storageService.getOrders();
         const found = orders.find((o) => o.id.toUpperCase() === inputOrderId.toUpperCase());
-        if (found) setCurrentOrder(found);
+        setCurrentOrder(found && found.status !== ('dihapus' as any) ? found : null);
       }
     };
 
@@ -78,9 +78,7 @@ export const OrderTrackingView: React.FC<OrderTrackingViewProps> = ({
       if (inputOrderId) {
         try {
           const cloudOrder = await storageService.fetchOrderById(inputOrderId);
-          if (cloudOrder) {
-            setCurrentOrder(cloudOrder);
-          }
+          setCurrentOrder(cloudOrder || null);
         } catch {
           // ignore
         }
@@ -107,10 +105,7 @@ export const OrderTrackingView: React.FC<OrderTrackingViewProps> = ({
     // Tarik status terkini langsung dari Cloud Supabase
     try {
       const cloudOrder = await storageService.fetchOrderById(clean);
-      if (cloudOrder) {
-        setCurrentOrder(cloudOrder);
-        setAllOrders(storageService.getOrders());
-      }
+      setCurrentOrder(cloudOrder || null);
     } catch {
       // fallback ke lokal
     }
@@ -298,26 +293,6 @@ export const OrderTrackingView: React.FC<OrderTrackingViewProps> = ({
           <p className="font-sans text-xs text-[#5C3D2E]/70 max-w-sm mx-auto">
             Pastikan nomor pesanan sesuai dengan struk pembelian atau chat WhatsApp dari Dapur Dulang.
           </p>
-          {allOrders.length > 0 && (
-            <div className="pt-2">
-              <span className="text-[11px] text-[#5C3D2E]/50 block mb-1">Atau coba lihat pesanan terbaru:</span>
-              <div className="flex flex-wrap justify-center gap-1.5">
-                {allOrders.slice(0, 4).map((o) => (
-                  <button
-                    key={o.id}
-                    type="button"
-                    onClick={() => {
-                      setInputOrderId(o.id);
-                      findAndSetOrder(o.id);
-                    }}
-                    className="cursor-pointer px-3 py-1 rounded-full bg-[#FFF8E7] hover:bg-[#FFD700] border border-[#111111]/20 text-xs font-mono font-bold transition"
-                  >
-                    #{o.id} ({o.customer_name})
-                  </button>
-                ))}
-              </div>
-            </div>
-          )}
         </div>
       ) : (
         <div className="space-y-6">
@@ -705,7 +680,7 @@ export const OrderTrackingView: React.FC<OrderTrackingViewProps> = ({
                   `Halo Dapur Dulang! Mau tanya tentang pesanan saya #${currentOrder.id} (${currentOrder.customer_name}) 🙏✨`
                 )}`}
                 target="_blank"
-                rel="noreferrer"
+                rel="noopener noreferrer"
                 className="cursor-pointer flex-1 py-3 px-4 rounded-full bg-[#25D366] hover:bg-[#20ba59] text-white font-bold text-center text-sm shadow-[3px_3px_0_#111111] border-2 border-[#111111] transition flex items-center justify-center gap-2"
               >
                 <span>💬 Chat Dapur Dulang via WA</span>
