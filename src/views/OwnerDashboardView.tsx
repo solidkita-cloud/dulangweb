@@ -45,6 +45,10 @@ import {
   clearSecurityAuditLogs,
   SecurityAuditEntry,
 } from '../lib/security';
+import {
+  printOrderViaBluetooth,
+  isBluetoothSupported,
+} from '../lib/bluetoothPrinter';
 
 interface OwnerDashboardViewProps {
   menus: MenuItem[];
@@ -202,6 +206,7 @@ export const OwnerDashboardView: React.FC<OwnerDashboardViewProps> = ({
   const [audioSoundType, setAudioSoundTypeState] = useState<NotificationSoundType>(() => getAudioSoundType());
   const [audioVibration, setAudioVibrationState] = useState<boolean>(() => isVibrationEnabled());
   const [pantryVersion, setPantryVersion] = useState<number>(0);
+  const [isPrintingBluetooth, setIsPrintingBluetooth] = useState<boolean>(false);
 
   useEffect(() => {
     const handlePantryUpdate = () => setPantryVersion((v) => v + 1);
@@ -1807,6 +1812,42 @@ Catatan Kurir: Pastikan posisi dus ditaruh datar agar mayo tidak tumpah ya kak.`
 
   const handlePrintReceipt = () => {
     window.print();
+  };
+
+  const handlePrintReceiptBluetooth = async () => {
+    if (!selectedOrderForReceipt) return;
+    if (!isBluetoothSupported()) {
+      alert(
+        '⚠️ Browser ini belum mendukung Web Bluetooth secara langsung.\n\n' +
+        'Tips:\n' +
+        '1. Buka Dapur Dulang lewat Google Chrome di HP Android Anda.\n' +
+        '2. Atau gunakan tombol "Cetak Biasa / PDF".'
+      );
+      return;
+    }
+
+    setIsPrintingBluetooth(true);
+    try {
+      const res = await printOrderViaBluetooth(selectedOrderForReceipt, storeConfig);
+      onShowToast(`Struk berhasil dicetak ke "${res.deviceName}"! 🖨️✨`);
+    } catch (err: any) {
+      console.warn('Bluetooth print error:', err);
+      const errorMsg = err?.message || 'Gagal tersambung ke printer Bluetooth.';
+      if (errorMsg.includes('cancelled') || errorMsg.includes('User cancelled')) {
+        onShowToast('Pencarian Bluetooth dibatalkan.');
+      } else {
+        alert(
+          `Gagal mencetak via Bluetooth:\n${errorMsg}\n\n` +
+          'Langkah Pengecekan:\n' +
+          '1. Pastikan Bluetooth di HP sudah AKTIF.\n' +
+          '2. Pastikan printer RPP02N dalam kondisi MENYALA (lampu biru ON).\n' +
+          '3. Jika muncul pop-up pasangkan/pairing PIN, masukkan PIN: 0000\n' +
+          '4. Dekatkan printer ke HP lalu coba lagi.'
+        );
+      }
+    } finally {
+      setIsPrintingBluetooth(false);
+    }
   };
 
   // --- KONTROL STOK PORSI HARIAN ---
@@ -9704,11 +9745,22 @@ Catatan Kurir: Pastikan posisi dus ditaruh datar agar mayo tidak tumpah ya kak.`
 
             {/* Action Buttons */}
             <div className="p-4 bg-white border-t border-[#111111]/15 space-y-2">
+              {/* PRIMARY ACTION: DIRECT BLUETOOTH PRINT */}
+              <button
+                type="button"
+                disabled={isPrintingBluetooth}
+                onClick={handlePrintReceiptBluetooth}
+                className="w-full cursor-pointer bg-gradient-to-r from-amber-500 via-amber-400 to-yellow-500 hover:brightness-105 text-[#111111] border-2 border-[#111111] rounded-2xl py-3 px-3 font-sans font-black text-sm flex items-center justify-center gap-2 shadow-[3px_3px_0_#111111] transition active:scale-[0.98] disabled:opacity-60"
+              >
+                <span className="text-base">{isPrintingBluetooth ? '⏳' : '⚡'}</span>
+                <span>{isPrintingBluetooth ? 'Menghubungkan ke Printer...' : 'Cetak Langsung Bluetooth (RPP02N)'}</span>
+              </button>
+
               <div className="grid grid-cols-2 gap-2">
                 <button
                   type="button"
                   onClick={() => handleShareReceiptToWA(selectedOrderForReceipt)}
-                  className="cursor-pointer bg-emerald-600 hover:bg-emerald-700 text-white rounded-full py-2.5 px-3 font-sans font-bold text-xs flex items-center justify-center gap-1.5 shadow-sm transition active:translate-y-0.5"
+                  className="cursor-pointer bg-emerald-600 hover:bg-emerald-700 text-white rounded-xl py-2.5 px-2 font-sans font-bold text-xs flex items-center justify-center gap-1.5 shadow-sm transition active:translate-y-0.5"
                 >
                   <span>📲</span> Kirim Struk Lunas WA
                 </button>
@@ -9716,9 +9768,10 @@ Catatan Kurir: Pastikan posisi dus ditaruh datar agar mayo tidak tumpah ya kak.`
                 <button
                   type="button"
                   onClick={handlePrintReceipt}
-                  className="cursor-pointer bg-[#111111] hover:bg-[#222222] text-[#FFD700] rounded-full py-2.5 px-3 font-sans font-bold text-xs flex items-center justify-center gap-1.5 shadow-[2px_2px_0_#FFD700] transition active:translate-y-0.5"
+                  className="cursor-pointer bg-[#111111] hover:bg-[#222222] text-[#FFD700] rounded-xl py-2.5 px-2 font-sans font-bold text-xs flex items-center justify-center gap-1.5 shadow-[2px_2px_0_#FFD700] transition active:translate-y-0.5"
+                  title="Cetak via dialog printer sistem / PDF"
                 >
-                  <span>🖨️</span> Cetak Thermal
+                  <span>🖨️</span> Cetak Biasa / PDF
                 </button>
               </div>
 
@@ -9726,7 +9779,7 @@ Catatan Kurir: Pastikan posisi dus ditaruh datar agar mayo tidak tumpah ya kak.`
               <button
                 type="button"
                 onClick={() => handleSendInvoiceWhatsApp(selectedOrderForReceipt)}
-                className="w-full cursor-pointer bg-[#25D366] hover:bg-[#20ba59] text-white rounded-full py-2.5 px-3 font-sans font-bold text-xs flex items-center justify-center gap-1.5 shadow-sm transition active:translate-y-0.5"
+                className="w-full cursor-pointer bg-[#25D366] hover:bg-[#20ba59] text-white rounded-xl py-2.5 px-3 font-sans font-bold text-xs flex items-center justify-center gap-1.5 shadow-sm transition active:translate-y-0.5"
               >
                 <span>💳</span> Kirim Rincian Tagihan & Rekening / QRIS ke WA
               </button>
@@ -9734,7 +9787,7 @@ Catatan Kurir: Pastikan posisi dus ditaruh datar agar mayo tidak tumpah ya kak.`
               <button
                 type="button"
                 onClick={() => setSelectedOrderForReceipt(null)}
-                className="w-full cursor-pointer py-2 rounded-full font-sans text-xs text-gray-500 hover:text-black font-semibold"
+                className="w-full cursor-pointer py-2 rounded-xl font-sans text-xs text-gray-500 hover:text-black font-semibold"
               >
                 Tutup Nota
               </button>

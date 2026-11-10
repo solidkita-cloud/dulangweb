@@ -1,6 +1,10 @@
 import React, { useState } from 'react';
 import { OrderRecord, ExpenseRecord, KitchenClosingRecap, StoreConfig } from '../../types';
 import { storageService } from '../../services/storageService';
+import {
+  printClosingRecapViaBluetooth,
+  isBluetoothSupported,
+} from '../../lib/bluetoothPrinter';
 
 interface KitchenClosingModalProps {
   isOpen: boolean;
@@ -34,6 +38,7 @@ export const KitchenClosingModal: React.FC<KitchenClosingModalProps> = ({
   const [actualDrawerCash, setActualDrawerCash] = useState<number | ''>('');
   const [drawerExpenseOverride, setDrawerExpenseOverride] = useState<number | '' | null>(null);
   const [keepFloatForTomorrow, setKeepFloatForTomorrow] = useState<boolean>(true);
+  const [isPrintingBluetooth, setIsPrintingBluetooth] = useState<boolean>(false);
 
   if (!isOpen) return null;
 
@@ -303,6 +308,72 @@ export const KitchenClosingModal: React.FC<KitchenClosingModalProps> = ({
       localStorage.setItem('dulang_cash_float', String(floatNum));
     }
     window.print();
+  };
+
+  const handlePrintRecapBluetooth = async () => {
+    const recap: KitchenClosingRecap = {
+      id: `RECAP-${closingDate}`,
+      recapDate: closingDate,
+      closedAt: new Date().toISOString(),
+      totalOrders: todayLunasOrders.length + todayDpOrders.length,
+      totalPortions,
+      portionsMatang,
+      portionsFrozen,
+      grossRevenue,
+      cashRevenue,
+      nonCashRevenue,
+      dpRevenue,
+      pendingReceivables,
+      totalCashFlowIn: grossRevenue,
+      totalExpenses: totalExpenseNominal,
+      netProfit,
+      topSellingItems: sortedItems,
+      tomorrowPreOrdersCount: tomorrowOrders.length,
+      notes: evalNotes,
+      openingCashFloat: floatNum,
+      cashExpensesFromDrawer: drawerExpenseNum,
+      expectedDrawerCash,
+      actualDrawerCash: isActualInputted ? actualCashNum : undefined,
+      cashDifference: isActualInputted ? cashDifference : undefined,
+      depositToOwner,
+    };
+    storageService.saveKitchenRecap(recap);
+    if (typeof window !== 'undefined') {
+      localStorage.setItem('dulang_cash_float', String(floatNum));
+    }
+
+    if (!isBluetoothSupported()) {
+      alert(
+        '⚠️ Browser ini belum mendukung Web Bluetooth secara langsung.\n\n' +
+        'Tips:\n' +
+        '1. Buka Dapur Dulang lewat Google Chrome di HP Android Anda.\n' +
+        '2. Atau gunakan tombol "Cetak Biasa / PDF".'
+      );
+      return;
+    }
+
+    setIsPrintingBluetooth(true);
+    try {
+      const res = await printClosingRecapViaBluetooth(recap, storeConfig);
+      onShowToast(`Rekap tutup dapur berhasil dicetak ke "${res.deviceName}"! 🖨️✨`);
+    } catch (err: any) {
+      console.warn('Bluetooth print closing error:', err);
+      const errorMsg = err?.message || 'Gagal tersambung ke printer Bluetooth.';
+      if (errorMsg.includes('cancelled') || errorMsg.includes('User cancelled')) {
+        onShowToast('Pencarian Bluetooth dibatalkan.');
+      } else {
+        alert(
+          `Gagal mencetak via Bluetooth:\n${errorMsg}\n\n` +
+          'Langkah Pengecekan:\n' +
+          '1. Pastikan Bluetooth di HP sudah AKTIF.\n' +
+          '2. Pastikan printer RPP02N dalam kondisi MENYALA (lampu biru ON).\n' +
+          '3. Jika muncul pop-up pasangkan/pairing PIN, masukkan PIN: 0000\n' +
+          '4. Dekatkan printer ke HP lalu coba lagi.'
+        );
+      }
+    } finally {
+      setIsPrintingBluetooth(false);
+    }
   };
 
   return (
@@ -697,7 +768,26 @@ export const KitchenClosingModal: React.FC<KitchenClosingModalProps> = ({
 
         {/* Action Buttons Footer */}
         <div className="pt-4 border-t-2 border-[#111111]/15 flex flex-wrap items-center justify-between gap-2.5 shrink-0">
-          <div className="flex items-center gap-2">
+          <div className="flex flex-wrap items-center gap-2">
+            <button
+              type="button"
+              disabled={isPrintingBluetooth}
+              onClick={handlePrintRecapBluetooth}
+              className="cursor-pointer bg-gradient-to-r from-amber-500 via-amber-400 to-yellow-500 hover:brightness-105 text-[#111111] border-2 border-[#111111] px-3.5 py-2 rounded-full font-sans font-black text-xs shadow-[2px_2px_0_#111111] transition flex items-center gap-1.5 active:translate-y-0.5 disabled:opacity-60"
+              title="Cetak langsung ke printer portable RPP02N via Bluetooth"
+            >
+              <span>{isPrintingBluetooth ? '⏳' : '⚡'}</span>
+              <span>{isPrintingBluetooth ? 'Mencetak...' : 'Cetak Bluetooth (RPP02N)'}</span>
+            </button>
+            <button
+              type="button"
+              onClick={handlePrintRecap}
+              className="cursor-pointer bg-white hover:bg-gray-100 text-[#111111] border-2 border-[#111111] px-3.5 py-2 rounded-full font-sans font-bold text-xs shadow-[2px_2px_0_#111111] transition flex items-center gap-1.5"
+              title="Cetak via dialog printer sistem / PDF"
+            >
+              <span>🖨️</span>
+              <span>Cetak Biasa / PDF</span>
+            </button>
             <button
               type="button"
               onClick={handleCopyClipboard}
@@ -705,14 +795,6 @@ export const KitchenClosingModal: React.FC<KitchenClosingModalProps> = ({
             >
               <span>📋</span>
               <span>Salin</span>
-            </button>
-            <button
-              type="button"
-              onClick={handlePrintRecap}
-              className="cursor-pointer bg-white hover:bg-gray-100 text-[#111111] border-2 border-[#111111] px-3.5 py-2 rounded-full font-sans font-bold text-xs shadow-[2px_2px_0_#111111] transition flex items-center gap-1.5"
-            >
-              <span>🖨️</span>
-              <span>Cetak Struk Rekap</span>
             </button>
           </div>
 
