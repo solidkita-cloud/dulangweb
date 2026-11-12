@@ -88,7 +88,7 @@ export default defineConfig({
     host: true,
     open: false,
     watch: {
-      ignored: ['**/BAHAN/**', '**/EVALUASI/**', '**/*.zip'],
+      ignored: ['**/BAHAN/**', '**/*.zip'],
     },
   },
 });

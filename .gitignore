@@ -33,6 +33,3 @@ Thumbs.db
 *.njsproj
 *.sln
 *.sw?
-
-# Netlify
-.netlify/
