@@ -1,4 +1,4 @@
-import React, { useState, useEffect, useRef, useMemo } from 'react';
+import React, { useState, useEffect, useRef, useMemo, lazy, Suspense } from 'react';
 import QRCode from 'qrcode';
 import {
   MenuItem,
@@ -35,13 +35,26 @@ import {
 } from '../lib/audioNotifier';
 import { StoreClosedModal } from '../components/common/StoreClosedModal';
 import { ImageCropModal } from '../components/common/ImageCropModal';
-import { SubuhCalculatorModal } from '../components/common/SubuhCalculatorModal';
-import { KitchenClosingModal } from '../components/common/KitchenClosingModal';
-import { InvoiceA4Modal } from '../components/common/InvoiceA4Modal';
-import { RecipeInventoryTab } from '../components/owner/RecipeInventoryTab';
-import { KitchenDisplaySystem } from '../components/kitchen/KitchenDisplaySystem';
 import { BluetoothPrinterBar } from '../components/common/BluetoothPrinterBar';
-import { StickerGeneratorView } from './StickerGeneratorView';
+
+const SubuhCalculatorModal = lazy(() =>
+  import('../components/common/SubuhCalculatorModal').then((m) => ({ default: m.SubuhCalculatorModal }))
+);
+const KitchenClosingModal = lazy(() =>
+  import('../components/common/KitchenClosingModal').then((m) => ({ default: m.KitchenClosingModal }))
+);
+const InvoiceA4Modal = lazy(() =>
+  import('../components/common/InvoiceA4Modal').then((m) => ({ default: m.InvoiceA4Modal }))
+);
+const RecipeInventoryTab = lazy(() =>
+  import('../components/owner/RecipeInventoryTab').then((m) => ({ default: m.RecipeInventoryTab }))
+);
+const KitchenDisplaySystem = lazy(() =>
+  import('../components/kitchen/KitchenDisplaySystem').then((m) => ({ default: m.KitchenDisplaySystem }))
+);
+const StickerGeneratorView = lazy(() =>
+  import('./StickerGeneratorView').then((m) => ({ default: m.StickerGeneratorView }))
+);
 import {
   logSecurityEvent,
   getSecurityAuditLogs,
@@ -7037,19 +7050,23 @@ Catatan Kurir: Pastikan posisi dus ditaruh datar agar mayo tidak tumpah ya kak.`
 
       {/* TAB: GUDANG BAHAN BAKU & RESEP HPP OTOMATIS */}
       {activeTab === 'inventory' && (
-        <RecipeInventoryTab
-          menus={menus}
-          onShowToast={onShowToast}
-          onRefreshExpenses={() => setExpenses(storageService.getExpenses())}
-        />
+        <Suspense fallback={<div className="py-12 text-center font-sans text-sm text-[#5C3D2E]">⏳ Memuat modul Gudang & Resep HPP...</div>}>
+          <RecipeInventoryTab
+            menus={menus}
+            onShowToast={onShowToast}
+            onRefreshExpenses={() => setExpenses(storageService.getExpenses())}
+          />
+        </Suspense>
       )}
 
       {/* TAB: LAYAR DAPUR & ANTREAN GORENG (KDS) */}
       {activeTab === 'kds' && (
-        <KitchenDisplaySystem
-          onShowToast={onShowToast}
-          onPrintReceipt={(order) => setSelectedOrderForReceipt(order)}
-        />
+        <Suspense fallback={<div className="py-12 text-center font-sans text-sm text-[#5C3D2E]">🔥 Memuat Layar Dapur (KDS)...</div>}>
+          <KitchenDisplaySystem
+            onShowToast={onShowToast}
+            onPrintReceipt={(order) => setSelectedOrderForReceipt(order)}
+          />
+        </Suspense>
       )}
 
       {/* TAB 2: PENGATURAN TOKO & KEAMANAN */}
@@ -11027,13 +11044,15 @@ Catatan Kurir: Pastikan posisi dus ditaruh datar agar mayo tidak tumpah ya kak.`
       {/* TAB 6: CETAK STIKER DUS (INTEGRATED) */}
       {activeTab === 'stickers' && (
         <div className="pt-1">
-          <StickerGeneratorView
-            onShowToast={onShowToast}
-            brandLogo={storeConfig.brandLogo}
-            onNavigateToScan={(qrId) => {
-              window.open(`/?scan=${qrId}`, '_blank', 'noopener,noreferrer');
-            }}
-          />
+          <Suspense fallback={<div className="py-12 text-center font-sans text-sm text-[#5C3D2E]">🖨️ Memuat Generator Stiker QR...</div>}>
+            <StickerGeneratorView
+              onShowToast={onShowToast}
+              brandLogo={storeConfig.brandLogo}
+              onNavigateToScan={(qrId) => {
+                window.open(`/?scan=${qrId}`, '_blank', 'noopener,noreferrer');
+              }}
+            />
+          </Suspense>
         </div>
       )}
 
@@ -11399,12 +11418,16 @@ Catatan Kurir: Pastikan posisi dus ditaruh datar agar mayo tidak tumpah ya kak.`
       )}
 
       {/* INVOICE & KUITANSI RESMI A4 MODAL */}
-      <InvoiceA4Modal
-        order={selectedOrderForInvoice}
-        onClose={() => setSelectedOrderForInvoice(null)}
-        storeConfig={storeConfig}
-        onShowToast={onShowToast}
-      />
+      {selectedOrderForInvoice && (
+        <Suspense fallback={null}>
+          <InvoiceA4Modal
+            order={selectedOrderForInvoice}
+            onClose={() => setSelectedOrderForInvoice(null)}
+            storeConfig={storeConfig}
+            onShowToast={onShowToast}
+          />
+        </Suspense>
+      )}
 
       {/* 1. MODAL BUKA SHIFT KASIR (Step 1) */}
       {isStartShiftModalOpen && (
@@ -12468,23 +12491,31 @@ Catatan Kurir: Pastikan posisi dus ditaruh datar agar mayo tidak tumpah ya kak.`
       )}
 
       {/* KALKULATOR KEBUTUHAN BAHAN SUBUH MODAL */}
-      <SubuhCalculatorModal
-        isOpen={isSubuhModalOpen}
-        onClose={() => setIsSubuhModalOpen(false)}
-        menus={menus}
-        onShowToast={onShowToast}
-        onExpenseAdded={() => setExpenses(storageService.getExpenses())}
-      />
+      {isSubuhModalOpen && (
+        <Suspense fallback={null}>
+          <SubuhCalculatorModal
+            isOpen={isSubuhModalOpen}
+            onClose={() => setIsSubuhModalOpen(false)}
+            menus={menus}
+            onShowToast={onShowToast}
+            onExpenseAdded={() => setExpenses(storageService.getExpenses())}
+          />
+        </Suspense>
+      )}
 
       {/* REKAP TUTUP DAPUR MALAM MODAL */}
-      <KitchenClosingModal
-        isOpen={isClosingModalOpen}
-        onClose={() => setIsClosingModalOpen(false)}
-        orders={orders}
-        expenses={expenses}
-        storeConfig={storeConfig}
-        onShowToast={onShowToast}
-      />
+      {isClosingModalOpen && (
+        <Suspense fallback={null}>
+          <KitchenClosingModal
+            isOpen={isClosingModalOpen}
+            onClose={() => setIsClosingModalOpen(false)}
+            orders={orders}
+            expenses={expenses}
+            storeConfig={storeConfig}
+            onShowToast={onShowToast}
+          />
+        </Suspense>
+      )}
 
       {/* ==============================================================================
           MODAL PENGATURAN SUARA NOTIFIKASI & VOLUME BEL DAPUR

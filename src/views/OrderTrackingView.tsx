@@ -1,6 +1,6 @@
 import React, { useState, useEffect } from 'react';
 import { OrderRecord, KitchenCookingStatus } from '../types';
-import { storageService } from '../services/storageService';
+import { storageService, sanitizePublicOrderRecord } from '../services/storageService';
 import { BRAND } from '../lib/constants';
 
 interface OrderTrackingViewProps {
@@ -64,7 +64,11 @@ export const OrderTrackingView: React.FC<OrderTrackingViewProps> = ({
       if (inputOrderId) {
         const orders = storageService.getOrders();
         const found = orders.find((o) => o.id.toUpperCase() === inputOrderId.toUpperCase());
-        setCurrentOrder(found && found.status !== ('dihapus' as any) ? found : null);
+        setCurrentOrder(
+          found && found.status !== ('dihapus' as any)
+            ? sanitizePublicOrderRecord(found)
+            : null
+        );
       }
     };
 
@@ -77,7 +81,7 @@ export const OrderTrackingView: React.FC<OrderTrackingViewProps> = ({
       handleUpdate();
       if (inputOrderId) {
         try {
-          const cloudOrder = await storageService.fetchOrderById(inputOrderId);
+          const cloudOrder = await storageService.fetchPublicOrderForTracking(inputOrderId);
           setCurrentOrder(cloudOrder || null);
         } catch {
           // ignore
@@ -97,14 +101,14 @@ export const OrderTrackingView: React.FC<OrderTrackingViewProps> = ({
     const clean = id.trim().toUpperCase();
     if (!clean) return;
 
-    // Cek cache lokal terlebih dahulu
+    // Cek cache lokal terlebih dahulu (tersanitasi tanpa PII)
     const orders = storageService.getOrders();
     const found = orders.find((o) => o.id.toUpperCase() === clean);
-    if (found) setCurrentOrder(found);
+    if (found) setCurrentOrder(sanitizePublicOrderRecord(found));
 
-    // Tarik status terkini langsung dari Cloud Supabase
+    // Tarik status terkini langsung dari Cloud Supabase (tanpa nomor HP / alamat)
     try {
-      const cloudOrder = await storageService.fetchOrderById(clean);
+      const cloudOrder = await storageService.fetchPublicOrderForTracking(clean);
       setCurrentOrder(cloudOrder || null);
     } catch {
       // fallback ke lokal
@@ -165,7 +169,7 @@ export const OrderTrackingView: React.FC<OrderTrackingViewProps> = ({
 
       storageService.addTestimonial({
         customer_name: currentOrder.customer_name || 'Pelanggan Dulang',
-        area: currentOrder.shipping_district || 'Sidoarjo',
+        area: 'Sidoarjo',
         comment: finalComment,
         favorite_menu: selectedFavMenu || (currentOrder.items[0]?.nama || 'Risol Mayo Lumer'),
         rating: reviewRating,

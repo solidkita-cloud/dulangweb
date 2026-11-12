@@ -61,6 +61,28 @@ export default defineConfig({
       },
     },
   ],
+  build: {
+    rollupOptions: {
+      output: {
+        manualChunks(id) {
+          if (id.includes('node_modules')) {
+            if (id.includes('jspdf') || id.includes('html2canvas') || id.includes('canvg')) {
+              return 'vendor-pdf';
+            }
+            if (id.includes('@supabase')) {
+              return 'vendor-supabase';
+            }
+            if (id.includes('qrcode')) {
+              return 'vendor-qr';
+            }
+            if (id.includes('react') || id.includes('lucide-react')) {
+              return 'vendor-ui';
+            }
+          }
+        },
+      },
+    },
+  },
   server: {
     port: 3001,
     host: true,

@@ -63,11 +63,13 @@ export const SmartScanView: React.FC<SmartScanViewProps> = ({
   };
 
   useEffect(() => {
-    loadCustomer(activeQrId);
+    void loadCustomer(activeQrId);
   }, [activeQrId]);
 
-  const loadCustomer = (qrId: string) => {
-    const found = storageService.getCustomerByQR(qrId);
+  const loadCustomer = async (qrId: string) => {
+    const cleanId = qrId.trim().toUpperCase();
+    const localFound = storageService.getCustomerByQR(cleanId);
+    const found = localFound || (await storageService.fetchCustomerByQRPublic(cleanId));
     setCustomer(found);
     if (found) {
       setName(found.name);
@@ -75,7 +77,7 @@ export const SmartScanView: React.FC<SmartScanViewProps> = ({
       setCity(found.city || 'Kabupaten Sidoarjo');
       setDistrict(found.district || found.area || 'Sidoarjo Kota');
       setVillage(found.village || '');
-      setStreetDetail(found.street_detail || found.address || '');
+      setStreetDetail(found.street_detail || (found.wa ? found.address : '') || '');
       setFavoriteMenu(found.favorite_menu);
       setBirthDay(found.birth_day || '');
       setBirthMonth(found.birth_month || '');
@@ -184,11 +186,13 @@ export const SmartScanView: React.FC<SmartScanViewProps> = ({
     const updated = await storageService.repeatOrder(customer.qr_code_id);
     if (updated) setCustomer(updated);
 
-    const addressParts = [
-      customer.address,
-      customer.district ? `Kec. ${customer.district}` : (customer.area ? `Kec. ${customer.area}` : ''),
-      customer.city || 'Kab. Sidoarjo'
-    ].filter(Boolean);
+    const addressParts = customer.wa
+      ? [
+          customer.address,
+          customer.district ? `Kec. ${customer.district}` : (customer.area ? `Kec. ${customer.area}` : ''),
+          customer.city || 'Kab. Sidoarjo',
+        ].filter(Boolean)
+      : [`Sesuai data terdaftar ID ${customer.qr_code_id} (${customer.area || 'Sidoarjo'})`];
 
     const optionsText = [
       repeatChili ? 'Ekstra Cabe Rawit Hijau (Banyakin 🌶️)' : 'Cabe Standar',
@@ -217,6 +221,7 @@ export const SmartScanView: React.FC<SmartScanViewProps> = ({
   // Mask sensitive PII so unauthorized passers-by photographing the QR cannot see full contact
   const getMaskedPhone = (phone: string) => {
     const d = phone.replace(/[^0-9]/g, '');
+    if (!d) return '';
     if (d.length <= 6) return d;
     return `${d.slice(0, 4)}-xxxx-${d.slice(-4)}`;
   };
@@ -366,7 +371,7 @@ export const SmartScanView: React.FC<SmartScanViewProps> = ({
                     Nomor WhatsApp (Masked)
                   </span>
                   <span className="font-bold text-[#111111] font-mono">
-                    +{getMaskedPhone(customer.wa)}
+                    {customer.wa ? `+${getMaskedPhone(customer.wa)}` : 'Nomor WA Tersimpan Aman'}
                   </span>
                   <span className="text-xs text-[#5C3D2E]/70 block mt-0.5">
                     Privasi UU PDP terlindungi

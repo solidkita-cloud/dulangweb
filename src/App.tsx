@@ -1,20 +1,39 @@
-import { useState, useEffect, useRef } from 'react';
+import { useState, useEffect, useRef, lazy, Suspense } from 'react';
 import { MenuItem, CartItem, StoreConfig, StaffRole } from './types';
 import { storageService } from './services/storageService';
 import { Header, NavMode } from './components/common/Header';
 import { StickyCart } from './components/common/StickyCart';
 import { Toast } from './components/common/Toast';
-import { OwnerLoginModal } from './components/common/OwnerLoginModal';
 import { StoreClosedModal } from './components/common/StoreClosedModal';
 import { PwaInstallBanner } from './components/common/PwaInstallBanner';
 import { LandingView } from './views/LandingView';
-import { SmartScanView } from './views/SmartScanView';
-import { OwnerDashboardView } from './views/OwnerDashboardView';
-import { KitchenDisplaySystem } from './components/kitchen/KitchenDisplaySystem';
-import { OrderTrackingView } from './views/OrderTrackingView';
 import { getSupabaseClient } from './lib/supabase';
 import { LOCKED_COPY } from './lib/constants';
 import { playNewCustomerChime } from './lib/audioNotifier';
+
+const SmartScanView = lazy(() =>
+  import('./views/SmartScanView').then((m) => ({ default: m.SmartScanView }))
+);
+const OwnerDashboardView = lazy(() =>
+  import('./views/OwnerDashboardView').then((m) => ({ default: m.OwnerDashboardView }))
+);
+const KitchenDisplaySystem = lazy(() =>
+  import('./components/kitchen/KitchenDisplaySystem').then((m) => ({ default: m.KitchenDisplaySystem }))
+);
+const OrderTrackingView = lazy(() =>
+  import('./views/OrderTrackingView').then((m) => ({ default: m.OrderTrackingView }))
+);
+const OwnerLoginModal = lazy(() =>
+  import('./components/common/OwnerLoginModal').then((m) => ({ default: m.OwnerLoginModal }))
+);
+
+function LazyViewFallback() {
+  return (
+    <div className="py-16 text-center font-sans text-sm font-semibold text-[#5C3D2E] animate-pulse">
+      🍳 Memuat modul Dapur Dulang...
+    </div>
+  );
+}
 
 export function App() {
   const [currentMode, setCurrentMode] = useState<NavMode>('pembeli');
@@ -49,7 +68,7 @@ export function App() {
     prevIsClosedRef.current = nowClosed;
   }, [storeConfig.isStoreClosed]);
 
-  // Initialize data and check URL params for ?scan=...
+  // Initialize public storefront data and check URL params (?scan=, ?track=, ?dapur, etc.)
   useEffect(() => {
     storageService.purgeDemoDataOnce();
     setMenus(storageService.getMenus());
@@ -57,17 +76,14 @@ export function App() {
     setIsOwnerLoggedIn(storageService.isOwnerAuthenticated());
     setStaffRole(storageService.getStaffRole());
 
-    const syncAllFromCloud = async () => {
-      await storageService.syncAuthMetaFromSupabase().catch(() => {});
+    const syncPublicFromCloud = async () => {
       const cfg = await storageService.syncStoreConfigFromSupabase().catch(() => null);
       if (cfg) setStoreConfig(cfg);
       const syncedMenus = await storageService.syncMenusFromSupabase().catch(() => []);
       if (syncedMenus && syncedMenus.length > 0) setMenus(syncedMenus);
-      await storageService.syncOrdersFromSupabase().catch(() => {});
       await storageService.syncTestimonialsFromSupabase().catch(() => {});
-      await storageService.fetchCustomersFromCloud().catch(() => {});
     };
-    syncAllFromCloud();
+    void syncPublicFromCloud();
 
     const params = new URLSearchParams(window.location.search);
     const scanParam = params.get('scan') || params.get('qr') || params.get('c') || params.get('id');
@@ -76,12 +92,13 @@ export function App() {
       setActiveScanId(cleanQr);
       storageService.setActiveCustomerQR(cleanQr);
 
-      const recognized = storageService.getCustomerByQR(cleanQr);
-      if (recognized) {
-        showToast(`Halo Kak ${recognized.name}! Seneng ketemu lagi 😊`);
-      } else {
-        showToast(`Stiker ${cleanQr} berhasil dibaca! 📱`);
-      }
+      void storageService.fetchCustomerByQRPublic(cleanQr).then((recognized) => {
+        if (recognized) {
+          showToast(`Halo Kak ${recognized.name}! Seneng ketemu lagi 😊`);
+        } else {
+          showToast(`Stiker ${cleanQr} berhasil dibaca! 📱`);
+        }
+      });
 
       if (params.has('scan') || params.has('id')) {
         setCurrentMode('scan');
@@ -107,53 +124,55 @@ export function App() {
       setTrackingOrderId(trk.trim());
       setCurrentMode('track');
     } else if (params.has('kds') || params.get('mode') === 'kds') {
-      setCurrentMode('kds');
+      if (!storageService.isOwnerAuthenticated()) {
+        setPendingMode('kds');
+        setIsOwnerLoginOpen(true);
+      } else {
+        setCurrentMode('kds');
+      }
     }
 
     const handleConfigUpdate = () => {
-      const fresh = storageService.getStoreConfig();
-      setStoreConfig(fresh);
+      setStoreConfig(storageService.getStoreConfig());
     };
     const handleMenusUpdate = () => {
-      const fresh = storageService.getMenus();
-      setMenus(fresh);
+      setMenus(storageService.getMenus());
     };
     const handleRoleUpdate = () => {
       const role = storageService.getStaffRole();
       setStaffRole(role);
       setIsOwnerLoggedIn(storageService.isOwnerAuthenticated());
     };
-    const handleVisibilityChange = () => {
+    const handlePublicVisibility = () => {
       if (document.visibilityState === 'visible') {
-        syncAllFromCloud();
+        void syncPublicFromCloud();
       }
     };
 
     window.addEventListener('dulang_store_config_updated', handleConfigUpdate);
     window.addEventListener('dulang_menus_updated', handleMenusUpdate);
     window.addEventListener('dulang_staff_role_updated', handleRoleUpdate);
-    document.addEventListener('visibilitychange', handleVisibilityChange);
+    document.addEventListener('visibilitychange', handlePublicVisibility);
 
-    const periodicSync = setInterval(() => {
-      syncAllFromCloud();
-    }, 15000);
+    const periodicPublicSync = setInterval(() => {
+      void syncPublicFromCloud();
+    }, 30000);
 
-    // Supabase Realtime Sync antar-perangkat
+    // Supabase Realtime untuk data katalog & toko publik saja
     const client = getSupabaseClient();
     let menuChannel: any = null;
-    let orderChannel: any = null;
     if (client) {
       try {
         menuChannel = client
           .channel('public:menus_realtime')
           .on('postgres_changes', { event: '*', schema: 'public', table: 'menus' }, (payload: any) => {
             const changedId = payload?.new?.id || payload?.old?.id || '';
-            if (changedId === 'sys_store_config') {
+            if (changedId === 'sys_auth_meta') {
+              return;
+            } else if (changedId === 'sys_store_config') {
               storageService.syncStoreConfigFromSupabase().then((cfg) => {
                 if (cfg) setStoreConfig(cfg);
               });
-            } else if (changedId === 'sys_auth_meta') {
-              storageService.syncAuthMetaFromSupabase().catch(() => {});
             } else if (changedId === 'sys_public_testimonials') {
               storageService.syncTestimonialsFromSupabase().catch(() => {});
             } else {
@@ -163,9 +182,54 @@ export function App() {
             }
           })
           .subscribe();
+      } catch (err) {
+        console.warn('Supabase public realtime listener error:', err);
+      }
+    }
 
+    return () => {
+      clearInterval(periodicPublicSync);
+      window.removeEventListener('dulang_store_config_updated', handleConfigUpdate);
+      window.removeEventListener('dulang_menus_updated', handleMenusUpdate);
+      window.removeEventListener('dulang_staff_role_updated', handleRoleUpdate);
+      document.removeEventListener('visibilitychange', handlePublicVisibility);
+      if (client && menuChannel) {
+        client.removeChannel(menuChannel);
+      }
+    };
+  }, []);
+
+  // Sync data sensitif (orders, customers, auth meta) & realtime pesanan HANYA aktif saat staf sudah login
+  useEffect(() => {
+    if (!isOwnerLoggedIn) return;
+
+    const syncStaffFromCloud = async () => {
+      await storageService.syncAuthMetaFromSupabase().catch(() => {});
+      const cfg = await storageService.syncStoreConfigFromSupabase().catch(() => null);
+      if (cfg) setStoreConfig(cfg);
+      await storageService.syncOrdersFromSupabase().catch(() => {});
+      await storageService.fetchCustomersFromCloud().catch(() => {});
+    };
+
+    void syncStaffFromCloud();
+
+    const handleStaffVisibility = () => {
+      if (document.visibilityState === 'visible') {
+        void syncStaffFromCloud();
+      }
+    };
+    document.addEventListener('visibilitychange', handleStaffVisibility);
+
+    const staffInterval = setInterval(() => {
+      void syncStaffFromCloud();
+    }, 15000);
+
+    const client = getSupabaseClient();
+    let orderChannel: any = null;
+    if (client) {
+      try {
         orderChannel = client
-          .channel('public:orders_realtime')
+          .channel('staff:orders_realtime')
           .on('postgres_changes', { event: '*', schema: 'public', table: 'orders' }, (payload: any) => {
             storageService.syncOrdersFromSupabase().then(() => {
               const newStatus = payload?.new?.status;
@@ -202,22 +266,18 @@ export function App() {
           })
           .subscribe();
       } catch (err) {
-        console.warn('Supabase realtime listener error:', err);
+        console.warn('Supabase staff realtime listener error:', err);
       }
     }
 
     return () => {
-      clearInterval(periodicSync);
-      window.removeEventListener('dulang_store_config_updated', handleConfigUpdate);
-      window.removeEventListener('dulang_menus_updated', handleMenusUpdate);
-      window.removeEventListener('dulang_staff_role_updated', handleRoleUpdate);
-      document.removeEventListener('visibilitychange', handleVisibilityChange);
-      if (client) {
-        if (menuChannel) client.removeChannel(menuChannel);
-        if (orderChannel) client.removeChannel(orderChannel);
+      clearInterval(staffInterval);
+      document.removeEventListener('visibilitychange', handleStaffVisibility);
+      if (client && orderChannel) {
+        client.removeChannel(orderChannel);
       }
     };
-  }, []);
+  }, [isOwnerLoggedIn]);
 
   const showToast = (msg: string) => {
     setToastMessage(msg);
@@ -322,6 +382,34 @@ export function App() {
     window.scrollTo({ top: 0, behavior: 'smooth' });
   };
 
+  const handleStaffLogout = () => {
+    storageService.setOwnerAuthenticated(false);
+    storageService.clearSensitiveStaffCacheOnLogout();
+    setIsOwnerLoggedIn(false);
+    setStaffRole('cashier');
+    setStoreConfig(storageService.getStoreConfig());
+    setCurrentMode('pembeli');
+    showToast('Sampai jumpa di dapur besok yaa! 👋');
+  };
+
+  const renderLockedAccess = (title: string, desc: string, targetMode: NavMode, buttonText: string) => (
+    <div className="py-20 text-center space-y-4">
+      <div className="text-4xl">🔒</div>
+      <h2 className="font-hand font-bold text-3xl">{title}</h2>
+      <p className="font-sans text-sm text-[#5C3D2E]/70 max-w-md mx-auto">{desc}</p>
+      <button
+        type="button"
+        onClick={() => {
+          setPendingMode(targetMode);
+          setIsOwnerLoginOpen(true);
+        }}
+        className="bg-[#111111] text-[#FFD700] rounded-full px-6 py-2.5 font-sans font-bold text-sm border-2 border-[#111111] shadow-[2px_2px_0_#FFD700] cursor-pointer"
+      >
+        {buttonText}
+      </button>
+    </div>
+  );
+
   return (
     <div className="min-h-screen bg-[#FFF8E7] text-[#111111] relative selection:bg-[#FFD700] selection:text-[#111111] overflow-x-hidden w-full max-w-full">
       {/* Background Dot Texture - Brand Book Locked */}
@@ -338,12 +426,7 @@ export function App() {
           }}
           isOwnerLoggedIn={isOwnerLoggedIn}
           storeConfig={storeConfig}
-          onLogout={() => {
-            storageService.setOwnerAuthenticated(false);
-            setIsOwnerLoggedIn(false);
-            setCurrentMode('pembeli');
-            showToast('Sampai jumpa di dapur besok yaa! 👋');
-          }}
+          onLogout={handleStaffLogout}
         />
 
         <main className="max-w-[1180px] mx-auto px-4 sm:px-6 lg:px-8">
@@ -367,99 +450,86 @@ export function App() {
           )}
 
           {currentMode === 'scan' && (
-            <SmartScanView
-              initialQrId={activeScanId}
-              menus={menus}
-              onOrderSuccess={(msg) => showToast(msg)}
-            />
+            <Suspense fallback={<LazyViewFallback />}>
+              <SmartScanView
+                initialQrId={activeScanId}
+                menus={menus}
+                onOrderSuccess={(msg) => showToast(msg)}
+              />
+            </Suspense>
           )}
 
           {currentMode === 'pemilik' && (
             isOwnerLoggedIn ? (
-              <OwnerDashboardView
-                menus={menus}
-                onUpdateMenus={setMenus}
-                storeConfig={storeConfig}
-                onUpdateStoreConfig={setStoreConfig}
-                onLogout={() => {
-                  storageService.setOwnerAuthenticated(false);
-                  setIsOwnerLoggedIn(false);
-                  setCurrentMode('pembeli');
-                  showToast('Sampai jumpa di dapur besok yaa! 👋');
-                }}
-                onShowToast={showToast}
-              />
+              <Suspense fallback={<LazyViewFallback />}>
+                <OwnerDashboardView
+                  menus={menus}
+                  onUpdateMenus={setMenus}
+                  storeConfig={storeConfig}
+                  onUpdateStoreConfig={setStoreConfig}
+                  onLogout={handleStaffLogout}
+                  onShowToast={showToast}
+                />
+              </Suspense>
             ) : (
-              <div className="py-20 text-center space-y-4">
-                <div className="text-4xl">🔒</div>
-                <h2 className="font-hand font-bold text-3xl">Area Dapur Terkunci</h2>
-                <p className="font-sans text-sm text-[#5C3D2E]/70 max-w-md mx-auto">
-                  Halaman ini hanya dapat diakses oleh pemilik dengan memasukkan kode akses rahasia.
-                </p>
-                <button
-                  type="button"
-                  onClick={() => {
-                    setPendingMode('pemilik');
-                    setIsOwnerLoginOpen(true);
-                  }}
-                  className="bg-[#111111] text-[#FFD700] rounded-full px-6 py-2.5 font-sans font-bold text-sm border-2 border-[#111111] shadow-[2px_2px_0_#FFD700] cursor-pointer"
-                >
-                  Buka Kunci Dapur 🔑
-                </button>
-              </div>
+              renderLockedAccess(
+                'Area Dapur Terkunci',
+                'Halaman ini hanya dapat diakses oleh pemilik atau staf dengan memasukkan kode akses rahasia.',
+                'pemilik',
+                'Buka Kunci Dapur 🔑'
+              )
             )
           )}
 
           {currentMode === 'cetak' && (
             isOwnerLoggedIn && staffRole !== 'kitchen' ? (
-              <OwnerDashboardView
-                menus={menus}
-                onUpdateMenus={setMenus}
-                storeConfig={storeConfig}
-                onUpdateStoreConfig={setStoreConfig}
-                onLogout={() => {
-                  storageService.setOwnerAuthenticated(false);
-                  setIsOwnerLoggedIn(false);
-                  setCurrentMode('pembeli');
-                  showToast('Sampai jumpa di dapur besok yaa! 👋');
-                }}
-                onShowToast={showToast}
-                initialTab="stickers"
-              />
+              <Suspense fallback={<LazyViewFallback />}>
+                <OwnerDashboardView
+                  menus={menus}
+                  onUpdateMenus={setMenus}
+                  storeConfig={storeConfig}
+                  onUpdateStoreConfig={setStoreConfig}
+                  onLogout={handleStaffLogout}
+                  onShowToast={showToast}
+                  initialTab="stickers"
+                />
+              </Suspense>
             ) : (
-              <div className="py-20 text-center space-y-4">
-                <div className="text-4xl">🔒</div>
-                <h2 className="font-hand font-bold text-3xl">Area Cetak Stiker Terkunci</h2>
-                <p className="font-sans text-sm text-[#5C3D2E]/70 max-w-md mx-auto">
-                  Khusus pemilik atau kasir untuk mencetak batch stiker QR kardus risoles.
-                </p>
-                <button
-                  type="button"
-                  onClick={() => {
-                    setPendingMode('cetak');
-                    setIsOwnerLoginOpen(true);
-                  }}
-                  className="bg-[#111111] text-[#FFD700] rounded-full px-6 py-2.5 font-sans font-bold text-sm border-2 border-[#111111] shadow-[2px_2px_0_#FFD700] cursor-pointer"
-                >
-                  Buka Kunci Pemilik / Kasir 🔑
-                </button>
-              </div>
+              renderLockedAccess(
+                'Area Cetak Stiker Terkunci',
+                'Khusus pemilik atau kasir untuk mencetak batch stiker QR kardus risoles.',
+                'cetak',
+                'Buka Kunci Pemilik / Kasir 🔑'
+              )
             )
           )}
 
           {currentMode === 'kds' && (
-            <KitchenDisplaySystem
-              isStandalone
-              onShowToast={showToast}
-              onCloseStandalone={() => setCurrentMode(isOwnerLoggedIn ? 'pemilik' : 'pembeli')}
-            />
+            isOwnerLoggedIn ? (
+              <Suspense fallback={<LazyViewFallback />}>
+                <KitchenDisplaySystem
+                  isStandalone
+                  onShowToast={showToast}
+                  onCloseStandalone={() => setCurrentMode(isOwnerLoggedIn ? 'pemilik' : 'pembeli')}
+                />
+              </Suspense>
+            ) : (
+              renderLockedAccess(
+                'Layar Dapur (KDS) Terkunci',
+                'Khusus kru dapur, kasir, atau pemilik dengan PIN akses dapur.',
+                'kds',
+                'Buka Layar Dapur 🍳'
+              )
+            )
           )}
 
           {currentMode === 'track' && (
-            <OrderTrackingView
-              orderId={trackingOrderId}
-              onBackToMenu={() => setCurrentMode('pembeli')}
-            />
+            <Suspense fallback={<LazyViewFallback />}>
+              <OrderTrackingView
+                orderId={trackingOrderId}
+                onBackToMenu={() => setCurrentMode('pembeli')}
+              />
+            </Suspense>
           )}
         </main>
 
@@ -482,28 +552,34 @@ export function App() {
         <Toast message={toastMessage} />
 
         {/* Owner Authentication Modal */}
-        <OwnerLoginModal
-          isOpen={isOwnerLoginOpen}
-          onClose={() => {
-            setIsOwnerLoginOpen(false);
-            setPendingMode(null);
-          }}
-          onSuccess={() => {
-            const role = storageService.getStaffRole();
-            setIsOwnerLoggedIn(storageService.isOwnerAuthenticated());
-            setStaffRole(role);
-            setIsOwnerLoginOpen(false);
-            if (role === 'kitchen') {
-              setCurrentMode('kds');
-            } else if (pendingMode === 'cetak') {
-              setCurrentMode('cetak');
-            } else {
-              setCurrentMode('pemilik');
-            }
-            setPendingMode(null);
-            showToast('Selamat datang di Dapur Dulang! 🍳');
-          }}
-        />
+        {isOwnerLoginOpen && (
+          <Suspense fallback={null}>
+            <OwnerLoginModal
+              isOpen={isOwnerLoginOpen}
+              onClose={() => {
+                setIsOwnerLoginOpen(false);
+                setPendingMode(null);
+              }}
+              onSuccess={() => {
+                const role = storageService.getStaffRole();
+                setIsOwnerLoggedIn(storageService.isOwnerAuthenticated());
+                setStaffRole(role);
+                setIsOwnerLoginOpen(false);
+                if (role === 'kitchen') {
+                  setCurrentMode('kds');
+                } else if (pendingMode === 'kds') {
+                  setCurrentMode('kds');
+                } else if (pendingMode === 'cetak') {
+                  setCurrentMode('cetak');
+                } else {
+                  setCurrentMode('pemilik');
+                }
+                setPendingMode(null);
+                showToast('Selamat datang di Dapur Dulang! 🍳');
+              }}
+            />
+          </Suspense>
+        )}
 
         {/* Store Closed Modal Notice */}
         <StoreClosedModal

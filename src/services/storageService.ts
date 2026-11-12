@@ -36,7 +36,7 @@ import {
   DEFAULT_MENU_RECIPES,
   calculateRecipeHpp,
 } from '../lib/defaultRecipes';
-import { getSupabaseClient } from '../lib/supabase';
+import { getSupabaseClient, getSupabaseCredentials } from '../lib/supabase';
 import {
   isOwnerSessionValid,
   createOwnerSession,
@@ -89,6 +89,54 @@ export function sanitizeStoreConfig<T extends Record<string, any>>(cfg: T): Omit
   delete clean.cashierPin;
   delete clean.kitchenPin;
   return clean as Omit<T, 'ownerPin' | 'cashierPin' | 'kitchenPin'>;
+}
+
+/**
+ * Menghapus kolom internal pemilik (rekening, persentase komisi, bonus kasir, deletedMenuIds)
+ * ketika StoreConfig disinkronkan di mode publik/pembeli agar tidak terekspos di browser pengunjung.
+ */
+export function sanitizePublicStoreConfig<T extends Record<string, any>>(cfg: T): StoreConfig {
+  const clean = sanitizeStoreConfig(cfg) as Record<string, any>;
+  delete clean.bankBCA;
+  delete clean.bankMandiri;
+  delete clean.qrisNmid;
+  delete clean.qrisImage;
+  delete clean.qrisTeks;
+  delete clean.gofoodCommissionPercent;
+  delete clean.shopeefoodCommissionPercent;
+  delete clean.grabfoodCommissionPercent;
+  delete clean.cashierDailyTargetPortions;
+  delete clean.cashierBonusPerPortion;
+  delete clean.deletedMenuIds;
+  return clean as StoreConfig;
+}
+
+/**
+ * Menjaga privasi halaman lacak publik (?track=): hanya menyertakan status penggorengan,
+ * item menu, dan nama depan pelanggan — tanpa nomor WA, alamat lengkap, kecamatan, atau ID QR.
+ */
+export function sanitizePublicOrderRecord(raw: OrderRecord): OrderRecord {
+  const firstName = String(raw.customer_name || 'Pelanggan')
+    .trim()
+    .split(/\s+/)[0] || 'Pelanggan';
+  return {
+    id: raw.id,
+    customer_name: firstName,
+    items: Array.isArray(raw.items) ? raw.items : [],
+    total_price: Number(raw.total_price || 0),
+    payment_method: raw.payment_method,
+    status: raw.status,
+    created_at: raw.created_at,
+    completed_at: raw.completed_at,
+    channel: raw.channel || 'web_wa',
+    delivery_method: raw.delivery_method === 'delivery' ? 'delivery' : 'pickup',
+    shipping_cost: raw.shipping_cost,
+    delivery_schedule: raw.delivery_schedule,
+    delivery_slot: raw.delivery_slot,
+    kitchen_status: raw.kitchen_status,
+    cooking_started_at: raw.cooking_started_at,
+    cooking_completed_at: raw.cooking_completed_at,
+  };
 }
 
 function isSystemOrLegacyMenuId(id?: string): boolean {
@@ -1044,6 +1092,9 @@ ${lines.join('\n')}
   },
 
   async fetchCustomersFromCloud(): Promise<Customer[]> {
+    // Hanya staf terautentikasi yang boleh menarik daftar lengkap pelanggan dari cloud
+    if (!this.isOwnerAuthenticated()) return this.getCustomers();
+
     const client = getSupabaseClient();
     if (!client) return this.getCustomers();
 
@@ -1154,6 +1205,74 @@ ${lines.join('\n')}
     const customers = this.getCustomers();
     const cleanId = qrId.trim().toUpperCase();
     return customers.find((c) => c.qr_code_id.toUpperCase() === cleanId) || null;
+  },
+
+  /**
+   * Lookup satu pelanggan berdasarkan kode QR unik yang sedang dipindai (tanpa menarik seluruh tabel customers).
+   * Bila diambil dari cloud secara publik, nomor WA & detail alamat disamarkan untuk melindungi PII.
+   */
+  async fetchCustomerByQRPublic(qrId: string): Promise<Customer | null> {
+    const cleanId = qrId.trim().toUpperCase();
+    if (!cleanId) return null;
+
+    const localMatch = this.getCustomerByQR(cleanId);
+    if (localMatch) return localMatch;
+
+    const client = getSupabaseClient();
+    if (!client) return null;
+
+    const mapPublicCustomerRow = (row: any): Customer | null => {
+      if (!row || !row.qr_code_id) return null;
+      const safeArea = String(row.area || row.district || 'Sidoarjo');
+      return {
+        id: String(row.id || `cust-qr-${cleanId}`),
+        qr_code_id: String(row.qr_code_id).toUpperCase(),
+        name: String(row.name || 'Pelanggan Dulang').trim().split(/\s+/)[0] || 'Pelanggan Dulang',
+        wa: '', // Tidak menarik nomor WA mentah ke sesi publik
+        address: `Kec. ${safeArea} (Terdaftar Aman)`,
+        area: safeArea,
+        city: row.city || 'Kabupaten Sidoarjo',
+        district: row.district || safeArea,
+        favorite_menu: String(row.favorite_menu || 'Risoles Mayo Lumer'),
+        favorite_option: row.favorite_option || undefined,
+        total_orders: Number(row.total_orders || 1),
+        status: (row.status as Customer['status']) || 'Baru',
+        birth_day: row.birth_day ? Number(row.birth_day) : undefined,
+        birth_month: row.birth_month ? Number(row.birth_month) : undefined,
+        consent_at: row.consent_at || new Date().toISOString(),
+        first_scan_at: row.first_scan_at || new Date().toISOString(),
+        last_scan_at: row.last_scan_at || new Date().toISOString(),
+      };
+    };
+
+    try {
+      // 1. Utamakan RPC terisolasi (jika supabase-security-v3.sql sudah dijalankan)
+      const { data: rpcData, error: rpcErr } = await client.rpc('verify_and_lookup_qr', {
+        p_qr_id: cleanId,
+      });
+      if (!rpcErr && rpcData) {
+        const row = Array.isArray(rpcData) ? rpcData[0] : rpcData;
+        const mapped = mapPublicCustomerRow(row);
+        if (mapped) return mapped;
+      }
+    } catch {
+      // Lanjut fallback single-row non-PII jika RPC belum terpasang
+    }
+
+    try {
+      const { data, error } = await client
+        .from('customers')
+        .select('id, qr_code_id, name, area, district, city, favorite_menu, favorite_option, total_orders, status, birth_day, birth_month, consent_at, first_scan_at, last_scan_at')
+        .ilike('qr_code_id', cleanId)
+        .maybeSingle();
+
+      if (!error && data) {
+        return mapPublicCustomerRow(data);
+      }
+    } catch (e) {
+      console.warn('Public single QR lookup note:', e);
+    }
+    return null;
   },
 
   async saveCustomer(customerData: Omit<Customer, 'id' | 'total_orders' | 'status' | 'first_scan_at' | 'last_scan_at'> & {
@@ -1334,6 +1453,40 @@ ${lines.join('\n')}
     } else {
       clearOwnerSession();
       this.setStaffRole('cashier');
+    }
+  },
+
+  /**
+   * Membersihkan cache data transaksi & pelanggan di perangkat ketika staf logout
+   * apabila Supabase Cloud aktif, sehingga pengunjung publik berikutnya tidak mewarisi PII di localStorage.
+   */
+  clearSensitiveStaffCacheOnLogout(): void {
+    try {
+      const { isConfigured } = getSupabaseCredentials();
+      if (!isConfigured || typeof localStorage === 'undefined') return;
+
+      localStorage.removeItem(STORAGE_KEYS.ORDERS);
+      localStorage.removeItem(STORAGE_KEYS.CUSTOMERS);
+      localStorage.removeItem(STORAGE_KEYS.EXPENSES);
+
+      const rawCfg = localStorage.getItem('dulang_store_config');
+      if (rawCfg) {
+        try {
+          const sanitized = sanitizePublicStoreConfig(JSON.parse(rawCfg));
+          localStorage.setItem('dulang_store_config', JSON.stringify(sanitized));
+          if (typeof window !== 'undefined') {
+            window.dispatchEvent(new Event('dulang_store_config_updated'));
+          }
+        } catch {}
+      }
+
+      if (typeof window !== 'undefined') {
+        window.dispatchEvent(new Event('dulang_orders_updated'));
+        window.dispatchEvent(new Event('dulang_customers_updated'));
+        window.dispatchEvent(new Event('dulang_expenses_updated'));
+      }
+    } catch (e) {
+      console.warn('Logout cache cleanup note:', e);
     }
   },
 
@@ -1697,6 +1850,42 @@ ${lines.join('\n')}
     const clean = inputPin.trim();
     if (!clean) return { success: false, role: 'cashier', label: '' };
 
+    // 1. Prioritaskan verifikasi server-side (/api/auth-login) jika aktif di Vercel
+    if (typeof window !== 'undefined' && typeof fetch === 'function') {
+      try {
+        const controller = new AbortController();
+        const timer = setTimeout(() => controller.abort(), 3000);
+        const resp = await fetch('/api/auth-login', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          credentials: 'same-origin',
+          body: JSON.stringify({ pin: clean }),
+          signal: controller.signal,
+        });
+        clearTimeout(timer);
+
+        const contentType = resp.headers.get('content-type') || '';
+        if (contentType.includes('application/json')) {
+          const data = await resp.json();
+          if (data && data.mode === 'server' && !data.fallbackClientMode) {
+            if (resp.ok && data.success && (data.role === 'owner' || data.role === 'cashier' || data.role === 'kitchen')) {
+              const roleLabel =
+                data.role === 'owner'
+                  ? '👑 Pemilik Usaha (Owner)'
+                  : data.role === 'cashier'
+                  ? '🛒 Kasir Stand'
+                  : '🍳 Kru Dapur (KDS)';
+              return { success: true, role: data.role, label: data.label || roleLabel };
+            }
+            // Server memverifikasi langsung & menolak PIN — jangan bypass ke fallback lokal
+            return { success: false, role: 'cashier', label: '' };
+          }
+        }
+      } catch {
+        // Offline / Vite local dev tanpa /api/auth-login -> lanjut fallback PBKDF2
+      }
+    }
+
     const checkWithRecord = async (rec: AuthHashesRecord): Promise<{ success: boolean; role: StaffRole; label: string } | null> => {
       if (await verifyPassword(clean, rec.ownerHash)) {
         if (!rec.ownerHash.startsWith('pbkdf2_v1$')) {
@@ -1755,15 +1944,31 @@ ${lines.join('\n')}
       const client = getSupabaseClient();
       if (!client) return this.getStoreConfig();
 
-      const { data, error } = await client
-        .from('menus')
-        .select('deskripsi')
-        .eq('id', SYS_STORE_CONFIG_ID)
-        .single();
-
-      if (!error && data?.deskripsi) {
+      let remoteRaw: any = null;
+      if (!this.isOwnerAuthenticated()) {
         try {
-          const remoteRaw = JSON.parse(data.deskripsi);
+          const { data: rpcCfg, error: rpcErr } = await client.rpc('get_public_store_config');
+          if (!rpcErr && rpcCfg && typeof rpcCfg === 'object' && Object.keys(rpcCfg).length > 0) {
+            remoteRaw = rpcCfg;
+          }
+        } catch {
+          // RPC opsional belum terpasang, fallback ke query menus
+        }
+      }
+
+      if (!remoteRaw) {
+        const { data, error } = await client
+          .from('menus')
+          .select('deskripsi')
+          .eq('id', SYS_STORE_CONFIG_ID)
+          .single();
+        if (!error && data?.deskripsi) {
+          remoteRaw = JSON.parse(data.deskripsi);
+        }
+      }
+
+      if (remoteRaw && typeof remoteRaw === 'object') {
+        try {
           const remoteConfig = sanitizeStoreConfig(remoteRaw);
           const current = this.getStoreConfig();
 
@@ -1774,17 +1979,21 @@ ${lines.join('\n')}
           const unionDeleted = Array.from(localDeleted);
           localStorage.setItem(DELETED_MENU_IDS_KEY, JSON.stringify(unionDeleted));
 
-          const merged: StoreConfig = sanitizeStoreConfig({
+          const mergedFull: StoreConfig = sanitizeStoreConfig({
             ...current,
             ...remoteConfig,
             deletedMenuIds: unionDeleted,
           }) as StoreConfig;
 
-          localStorage.setItem('dulang_store_config', JSON.stringify(merged));
+          const configToStore = this.isOwnerAuthenticated()
+            ? mergedFull
+            : sanitizePublicStoreConfig(mergedFull);
+
+          localStorage.setItem('dulang_store_config', JSON.stringify(configToStore));
           if (typeof window !== 'undefined') {
             window.dispatchEvent(new Event('dulang_store_config_updated'));
           }
-          return merged;
+          return configToStore;
         } catch (e) {
           console.warn('Failed to parse remote store config:', e);
         }
@@ -2190,6 +2399,9 @@ ${lines.join('\n')}
 
   async syncOrdersFromSupabase(): Promise<OrderRecord[]> {
     try {
+      // Hanya staf terautentikasi yang boleh menyinkronkan seluruh antrean order
+      if (!this.isOwnerAuthenticated()) return this.getOrders();
+
       const client = getSupabaseClient();
       if (!client) return this.getOrders();
 
@@ -2325,7 +2537,100 @@ ${lines.join('\n')}
     }
   },
 
+  /**
+   * Lookup aman 1 pesanan untuk halaman lacak publik (?track=):
+   * Mengutamakan RPC get_public_order_track, tanpa menyimpan ke localStorage global & tanpa PII (WA/alamat).
+   */
+  async fetchPublicOrderForTracking(orderId: string): Promise<OrderRecord | null> {
+    try {
+      const cleanId = orderId.trim();
+      if (!cleanId) return null;
+
+      let deletedIds = new Set<string>();
+      try {
+        const deletedRaw = localStorage.getItem('dulang_deleted_order_ids') || '[]';
+        const arr = JSON.parse(deletedRaw);
+        if (Array.isArray(arr)) deletedIds = new Set(arr.map((x) => String(x).toUpperCase()));
+      } catch {}
+
+      if (deletedIds.has(cleanId.toUpperCase())) return null;
+
+      const local = this.getOrders().find((o) => o.id.toUpperCase() === cleanId.toUpperCase());
+      const client = getSupabaseClient();
+      if (!client) return local ? sanitizePublicOrderRecord(local) : null;
+
+      // 1. Utamakan RPC terisolasi (jika supabase-security-v3.sql sudah terpasang)
+      try {
+        const { data: rpcData, error: rpcErr } = await client.rpc('get_public_order_track', {
+          p_order_id: cleanId.toUpperCase(),
+        });
+        const row = Array.isArray(rpcData) ? rpcData[0] : rpcData;
+        if (!rpcErr && row && row.id) {
+          if (row.status === 'dihapus') return null;
+          return sanitizePublicOrderRecord({
+            id: row.id,
+            customer_name: row.customer_name || 'Pelanggan',
+            items: Array.isArray(row.items) ? row.items : [],
+            total_price: Number(row.total_price || 0),
+            payment_method: (row.payment_method as PaymentMethod) || 'tunai',
+            status: (row.status as OrderStatus) || 'menunggu',
+            delivery_method: row.delivery_method === 'delivery' ? 'delivery' : 'pickup',
+            shipping_cost: Number(row.shipping_cost || 0),
+            delivery_schedule: row.delivery_schedule || undefined,
+            delivery_slot: row.delivery_slot || undefined,
+            channel: row.channel || 'web_wa',
+            kitchen_status: (row.kitchen_status as KitchenCookingStatus) || 'antre',
+            cooking_started_at: row.cooking_started_at || undefined,
+            cooking_completed_at: row.cooking_completed_at || undefined,
+            created_at: row.created_at || new Date().toISOString(),
+            completed_at: row.completed_at || undefined,
+          });
+        }
+      } catch {
+        // Lanjut fallback query aman tanpa kolom WA/alamat
+      }
+
+      const { data, error } = await client
+        .from('orders')
+        .select('id, customer_name, items, total_price, delivery_method, shipping_cost, payment_method, status, channel, created_at, completed_at, notes')
+        .ilike('id', cleanId)
+        .maybeSingle();
+
+      if (error) return local ? sanitizePublicOrderRecord(local) : null;
+      if (!data) return local && Date.now() - new Date(local.created_at || 0).getTime() < 15_000 ? sanitizePublicOrderRecord(local) : null;
+      if (data.status === 'dihapus') return null;
+
+      const { meta } = unpackOrderNotes(data.notes);
+      return sanitizePublicOrderRecord({
+        id: data.id,
+        customer_name: data.customer_name || 'Pelanggan',
+        items: Array.isArray(data.items) ? data.items : [],
+        total_price: Number(data.total_price || 0),
+        payment_method: (data.payment_method as PaymentMethod) || 'tunai',
+        status: (data.status as OrderStatus) || (local?.status || 'menunggu'),
+        delivery_method: data.delivery_method === 'delivery' ? 'delivery' : 'pickup',
+        shipping_cost: Number(data.shipping_cost || 0),
+        delivery_schedule: meta.delivery_schedule || undefined,
+        delivery_slot: meta.delivery_slot || undefined,
+        channel: data.channel || 'web_wa',
+        kitchen_status: meta.kitchen_status || local?.kitchen_status || 'antre',
+        cooking_started_at: meta.cooking_started_at || local?.cooking_started_at,
+        cooking_completed_at: meta.cooking_completed_at || local?.cooking_completed_at,
+        created_at: data.created_at || new Date().toISOString(),
+        completed_at: data.completed_at || local?.completed_at,
+      });
+    } catch (err) {
+      console.warn('Public tracking lookup note:', err);
+      const local = this.getOrders().find((o) => o.id.toUpperCase() === orderId.trim().toUpperCase());
+      return local ? sanitizePublicOrderRecord(local) : null;
+    }
+  },
+
   async fetchOrderById(orderId: string): Promise<OrderRecord | null> {
+    if (!this.isOwnerAuthenticated()) {
+      return this.fetchPublicOrderForTracking(orderId);
+    }
+
     try {
       const cleanId = orderId.trim();
       if (!cleanId) return null;
